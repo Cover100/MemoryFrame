@@ -2,17 +2,16 @@ from flask import Flask, render_template, send_from_directory, jsonify
 import os
 import subprocess
 import time
-
+import platform
+import webbrowser
 
 app = Flask(__name__)
-
 
 # ======================================================
 # Configuration
 # ======================================================
 
 UPLOAD_FOLDER = "uploads"
-
 
 IMAGE_EXTENSIONS = {
     ".jpg",
@@ -22,14 +21,11 @@ IMAGE_EXTENSIONS = {
     ".gif"
 }
 
-
 VIDEO_EXTENSIONS = {
     ".mp4",
     ".mov",
     ".webm"
 }
-
-
 
 # Raspberry Pi DSI backlight
 
@@ -38,57 +34,55 @@ BACKLIGHT_PATH = (
     "10-0045/brightness"
 )
 
-
 MAX_BRIGHTNESS_PATH = (
     "/sys/class/backlight/"
     "10-0045/max_brightness"
 )
 
-
-
-
-
 # ======================================================
-# Launch Chromium kiosk
+# Launch Browser
 # ======================================================
 
 def launch_browser():
 
     time.sleep(3)
 
+    # Windows
+    if platform.system() == "Windows":
+        webbrowser.open("http://localhost:5000")
+        return
 
-    # Check if Chromium is already open
+    # Raspberry Pi / Linux
+    try:
 
-    result = subprocess.run(
-        ["pgrep", "chromium"],
-        stdout=subprocess.DEVNULL
-    )
+        result = subprocess.run(
+            ["pgrep", "chromium"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
 
+        if result.returncode != 0:
 
-    if result.returncode != 0:
+            subprocess.Popen([
 
+                "chromium",
 
-        subprocess.Popen([
+                "--kiosk",
 
-            "chromium",
+                "--noerrdialogs",
 
-            "--kiosk",
+                "--disable-infobars",
 
-            "--noerrdialogs",
+                "--disable-session-crashed-bubble",
 
-            "--disable-infobars",
+                "--disable-features=Translate",
 
-            "--disable-session-crashed-bubble",
+                "http://localhost:5000"
 
-            "--disable-features=Translate",
+            ])
 
-            "http://localhost:5000"
-
-        ])
-
-
-
-
+    except FileNotFoundError:
+        print("Chromium not found.")
 
 # ======================================================
 # Media Scanner
@@ -98,7 +92,6 @@ def get_media():
 
     media = []
 
-
     if not os.path.exists(
         UPLOAD_FOLDER
     ):
@@ -107,33 +100,24 @@ def get_media():
             UPLOAD_FOLDER
         )
 
-
-
     for filename in os.listdir(
         UPLOAD_FOLDER
     ):
-
 
         filepath = os.path.join(
             UPLOAD_FOLDER,
             filename
         )
 
-
         if not os.path.isfile(filepath):
 
             continue
-
-
 
         extension = os.path.splitext(
             filename
         )[1].lower()
 
-
-
         if extension in IMAGE_EXTENSIONS:
-
 
             media.append({
 
@@ -143,10 +127,7 @@ def get_media():
 
             })
 
-
-
         elif extension in VIDEO_EXTENSIONS:
-
 
             media.append({
 
@@ -156,16 +137,10 @@ def get_media():
 
             })
 
-
-
     return sorted(
         media,
         key=lambda x: x["filename"].lower()
     )
-
-
-
-
 
 # ======================================================
 # Main page
@@ -179,10 +154,6 @@ def index():
         media=get_media()
     )
 
-
-
-
-
 # ======================================================
 # Media API
 # ======================================================
@@ -193,10 +164,6 @@ def media():
     return jsonify(
         get_media()
     )
-
-
-
-
 
 # ======================================================
 # Serve uploads
@@ -210,10 +177,6 @@ def uploads(filename):
         filename
     )
 
-
-
-
-
 # ======================================================
 # Brightness control
 # ======================================================
@@ -221,9 +184,14 @@ def uploads(filename):
 @app.route("/brightness/<int:value>")
 def set_brightness(value):
 
+    # Windows doesn't have Raspberry Pi backlight controls
+    if platform.system() == "Windows":
+        return jsonify({
+            "status": "unsupported",
+            "message": "Brightness control is only available on Raspberry Pi."
+        })
 
     try:
-
 
         with open(
             MAX_BRIGHTNESS_PATH,
@@ -234,8 +202,6 @@ def set_brightness(value):
                 f.read()
             )
 
-
-
         value = max(
             0,
             min(
@@ -243,8 +209,6 @@ def set_brightness(value):
                 maximum
             )
         )
-
-
 
         with open(
             BACKLIGHT_PATH,
@@ -254,8 +218,6 @@ def set_brightness(value):
             f.write(
                 str(value)
             )
-
-
 
         return jsonify({
 
@@ -270,9 +232,7 @@ def set_brightness(value):
 
         })
 
-
     except Exception as e:
-
 
         return jsonify({
 
@@ -282,11 +242,7 @@ def set_brightness(value):
             "message":
                 str(e)
 
-        }),500
-
-
-
-
+        }), 500
 
 # ======================================================
 # Get brightness
@@ -295,9 +251,14 @@ def set_brightness(value):
 @app.route("/brightness")
 def get_brightness():
 
+    # Windows doesn't have Raspberry Pi backlight controls
+    if platform.system() == "Windows":
+        return jsonify({
+            "status": "unsupported",
+            "message": "Brightness control is only available on Raspberry Pi."
+        })
 
     try:
-
 
         with open(
             BACKLIGHT_PATH,
@@ -308,8 +269,6 @@ def get_brightness():
                 f.read()
             )
 
-
-
         with open(
             MAX_BRIGHTNESS_PATH,
             "r"
@@ -318,8 +277,6 @@ def get_brightness():
             maximum = int(
                 f.read()
             )
-
-
 
         return jsonify({
 
@@ -331,9 +288,7 @@ def get_brightness():
 
         })
 
-
     except Exception as e:
-
 
         return jsonify({
 
@@ -343,11 +298,7 @@ def get_brightness():
             "message":
                 str(e)
 
-        }),500
-
-
-
-
+        }), 500
 
 # ======================================================
 # Start application
@@ -355,10 +306,7 @@ def get_brightness():
 
 if __name__ == "__main__":
 
-
     launch_browser()
-
-
 
     app.run(
 

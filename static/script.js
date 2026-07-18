@@ -8,7 +8,7 @@
 // Settings
 // ======================================================
 
-const IMAGE_DURATION = 8000;
+const IMAGE_DURATION = 20000;
 
 const REFRESH_INTERVAL = 30000;
 
@@ -54,6 +54,10 @@ let currentIndex = 0;
 let isPlaying = false;
 
 let slideTimer = null;
+
+let pendingPlaylist = null;
+
+let playlistUpdatePending = false;
 
 
 // Gesture variables
@@ -405,45 +409,45 @@ function hideVideo(){
 
 function nextMedia(){
 
+    if(
+        playlistUpdatePending
+    ){
 
-    clearTimeout(slideTimer);
+        playlist =
+            pendingPlaylist;
 
+        pendingPlaylist =
+            null;
 
+        playlistUpdatePending =
+            false;
 
-    hideImage();
+        currentIndex =
+            0;
 
-    hideVideo();
-
-
-
-    setTimeout(()=>{
-
+    }
+    else{
 
         currentIndex++;
 
-
         if(
-            currentIndex >= playlist.length
+            currentIndex >=
+            playlist.length
         ){
 
-
             playlist =
-                shuffle(playlist);
+                shuffle(
+                    playlist
+                );
 
-
-            currentIndex = 0;
+            currentIndex =
+                0;
 
         }
 
+    }
 
-
-        showCurrent();
-
-
-    },
-    FADE_TIME);
-
-
+    showCurrentMedia();
 
 }
 
@@ -546,69 +550,58 @@ function applyKenBurns(){
 
 async function refreshMedia(){
 
-
     try{
 
-
         let response =
-            await fetch("/media");
-
+            await fetch(
+                "/media"
+            );
 
         let newMedia =
             await response.json();
 
-
-
         let oldFiles =
             playlist
-            .map(
-                x=>x.filename
-            )
-            .sort();
-
-
+                .map(
+                    x => x.filename
+                )
+                .sort();
 
         let newFiles =
             newMedia
-            .map(
-                x=>x.filename
-            )
-            .sort();
-
-
+                .map(
+                    x => x.filename
+                )
+                .sort();
 
         if(
             JSON.stringify(oldFiles)
-            !==
+            ===
             JSON.stringify(newFiles)
         ){
 
-
-            playlist =
-                shuffle(newMedia);
-
-
-            currentIndex = 0;
-
-
-            console.log(
-                "Media updated"
-            );
+            return;
 
         }
 
+        pendingPlaylist =
+            shuffle(newMedia);
+
+        playlistUpdatePending =
+            true;
+
+        console.log(
+            "Media update queued"
+        );
 
     }
     catch(error){
 
-
         console.log(
-            error
+            "Refresh failed"
         );
 
-
     }
-
 
 }
 

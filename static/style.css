@@ -1,12 +1,15 @@
 /*
 ======================================================
 Memory Frame Styling
-Optimised for Raspberry Pi 800x480 IPS display
+Raspberry Pi 800x480 IPS Display
 ======================================================
 */
 
 
-/* Remove browser defaults */
+/* ====================================================
+   Browser reset
+   ==================================================== */
+
 
 html,
 body {
@@ -19,13 +22,18 @@ body {
 
     height: 100%;
 
+
     overflow: hidden;
+
 
     background: black;
 
+
     cursor: none;
 
+
     user-select: none;
+
 
     touch-action: none;
 
@@ -33,38 +41,44 @@ body {
 
 
 
-/*
-======================================================
-Main display area
-======================================================
-*/
+/* ====================================================
+   Main frame
+   ==================================================== */
 
 
 #frame {
 
+
     position: relative;
+
 
     width: 100vw;
 
+
     height: 100vh;
 
+
     overflow: hidden;
+
+
+    background: black;
 
 }
 
 
 
-/*
-======================================================
-Image + Video layers
 
-Both occupy the entire display.
-Javascript controls visibility.
-======================================================
-*/
+
+/* ====================================================
+   Image + Video layers
+
+   Both fill the entire display.
+   Javascript controls opacity.
+   ==================================================== */
 
 
 .media {
+
 
     position: absolute;
 
@@ -79,10 +93,13 @@ Javascript controls visibility.
     height: 100%;
 
 
+
     object-fit: cover;
 
 
+
     opacity: 0;
+
 
 
     transition:
@@ -90,31 +107,31 @@ Javascript controls visibility.
         opacity 1.5s ease-in-out;
 
 
+
     pointer-events: none;
+
 
 }
 
 
 
-/*
-Visible layer
-*/
+
 
 .media.visible {
 
+
     opacity: 1;
+
 
 }
 
 
 
-/*
-======================================================
-Ken Burns Effects
 
-Applied only to images
-======================================================
-*/
+
+/* ====================================================
+   Ken Burns Effects
+   ==================================================== */
 
 
 .kenburns1 {
@@ -129,6 +146,7 @@ Applied only to images
 
 
 
+
 .kenburns2 {
 
 
@@ -138,6 +156,7 @@ Applied only to images
 
 
 }
+
 
 
 
@@ -175,7 +194,6 @@ Applied only to images
 
     }
 
-
 }
 
 
@@ -187,23 +205,26 @@ Applied only to images
 
     from {
 
+
         transform:
 
             scale(1.05)
             translate(0,0);
+
 
     }
 
 
     to {
 
+
         transform:
 
             scale(1.15)
             translate(-4%,-2%);
 
-    }
 
+    }
 
 }
 
@@ -216,23 +237,26 @@ Applied only to images
 
     from {
 
+
         transform:
 
             scale(1.05)
             translate(0,0);
+
 
     }
 
 
     to {
 
+
         transform:
 
             scale(1.15)
             translate(4%,2%);
 
-    }
 
+    }
 
 }
 
@@ -240,11 +264,9 @@ Applied only to images
 
 
 
-/*
-======================================================
-Video settings
-======================================================
-*/
+/* ====================================================
+   Video
+   ==================================================== */
 
 
 video {
@@ -257,11 +279,157 @@ video {
 
 
 
-/*
-======================================================
-Prevent touch gestures
-======================================================
-*/
+
+
+/* ====================================================
+   Brightness overlay
+
+   Appears temporarily during adjustment.
+   ==================================================== */
+
+
+#brightnessOverlay {
+
+
+    position: absolute;
+
+
+    left: 50%;
+
+    bottom: 40px;
+
+
+
+    transform:
+
+        translateX(-50%);
+
+
+
+    display: none;
+
+
+
+    align-items: center;
+
+
+    gap: 12px;
+
+
+
+    padding: 10px 20px;
+
+
+
+    border-radius: 20px;
+
+
+
+    background:
+
+        rgba(0,0,0,0.65);
+
+
+
+    color: white;
+
+
+
+    font-family:
+
+        Arial,
+        sans-serif;
+
+
+
+    font-size:
+
+        28px;
+
+
+
+    z-index: 10;
+
+
+}
+
+
+
+
+
+#brightnessIcon {
+
+
+    font-size:
+
+        32px;
+
+
+}
+
+
+
+
+
+/* ====================================================
+   Clock overlay (future)
+
+   Hidden until enabled.
+   ==================================================== */
+
+
+#clockOverlay {
+
+
+    position: absolute;
+
+
+    right: 25px;
+
+
+    bottom: 20px;
+
+
+
+    color: white;
+
+
+
+    font-family:
+
+        Arial,
+        sans-serif;
+
+
+
+    font-size:
+
+        32px;
+
+
+
+    display: none;
+
+
+
+    text-shadow:
+
+        0 2px 5px black;
+
+
+
+    z-index: 5;
+
+
+}
+
+
+
+
+
+/* ====================================================
+   Prevent touchscreen gestures
+   ==================================================== */
 
 
 #frame {

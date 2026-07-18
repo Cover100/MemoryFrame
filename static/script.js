@@ -1,11 +1,12 @@
 // ======================================================
-// Memory Frame Slideshow Controller
+// Memory Frame Controller
+// Raspberry Pi Touchscreen Edition
 // ======================================================
 
 
-// =====================
+// ======================================================
 // Settings
-// =====================
+// ======================================================
 
 const IMAGE_DURATION = 8000;
 
@@ -15,10 +16,15 @@ const FADE_TIME = 1500;
 
 const SWIPE_THRESHOLD = 80;
 
+const BRIGHTNESS_STEP = 20;
 
-// =====================
+const BRIGHTNESS_DISPLAY_TIME = 1500;
+
+
+
+// ======================================================
 // Elements
-// =====================
+// ======================================================
 
 const imageElement =
     document.getElementById("image");
@@ -28,10 +34,19 @@ const videoElement =
     document.getElementById("video");
 
 
+const brightnessOverlay =
+    document.getElementById("brightnessOverlay");
 
-// =====================
+
+const brightnessValue =
+    document.getElementById("brightnessValue");
+
+
+
+
+// ======================================================
 // Variables
-// =====================
+// ======================================================
 
 let playlist = [];
 
@@ -42,23 +57,36 @@ let isPlaying = false;
 let slideTimer = null;
 
 
-// Pointer tracking
-// Works with:
-// - Raspberry Pi touchscreen
-// - Mouse
-// - Stylus
+
+// Swipe tracking
 
 let startX = 0;
 
+let startY = 0;
+
 let endX = 0;
 
+let endY = 0;
 
 
-// =====================
+
+// Brightness
+
+let brightness = 128;
+
+let maxBrightness = 255;
+
+let brightnessTimer = null;
+
+
+
+// ======================================================
 // Shuffle
-// =====================
+// Ensures every item is seen once
+// before reshuffling
+// ======================================================
 
-function shuffle(array) {
+function shuffle(array){
 
 
     let shuffled = [...array];
@@ -69,6 +97,7 @@ function shuffle(array) {
         i > 0;
         i--
     ){
+
 
         let j =
             Math.floor(
@@ -86,6 +115,7 @@ function shuffle(array) {
             shuffled[i]
         ];
 
+
     }
 
 
@@ -95,9 +125,10 @@ function shuffle(array) {
 
 
 
-// =====================
-// Create playlist
-// =====================
+
+// ======================================================
+// Playlist creation
+// ======================================================
 
 function createPlaylist(files){
 
@@ -108,32 +139,36 @@ function createPlaylist(files){
 
     currentIndex = 0;
 
+
 }
 
 
 
-// =====================
-// Start slideshow
-// =====================
+
+// ======================================================
+// Start
+// ======================================================
 
 function startSlideshow(){
 
 
-    if(playlist.length === 0){
-
+    if(
+        playlist.length === 0
+    ){
 
         console.log(
             "No media found"
         );
-
 
         return;
 
     }
 
 
-
     isPlaying = true;
+
+
+    loadBrightness();
 
 
     showCurrent();
@@ -142,9 +177,11 @@ function startSlideshow(){
 
 
 
-// =====================
-// Show current media
-// =====================
+
+
+// ======================================================
+// Display current media
+// ======================================================
 
 function showCurrent(){
 
@@ -184,7 +221,9 @@ function showCurrent(){
 
 
 
-    if(item.type === "image"){
+    if(
+        item.type === "image"
+    ){
 
 
         showImage(item);
@@ -193,20 +232,23 @@ function showCurrent(){
     }
 
 
-    else if(item.type === "video"){
+    else if(
+        item.type === "video"
+    ){
 
 
         showVideo(item);
 
     }
 
+
 }
 
 
 
-// =====================
-// Show image
-// =====================
+// ======================================================
+// Images
+// ======================================================
 
 function showImage(item){
 
@@ -224,39 +266,39 @@ function showImage(item){
 
 
 
-    imageElement.onload = function(){
+    imageElement.onload =
+        function(){
 
 
 
-        applyKenBurns();
+            applyKenBurns();
 
 
 
-        setTimeout(()=>{
-
-
-            imageElement.classList.add(
-                "visible"
-            );
-
-
-        },100);
-
-
-
-        slideTimer =
             setTimeout(()=>{
 
 
-                nextMedia();
+                imageElement.classList.add(
+                    "visible"
+                );
 
 
-            },
-            IMAGE_DURATION);
+            },100);
 
 
 
-    };
+            slideTimer =
+                setTimeout(()=>{
+
+
+                    nextMedia();
+
+
+                },
+                IMAGE_DURATION);
+
+
+        };
 
 
 
@@ -270,9 +312,11 @@ function showImage(item){
 
 
 
-// =====================
-// Show video
-// =====================
+
+
+// ======================================================
+// Videos
+// ======================================================
 
 function showVideo(item){
 
@@ -319,18 +363,17 @@ function showVideo(item){
 
             nextMedia();
 
-
         };
-
 
 
 }
 
 
 
-// =====================
-// Hide elements
-// =====================
+
+// ======================================================
+// Hide layers
+// ======================================================
 
 function hideImage(){
 
@@ -351,13 +394,17 @@ function hideVideo(){
     );
 
 
+    videoElement.pause();
+
+
 }
 
 
 
-// =====================
-// Next media
-// =====================
+
+// ======================================================
+// Next
+// ======================================================
 
 function nextMedia(){
 
@@ -376,7 +423,6 @@ function nextMedia(){
 
 
         currentIndex++;
-
 
 
         if(
@@ -407,9 +453,10 @@ function nextMedia(){
 
 
 
-// =====================
-// Previous media
-// =====================
+
+// ======================================================
+// Previous
+// ======================================================
 
 function previousMedia(){
 
@@ -430,8 +477,9 @@ function previousMedia(){
         currentIndex--;
 
 
-
-        if(currentIndex < 0){
+        if(
+            currentIndex < 0
+        ){
 
 
             currentIndex =
@@ -454,9 +502,11 @@ function previousMedia(){
 
 
 
-// =====================
+
+
+// ======================================================
 // Ken Burns
-// =====================
+// ======================================================
 
 function applyKenBurns(){
 
@@ -495,9 +545,11 @@ function applyKenBurns(){
 
 
 
-// =====================
-// Auto refresh uploads
-// =====================
+
+
+// ======================================================
+// Auto refresh media
+// ======================================================
 
 async function refreshMedia(){
 
@@ -509,13 +561,12 @@ async function refreshMedia(){
             await fetch("/media");
 
 
-
         let newMedia =
             await response.json();
 
 
 
-        let current =
+        let oldFiles =
             playlist
             .map(
                 x=>x.filename
@@ -524,7 +575,7 @@ async function refreshMedia(){
 
 
 
-        let updated =
+        let newFiles =
             newMedia
             .map(
                 x=>x.filename
@@ -533,23 +584,21 @@ async function refreshMedia(){
 
 
 
-
         if(
-            JSON.stringify(current)
+            JSON.stringify(oldFiles)
             !==
-            JSON.stringify(updated)
+            JSON.stringify(newFiles)
         ){
 
 
             console.log(
-                "Media updated"
+                "Media changed"
             );
 
 
 
             playlist =
                 shuffle(newMedia);
-
 
 
             currentIndex = 0;
@@ -564,7 +613,6 @@ async function refreshMedia(){
 
 
         console.log(
-            "Refresh error:",
             error
         );
 
@@ -576,9 +624,10 @@ async function refreshMedia(){
 
 
 
-// =====================
+
+// ======================================================
 // Preload next image
-// =====================
+// ======================================================
 
 function preloadNext(){
 
@@ -588,7 +637,9 @@ function preloadNext(){
 
 
 
-    if(!next){
+    if(
+        !next
+    ){
 
         return;
 
@@ -596,7 +647,9 @@ function preloadNext(){
 
 
 
-    if(next.type === "image"){
+    if(
+        next.type === "image"
+    ){
 
 
         let img =
@@ -617,11 +670,10 @@ function preloadNext(){
 
 
 
-// =====================
-// Swipe Controls
-// Mouse + Touch
-// =====================
 
+// ======================================================
+// Touch + Mouse gestures
+// ======================================================
 
 document.addEventListener(
     "pointerdown",
@@ -632,10 +684,12 @@ document.addEventListener(
             event.clientX;
 
 
+        startY =
+            event.clientY;
+
+
     }
 );
-
-
 
 
 
@@ -648,8 +702,12 @@ document.addEventListener(
             event.clientX;
 
 
+        endY =
+            event.clientY;
 
-        handleSwipe();
+
+
+        handleGesture();
 
 
     }
@@ -659,45 +717,246 @@ document.addEventListener(
 
 
 
-function handleSwipe(){
+function handleGesture(){
 
 
-    let distance =
+    let xDistance =
         endX - startX;
 
 
+    let yDistance =
+        endY - startY;
+
+
+
+    // Vertical swipe
 
     if(
-        distance < -SWIPE_THRESHOLD
+        Math.abs(yDistance)
+        >
+        Math.abs(xDistance)
     ){
 
 
-        console.log(
-            "Swipe left"
-        );
+        if(
+            yDistance < -SWIPE_THRESHOLD
+        ){
 
 
-        nextMedia();
+            increaseBrightness();
+
+
+        }
+
+
+        else if(
+            yDistance > SWIPE_THRESHOLD
+        ){
+
+
+            decreaseBrightness();
+
+
+        }
 
 
     }
 
 
 
-    else if(
-        distance > SWIPE_THRESHOLD
-    ){
+    // Horizontal swipe
+
+    else{
 
 
-        console.log(
-            "Swipe right"
-        );
+        if(
+            xDistance < -SWIPE_THRESHOLD
+        ){
 
 
-        previousMedia();
+            nextMedia();
+
+        }
+
+
+        else if(
+            xDistance > SWIPE_THRESHOLD
+        ){
+
+
+            previousMedia();
+
+        }
 
 
     }
+
+
+}
+
+
+
+
+
+
+// ======================================================
+// Brightness
+// ======================================================
+
+async function loadBrightness(){
+
+
+    try{
+
+
+        let response =
+            await fetch(
+                "/brightness"
+            );
+
+
+        let data =
+            await response.json();
+
+
+
+        brightness =
+            data.brightness;
+
+
+
+        maxBrightness =
+            data.maximum;
+
+
+
+    }
+    catch(error){
+
+        console.log(
+            "Brightness unavailable"
+        );
+
+    }
+
+
+}
+
+
+
+
+
+function increaseBrightness(){
+
+
+    brightness +=
+        BRIGHTNESS_STEP;
+
+
+
+    brightness =
+        Math.min(
+            brightness,
+            maxBrightness
+        );
+
+
+
+    setBrightness();
+
+
+}
+
+
+
+
+function decreaseBrightness(){
+
+
+    brightness -=
+        BRIGHTNESS_STEP;
+
+
+
+    brightness =
+        Math.max(
+            brightness,
+            0
+        );
+
+
+
+    setBrightness();
+
+
+}
+
+
+
+
+
+function setBrightness(){
+
+
+    fetch(
+        "/brightness/"
+        +
+        brightness
+    );
+
+
+
+    showBrightness();
+
+
+}
+
+
+
+
+
+function showBrightness(){
+
+
+    let percent =
+        Math.round(
+            brightness
+            /
+            maxBrightness
+            *
+            100
+        );
+
+
+
+    brightnessValue.innerText =
+        percent
+        +
+        "%";
+
+
+
+    brightnessOverlay.style.display =
+        "flex";
+
+
+
+    clearTimeout(
+        brightnessTimer
+    );
+
+
+
+    brightnessTimer =
+        setTimeout(()=>{
+
+
+            brightnessOverlay.style.display =
+                "none";
+
+
+        },
+        BRIGHTNESS_DISPLAY_TIME);
 
 
 
@@ -706,10 +965,11 @@ function handleSwipe(){
 
 
 
-// =====================
-// Timers
-// =====================
 
+
+// ======================================================
+// Timers
+// ======================================================
 
 setInterval(
     refreshMedia,
@@ -726,12 +986,10 @@ setInterval(
 
 
 
-// =====================
+// ======================================================
 // Boot
-// =====================
-
+// ======================================================
 
 createPlaylist(mediaFiles);
-
 
 startSlideshow();

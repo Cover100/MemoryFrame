@@ -447,7 +447,7 @@ function nextMedia(){
 
     }
 
-    showCurrentMedia();
+    showCurrent();
 
 }
 

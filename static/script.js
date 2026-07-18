@@ -8,7 +8,7 @@
 // Settings
 // ======================================================
 
-const IMAGE_DURATION = 8000;
+const IMAGE_DURATION = 10000;
 
 const REFRESH_INTERVAL = 30000;
 

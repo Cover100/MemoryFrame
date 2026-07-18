@@ -186,7 +186,7 @@ body {
     animation:
 
         zoomIn
-        8s
+        10s
         linear
         forwards;
 
@@ -203,7 +203,7 @@ body {
     animation:
 
         panLeft
-        8s
+        10s
         linear
         forwards;
 
@@ -221,7 +221,7 @@ body {
     animation:
 
         panRight
-        8s
+        10s
         linear
         forwards;
 

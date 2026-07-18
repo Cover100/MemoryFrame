@@ -20,6 +20,8 @@ const BRIGHTNESS_SPEED = 0.7;
 
 const BRIGHTNESS_DISPLAY_TIME = 1500;
 
+const MIN_BRIGHTNESS = 40;
+
 
 // ======================================================
 // Elements
@@ -732,7 +734,7 @@ document.addEventListener(
 
             brightness =
                 Math.max(
-                    0,
+                    MIN_BRIGHTNESS,
                     Math.min(
                         brightness,
                         maxBrightness
@@ -818,41 +820,43 @@ document.addEventListener(
 
 async function loadBrightness(){
 
-
     try{
-
 
         let response =
             await fetch(
                 "/brightness"
             );
 
-
         let data =
             await response.json();
-
-
 
         brightness =
             data.brightness;
 
-
         maxBrightness =
             data.maximum;
 
+        brightness =
+            Math.max(
+                MIN_BRIGHTNESS,
+                Math.min(
+                    brightness,
+                    maxBrightness
+                )
+            );
 
+        // Keep the Pi in sync if the loaded value
+        // was below the minimum brightness.
+        setBrightness();
 
     }
     catch(error){
-
 
         console.log(
             "Brightness unavailable"
         );
 
-
     }
-
 
 }
 
@@ -862,21 +866,22 @@ async function loadBrightness(){
 
 function setBrightness(){
 
-
     brightness =
         Math.round(
-            brightness
+            Math.max(
+                MIN_BRIGHTNESS,
+                Math.min(
+                    brightness,
+                    maxBrightness
+                )
+            )
         );
-
-
 
     fetch(
         "/brightness/"
         +
         brightness
     );
-
-
 
     showBrightness();
 

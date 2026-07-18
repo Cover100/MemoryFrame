@@ -520,6 +520,12 @@ function previousMedia(){
 
 function applyKenBurns(){
 
+    // Remove any previous Ken Burns classes
+    imageElement.classList.remove(
+        "kenburns1",
+        "kenburns2",
+        "kenburns3"
+    );
 
     let effects = [
 
@@ -531,23 +537,17 @@ function applyKenBurns(){
 
     ];
 
-
-
     let effect =
         effects[
             Math.floor(
-                Math.random()
-                *
+                Math.random() *
                 effects.length
             )
         ];
 
-
-
     imageElement.classList.add(
         effect
     );
-
 
 }
 

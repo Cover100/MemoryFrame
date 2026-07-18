@@ -75,6 +75,8 @@ let maxBrightness = 255;
 
 let brightnessTimer = null;
 
+let brightnessActive = false;
+
 
 
 // ======================================================
@@ -665,21 +667,17 @@ document.addEventListener(
     "pointerdown",
     function(event){
 
-
         startX =
             event.clientX;
-
 
         startY =
             event.clientY;
 
-
         lastY =
             event.clientY;
 
-
         brightnessDragging = false;
-
+        brightnessActive = false;
 
     }
 );
@@ -692,45 +690,46 @@ document.addEventListener(
     "pointermove",
     function(event){
 
-
         let deltaY =
             event.clientY -
             lastY;
-
 
         let totalY =
             event.clientY -
             startY;
 
-
-
         let totalX =
             event.clientX -
             startX;
 
-
-
         /*
         Detect vertical brightness drag
         */
-
         if(
             Math.abs(totalY) > 20 &&
-            Math.abs(totalY)
-            >
+            Math.abs(totalY) >
             Math.abs(totalX)
         ){
 
+            // First movement only enables brightness mode.
+            // Ignore its delta to prevent jumps.
+            if(!brightnessActive){
+
+                brightnessActive = true;
+                brightnessDragging = true;
+
+                lastY =
+                    event.clientY;
+
+                return;
+
+            }
 
             brightnessDragging = true;
-
-
 
             brightness -=
                 deltaY *
                 BRIGHTNESS_SPEED;
-
-
 
             brightness =
                 Math.max(
@@ -741,18 +740,12 @@ document.addEventListener(
                     )
                 );
 
-
-
             setBrightness();
-
-
 
             lastY =
                 event.clientY;
 
-
         }
-
 
     }
 );

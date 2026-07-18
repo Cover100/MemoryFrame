@@ -1,5 +1,7 @@
 from flask import Flask, render_template, send_from_directory, jsonify
 import os
+import subprocess
+import time
 
 
 app = Flask(__name__)
@@ -28,7 +30,9 @@ VIDEO_EXTENSIONS = {
 }
 
 
-# Raspberry Pi DSI display backlight
+
+# Raspberry Pi DSI backlight
+
 BACKLIGHT_PATH = (
     "/sys/class/backlight/"
     "10-0045/brightness"
@@ -42,6 +46,50 @@ MAX_BRIGHTNESS_PATH = (
 
 
 
+
+
+# ======================================================
+# Launch Chromium kiosk
+# ======================================================
+
+def launch_browser():
+
+    time.sleep(3)
+
+
+    # Check if Chromium is already open
+
+    result = subprocess.run(
+        ["pgrep", "chromium"],
+        stdout=subprocess.DEVNULL
+    )
+
+
+    if result.returncode != 0:
+
+
+        subprocess.Popen([
+
+            "chromium",
+
+            "--kiosk",
+
+            "--noerrdialogs",
+
+            "--disable-infobars",
+
+            "--disable-session-crashed-bubble",
+
+            "--disable-features=Translate",
+
+            "http://localhost:5000"
+
+        ])
+
+
+
+
+
 # ======================================================
 # Media Scanner
 # ======================================================
@@ -51,15 +99,19 @@ def get_media():
     media = []
 
 
-    # Create uploads folder if missing
+    if not os.path.exists(
+        UPLOAD_FOLDER
+    ):
 
-    if not os.path.exists(UPLOAD_FOLDER):
+        os.makedirs(
+            UPLOAD_FOLDER
+        )
 
-        os.makedirs(UPLOAD_FOLDER)
 
 
-
-    for filename in os.listdir(UPLOAD_FOLDER):
+    for filename in os.listdir(
+        UPLOAD_FOLDER
+    ):
 
 
         filepath = os.path.join(
@@ -67,8 +119,6 @@ def get_media():
             filename
         )
 
-
-        # Ignore folders
 
         if not os.path.isfile(filepath):
 
@@ -118,7 +168,7 @@ def get_media():
 
 
 # ======================================================
-# Main Page
+# Main page
 # ======================================================
 
 @app.route("/")
@@ -135,7 +185,6 @@ def index():
 
 # ======================================================
 # Media API
-# Used by Javascript auto refresh
 # ======================================================
 
 @app.route("/media")
@@ -150,7 +199,7 @@ def media():
 
 
 # ======================================================
-# Serve uploaded photos/videos
+# Serve uploads
 # ======================================================
 
 @app.route("/uploads/<path:filename>")
@@ -166,7 +215,7 @@ def uploads(filename):
 
 
 # ======================================================
-# Brightness Control
+# Brightness control
 # ======================================================
 
 @app.route("/brightness/<int:value>")
@@ -175,8 +224,6 @@ def set_brightness(value):
 
     try:
 
-
-        # Read maximum brightness
 
         with open(
             MAX_BRIGHTNESS_PATH,
@@ -189,8 +236,6 @@ def set_brightness(value):
 
 
 
-        # Clamp value
-
         value = max(
             0,
             min(
@@ -200,8 +245,6 @@ def set_brightness(value):
         )
 
 
-
-        # Write brightness
 
         with open(
             BACKLIGHT_PATH,
@@ -216,11 +259,14 @@ def set_brightness(value):
 
         return jsonify({
 
-            "status": "success",
+            "status":
+                "success",
 
-            "brightness": value,
+            "brightness":
+                value,
 
-            "maximum": maximum
+            "maximum":
+                maximum
 
         })
 
@@ -230,18 +276,20 @@ def set_brightness(value):
 
         return jsonify({
 
-            "status": "error",
+            "status":
+                "error",
 
-            "message": str(e)
+            "message":
+                str(e)
 
-        }), 500
+        }),500
 
 
 
 
 
 # ======================================================
-# Get current brightness
+# Get brightness
 # ======================================================
 
 @app.route("/brightness")
@@ -275,9 +323,11 @@ def get_brightness():
 
         return jsonify({
 
-            "brightness": current,
+            "brightness":
+                current,
 
-            "maximum": maximum
+            "maximum":
+                maximum
 
         })
 
@@ -287,21 +337,27 @@ def get_brightness():
 
         return jsonify({
 
-            "status": "error",
+            "status":
+                "error",
 
-            "message": str(e)
+            "message":
+                str(e)
 
-        }), 500
+        }),500
 
 
 
 
 
 # ======================================================
-# Run Server
+# Start application
 # ======================================================
 
 if __name__ == "__main__":
+
+
+    launch_browser()
+
 
 
     app.run(

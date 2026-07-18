@@ -7,42 +7,63 @@ Raspberry Pi 800x480 IPS Display
 
 
 /* ====================================================
-   Browser reset
+   Global reset
    ==================================================== */
 
 
 html,
 body {
 
+
     margin: 0;
+
 
     padding: 0;
 
+
     width: 100%;
 
+
     height: 100%;
+
 
 
     overflow: hidden;
 
 
+
     background: black;
+
 
 
     cursor: none;
 
 
+
     user-select: none;
 
 
+
+    -webkit-user-select: none;
+
+
+
+    -webkit-touch-callout: none;
+
+
+
     touch-action: none;
+
+
 
 }
 
 
 
+
+
 /* ====================================================
-   Main frame
+   Main Frame
    ==================================================== */
 
 
@@ -52,16 +73,30 @@ body {
     position: relative;
 
 
+
     width: 100vw;
+
 
 
     height: 100vh;
 
 
+
     overflow: hidden;
 
 
+
     background: black;
+
+
+
+    touch-action: none;
+
+
+
+    overscroll-behavior: none;
+
+
 
 }
 
@@ -70,10 +105,7 @@ body {
 
 
 /* ====================================================
-   Image + Video layers
-
-   Both fill the entire display.
-   Javascript controls opacity.
+   Image + Video Layers
    ==================================================== */
 
 
@@ -83,12 +115,18 @@ body {
     position: absolute;
 
 
+
     top: 0;
+
+
 
     left: 0;
 
 
+
     width: 100%;
+
+
 
     height: 100%;
 
@@ -109,6 +147,14 @@ body {
 
 
     pointer-events: none;
+
+
+
+    will-change:
+
+        opacity,
+        transform;
+
 
 
 }
@@ -139,7 +185,11 @@ body {
 
     animation:
 
-        zoomIn 8s linear forwards;
+        zoomIn
+        8s
+        linear
+        forwards;
+
 
 
 }
@@ -152,10 +202,15 @@ body {
 
     animation:
 
-        panLeft 8s linear forwards;
+        panLeft
+        8s
+        linear
+        forwards;
+
 
 
 }
+
 
 
 
@@ -165,10 +220,15 @@ body {
 
     animation:
 
-        panRight 8s linear forwards;
+        panRight
+        8s
+        linear
+        forwards;
+
 
 
 }
+
 
 
 
@@ -179,22 +239,30 @@ body {
 
     from {
 
+
         transform:
 
             scale(1);
+
+
 
     }
 
 
     to {
 
+
         transform:
 
             scale(1.12);
 
+
+
     }
 
+
 }
+
 
 
 
@@ -212,6 +280,7 @@ body {
             translate(0,0);
 
 
+
     }
 
 
@@ -224,9 +293,12 @@ body {
             translate(-4%,-2%);
 
 
+
     }
 
+
 }
+
 
 
 
@@ -244,6 +316,7 @@ body {
             translate(0,0);
 
 
+
     }
 
 
@@ -256,9 +329,12 @@ body {
             translate(4%,2%);
 
 
+
     }
 
+
 }
+
 
 
 
@@ -275,6 +351,7 @@ video {
     object-fit: cover;
 
 
+
 }
 
 
@@ -282,9 +359,7 @@ video {
 
 
 /* ====================================================
-   Brightness overlay
-
-   Appears temporarily during adjustment.
+   Brightness Overlay
    ==================================================== */
 
 
@@ -294,9 +369,12 @@ video {
     position: absolute;
 
 
+
     left: 50%;
 
-    bottom: 40px;
+
+
+    bottom: 35px;
 
 
 
@@ -313,21 +391,36 @@ video {
     align-items: center;
 
 
+
+    justify-content: center;
+
+
+
     gap: 12px;
 
 
 
-    padding: 10px 20px;
+    padding:
+
+        12px
+        25px;
 
 
 
-    border-radius: 20px;
+    border-radius:
+
+        30px;
 
 
 
     background:
 
-        rgba(0,0,0,0.65);
+        rgba(
+            0,
+            0,
+            0,
+            0.65
+        );
 
 
 
@@ -344,11 +437,24 @@ video {
 
     font-size:
 
-        28px;
+        30px;
 
 
 
-    z-index: 10;
+    z-index: 100;
+
+
+
+    pointer-events: none;
+
+
+
+    animation:
+
+        fadeBrightness
+        0.2s
+        ease;
+
 
 
 }
@@ -362,7 +468,7 @@ video {
 
     font-size:
 
-        32px;
+        34px;
 
 
 }
@@ -371,10 +477,73 @@ video {
 
 
 
-/* ====================================================
-   Clock overlay (future)
+#brightnessValue {
 
-   Hidden until enabled.
+
+    min-width:
+
+        60px;
+
+
+    text-align:
+
+        center;
+
+
+}
+
+
+
+
+
+
+@keyframes fadeBrightness {
+
+
+    from {
+
+
+        opacity: 0;
+
+
+
+        transform:
+
+            translateX(-50%)
+            translateY(10px);
+
+
+
+    }
+
+
+    to {
+
+
+        opacity: 1;
+
+
+
+        transform:
+
+            translateX(-50%)
+            translateY(0);
+
+
+
+    }
+
+
+}
+
+
+
+
+
+
+
+/* ====================================================
+   Future Clock Overlay
    ==================================================== */
 
 
@@ -384,7 +553,9 @@ video {
     position: absolute;
 
 
+
     right: 25px;
+
 
 
     bottom: 20px;
@@ -418,26 +589,31 @@ video {
 
 
 
-    z-index: 5;
+    z-index: 50;
+
 
 
 }
+
 
 
 
 
 
 /* ====================================================
-   Prevent touchscreen gestures
+   Prevent unwanted mobile/browser behaviour
    ==================================================== */
 
 
-#frame {
+* {
 
 
-    touch-action:
+    -webkit-tap-highlight-color:
 
-        none;
+        transparent;
+
 
 
 }
+
+

@@ -1,0 +1,275 @@
+/*
+======================================================
+Memory Frame Styling
+Optimised for Raspberry Pi 800x480 IPS display
+======================================================
+*/
+
+
+/* Remove browser defaults */
+
+html,
+body {
+
+    margin: 0;
+
+    padding: 0;
+
+    width: 100%;
+
+    height: 100%;
+
+    overflow: hidden;
+
+    background: black;
+
+    cursor: none;
+
+    user-select: none;
+
+    touch-action: none;
+
+}
+
+
+
+/*
+======================================================
+Main display area
+======================================================
+*/
+
+
+#frame {
+
+    position: relative;
+
+    width: 100vw;
+
+    height: 100vh;
+
+    overflow: hidden;
+
+}
+
+
+
+/*
+======================================================
+Image + Video layers
+
+Both occupy the entire display.
+Javascript controls visibility.
+======================================================
+*/
+
+
+.media {
+
+    position: absolute;
+
+
+    top: 0;
+
+    left: 0;
+
+
+    width: 100%;
+
+    height: 100%;
+
+
+    object-fit: cover;
+
+
+    opacity: 0;
+
+
+    transition:
+
+        opacity 1.5s ease-in-out;
+
+
+    pointer-events: none;
+
+}
+
+
+
+/*
+Visible layer
+*/
+
+.media.visible {
+
+    opacity: 1;
+
+}
+
+
+
+/*
+======================================================
+Ken Burns Effects
+
+Applied only to images
+======================================================
+*/
+
+
+.kenburns1 {
+
+
+    animation:
+
+        zoomIn 8s linear forwards;
+
+
+}
+
+
+
+.kenburns2 {
+
+
+    animation:
+
+        panLeft 8s linear forwards;
+
+
+}
+
+
+
+.kenburns3 {
+
+
+    animation:
+
+        panRight 8s linear forwards;
+
+
+}
+
+
+
+
+
+@keyframes zoomIn {
+
+
+    from {
+
+        transform:
+
+            scale(1);
+
+    }
+
+
+    to {
+
+        transform:
+
+            scale(1.12);
+
+    }
+
+
+}
+
+
+
+
+
+@keyframes panLeft {
+
+
+    from {
+
+        transform:
+
+            scale(1.05)
+            translate(0,0);
+
+    }
+
+
+    to {
+
+        transform:
+
+            scale(1.15)
+            translate(-4%,-2%);
+
+    }
+
+
+}
+
+
+
+
+
+@keyframes panRight {
+
+
+    from {
+
+        transform:
+
+            scale(1.05)
+            translate(0,0);
+
+    }
+
+
+    to {
+
+        transform:
+
+            scale(1.15)
+            translate(4%,2%);
+
+    }
+
+
+}
+
+
+
+
+
+/*
+======================================================
+Video settings
+======================================================
+*/
+
+
+video {
+
+
+    object-fit: cover;
+
+
+}
+
+
+
+/*
+======================================================
+Prevent touch gestures
+======================================================
+*/
+
+
+#frame {
+
+
+    touch-action:
+
+        none;
+
+
+}

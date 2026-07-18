@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Memory Frame</title>
+
+
+    <link rel="stylesheet" href="/static/style.css">
+
+
+</head>
+
+
+<body>
+
+
+<div id="frame">
+
+
+    <!-- 
+        Two layers are used.
+        This allows smooth cross-fade
+        between photos and videos.
+    -->
+
+
+    <img
+        id="image"
+        class="media"
+        draggable="false"
+        alt=""
+    >
+
+
+
+    <video
+        id="video"
+        class="media"
+        muted
+        playsinline
+        preload="auto">
+    </video>
+
+
+
+</div>
+
+
+
+
+<script>
+
+
+// Flask injects the current media library
+
+const mediaFiles = {{ media | tojson }};
+
+
+</script>
+
+
+
+<script src="/static/script.js"></script>
+
+
+</body>
+
+
+</html>

@@ -12,7 +12,7 @@ const IMAGE_DURATION = 8000;
 
 const REFRESH_INTERVAL = 30000;
 
-const FADE_TIME = 1500;
+const FADE_TIME = 500;
 
 const SWIPE_THRESHOLD = 80;
 
@@ -409,45 +409,56 @@ function hideVideo(){
 
 function nextMedia(){
 
-    if(
-        playlistUpdatePending
-    ){
+    clearTimeout(slideTimer);
 
-        playlist =
-            pendingPlaylist;
+    hideImage();
 
-        pendingPlaylist =
-            null;
+    hideVideo();
 
-        playlistUpdatePending =
-            false;
-
-        currentIndex =
-            0;
-
-    }
-    else{
-
-        currentIndex++;
+    setTimeout(()=>{
 
         if(
-            currentIndex >=
-            playlist.length
+            playlistUpdatePending
         ){
 
             playlist =
-                shuffle(
-                    playlist
-                );
+                pendingPlaylist;
+
+            pendingPlaylist =
+                null;
+
+            playlistUpdatePending =
+                false;
 
             currentIndex =
                 0;
 
         }
+        else{
 
-    }
+            currentIndex++;
 
-    showCurrent();
+            if(
+                currentIndex >=
+                playlist.length
+            ){
+
+                playlist =
+                    shuffle(
+                        playlist
+                    );
+
+                currentIndex =
+                    0;
+
+            }
+
+        }
+
+        showCurrent();
+
+    },
+    FADE_TIME);
 
 }
 

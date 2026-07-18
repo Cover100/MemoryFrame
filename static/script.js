@@ -66,6 +66,10 @@ let lastY = 0;
 
 let brightnessDragging = false;
 
+// Hold-to-adjust brightness
+let brightnessHoldTimer = null;
+let brightnessMode = false;
+
 
 // Brightness
 
@@ -677,11 +681,19 @@ document.addEventListener(
             event.clientY;
 
         brightnessDragging = false;
-        brightnessActive = false;
+        brightnessMode = false;
+
+        clearTimeout(brightnessHoldTimer);
+
+        brightnessHoldTimer =
+            setTimeout(()=>{
+
+                brightnessMode = true;
+
+            },1000); // Hold for 1 second
 
     }
 );
-
 
 
 
@@ -702,28 +714,24 @@ document.addEventListener(
             event.clientX -
             startX;
 
-        /*
-        Detect vertical brightness drag
-        */
+        // If they've moved significantly before
+        // the hold time expires, cancel brightness mode.
         if(
-            Math.abs(totalY) > 20 &&
-            Math.abs(totalY) >
-            Math.abs(totalX)
+            !brightnessMode &&
+            (
+                Math.abs(totalX) > 20 ||
+                Math.abs(totalY) > 20
+            )
         ){
 
-            // First movement only enables brightness mode.
-            // Ignore its delta to prevent jumps.
-            if(!brightnessActive){
+            clearTimeout(brightnessHoldTimer);
+            return;
 
-                brightnessActive = true;
-                brightnessDragging = true;
+        }
 
-                lastY =
-                    event.clientY;
-
-                return;
-
-            }
+        // Only adjust brightness after
+        // the 1 second hold.
+        if(brightnessMode){
 
             brightnessDragging = true;
 
@@ -759,33 +767,28 @@ document.addEventListener(
     "pointerup",
     function(event){
 
+        clearTimeout(brightnessHoldTimer);
 
         if(
             brightnessDragging
         ){
 
             brightnessDragging = false;
-
+            brightnessMode = false;
             return;
 
         }
 
-
-
         let distance =
             event.clientX -
             startX;
-
-
 
         if(
             distance <
             -SWIPE_THRESHOLD
         ){
 
-
             nextMedia();
-
 
         }
         else if(
@@ -793,11 +796,11 @@ document.addEventListener(
             SWIPE_THRESHOLD
         ){
 
-
             previousMedia();
 
         }
 
+        brightnessMode = false;
 
     }
 );

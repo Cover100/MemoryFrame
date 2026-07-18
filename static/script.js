@@ -893,46 +893,37 @@ function setBrightness(){
 
 function showBrightness(){
 
-
     let percent =
         Math.round(
-            brightness /
-            maxBrightness *
-            100
+            (
+                (brightness - MIN_BRIGHTNESS) /
+                (maxBrightness - MIN_BRIGHTNESS)
+            ) * 100
         );
 
-
+    percent = Math.max(
+        0,
+        Math.min(100, percent)
+    );
 
     brightnessValue.innerText =
-        percent
-        +
-        "%";
-
-
+        percent + "%";
 
     brightnessOverlay.style.display =
         "flex";
-
-
 
     clearTimeout(
         brightnessTimer
     );
 
-
-
     brightnessTimer =
         setTimeout(()=>{
-
 
             brightnessOverlay.style.display =
                 "none";
 
-
         },
         BRIGHTNESS_DISPLAY_TIME);
-
-
 
 }
 

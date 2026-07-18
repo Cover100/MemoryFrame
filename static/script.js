@@ -16,10 +16,9 @@ const FADE_TIME = 1500;
 
 const SWIPE_THRESHOLD = 80;
 
-const BRIGHTNESS_STEP = 20;
+const BRIGHTNESS_SPEED = 1.5;
 
 const BRIGHTNESS_DISPLAY_TIME = 1500;
-
 
 
 // ======================================================
@@ -42,8 +41,6 @@ const brightnessValue =
     document.getElementById("brightnessValue");
 
 
-
-
 // ======================================================
 // Variables
 // ======================================================
@@ -57,17 +54,15 @@ let isPlaying = false;
 let slideTimer = null;
 
 
-
-// Swipe tracking
+// Gesture variables
 
 let startX = 0;
 
 let startY = 0;
 
-let endX = 0;
+let lastY = 0;
 
-let endY = 0;
-
+let brightnessDragging = false;
 
 
 // Brightness
@@ -81,9 +76,8 @@ let brightnessTimer = null;
 
 
 // ======================================================
-// Shuffle
-// Ensures every item is seen once
-// before reshuffling
+// Shuffle playlist
+// Every item shown once before repeat
 // ======================================================
 
 function shuffle(array){
@@ -101,7 +95,8 @@ function shuffle(array){
 
         let j =
             Math.floor(
-                Math.random() * (i + 1)
+                Math.random() *
+                (i + 1)
             );
 
 
@@ -115,7 +110,6 @@ function shuffle(array){
             shuffled[i]
         ];
 
-
     }
 
 
@@ -127,7 +121,7 @@ function shuffle(array){
 
 
 // ======================================================
-// Playlist creation
+// Create playlist
 // ======================================================
 
 function createPlaylist(files){
@@ -139,14 +133,14 @@ function createPlaylist(files){
 
     currentIndex = 0;
 
-
 }
 
 
 
 
+
 // ======================================================
-// Start
+// Start slideshow
 // ======================================================
 
 function startSlideshow(){
@@ -178,9 +172,8 @@ function startSlideshow(){
 
 
 
-
 // ======================================================
-// Display current media
+// Show current item
 // ======================================================
 
 function showCurrent(){
@@ -225,9 +218,7 @@ function showCurrent(){
         item.type === "image"
     ){
 
-
         showImage(item);
-
 
     }
 
@@ -235,7 +226,6 @@ function showCurrent(){
     else if(
         item.type === "video"
     ){
-
 
         showVideo(item);
 
@@ -246,8 +236,9 @@ function showCurrent(){
 
 
 
+
 // ======================================================
-// Images
+// Image display
 // ======================================================
 
 function showImage(item){
@@ -256,9 +247,7 @@ function showImage(item){
     clearTimeout(slideTimer);
 
 
-
     hideVideo();
-
 
 
     imageElement.className =
@@ -268,7 +257,6 @@ function showImage(item){
 
     imageElement.onload =
         function(){
-
 
 
             applyKenBurns();
@@ -315,14 +303,13 @@ function showImage(item){
 
 
 // ======================================================
-// Videos
+// Video display
 // ======================================================
 
 function showVideo(item){
 
 
     clearTimeout(slideTimer);
-
 
 
     hideImage();
@@ -363,6 +350,7 @@ function showVideo(item){
 
             nextMedia();
 
+
         };
 
 
@@ -371,8 +359,9 @@ function showVideo(item){
 
 
 
+
 // ======================================================
-// Hide layers
+// Hide media
 // ======================================================
 
 function hideImage(){
@@ -396,14 +385,14 @@ function hideVideo(){
 
     videoElement.pause();
 
-
 }
 
 
 
 
+
 // ======================================================
-// Next
+// Next media
 // ======================================================
 
 function nextMedia(){
@@ -443,7 +432,6 @@ function nextMedia(){
         showCurrent();
 
 
-
     },
     FADE_TIME);
 
@@ -454,8 +442,9 @@ function nextMedia(){
 
 
 
+
 // ======================================================
-// Previous
+// Previous media
 // ======================================================
 
 function previousMedia(){
@@ -481,7 +470,6 @@ function previousMedia(){
             currentIndex < 0
         ){
 
-
             currentIndex =
                 playlist.length - 1;
 
@@ -490,7 +478,6 @@ function previousMedia(){
 
 
         showCurrent();
-
 
 
     },
@@ -513,19 +500,17 @@ function applyKenBurns(){
 
     let effects = [
 
-
         "kenburns1",
 
         "kenburns2",
 
         "kenburns3"
 
-
     ];
 
 
 
-    let selected =
+    let effect =
         effects[
             Math.floor(
                 Math.random()
@@ -537,7 +522,7 @@ function applyKenBurns(){
 
 
     imageElement.classList.add(
-        selected
+        effect
     );
 
 
@@ -548,7 +533,7 @@ function applyKenBurns(){
 
 
 // ======================================================
-// Auto refresh media
+// Refresh media folder
 // ======================================================
 
 async function refreshMedia(){
@@ -591,12 +576,6 @@ async function refreshMedia(){
         ){
 
 
-            console.log(
-                "Media changed"
-            );
-
-
-
             playlist =
                 shuffle(newMedia);
 
@@ -604,8 +583,11 @@ async function refreshMedia(){
             currentIndex = 0;
 
 
-        }
+            console.log(
+                "Media updated"
+            );
 
+        }
 
 
     }
@@ -625,6 +607,7 @@ async function refreshMedia(){
 
 
 
+
 // ======================================================
 // Preload next image
 // ======================================================
@@ -637,9 +620,7 @@ function preloadNext(){
 
 
 
-    if(
-        !next
-    ){
+    if(!next){
 
         return;
 
@@ -671,9 +652,12 @@ function preloadNext(){
 
 
 
+
 // ======================================================
-// Touch + Mouse gestures
+// Gesture handling
+// Touchscreen + Mouse
 // ======================================================
+
 
 document.addEventListener(
     "pointerdown",
@@ -688,8 +672,91 @@ document.addEventListener(
             event.clientY;
 
 
+        lastY =
+            event.clientY;
+
+
+        brightnessDragging = false;
+
+
     }
 );
+
+
+
+
+
+document.addEventListener(
+    "pointermove",
+    function(event){
+
+
+        let deltaY =
+            event.clientY -
+            lastY;
+
+
+        let totalY =
+            event.clientY -
+            startY;
+
+
+
+        let totalX =
+            event.clientX -
+            startX;
+
+
+
+        /*
+        Detect vertical brightness drag
+        */
+
+        if(
+            Math.abs(totalY) > 20 &&
+            Math.abs(totalY)
+            >
+            Math.abs(totalX)
+        ){
+
+
+            brightnessDragging = true;
+
+
+
+            brightness -=
+                deltaY *
+                BRIGHTNESS_SPEED;
+
+
+
+            brightness =
+                Math.max(
+                    0,
+                    Math.min(
+                        brightness,
+                        maxBrightness
+                    )
+                );
+
+
+
+            setBrightness();
+
+
+
+            lastY =
+                event.clientY;
+
+
+        }
+
+
+    }
+);
+
+
+
 
 
 
@@ -698,89 +765,37 @@ document.addEventListener(
     function(event){
 
 
-        endX =
-            event.clientX;
-
-
-        endY =
-            event.clientY;
-
-
-
-        handleGesture();
-
-
-    }
-);
-
-
-
-
-
-function handleGesture(){
-
-
-    let xDistance =
-        endX - startX;
-
-
-    let yDistance =
-        endY - startY;
-
-
-
-    // Vertical swipe
-
-    if(
-        Math.abs(yDistance)
-        >
-        Math.abs(xDistance)
-    ){
-
-
         if(
-            yDistance < -SWIPE_THRESHOLD
+            brightnessDragging
         ){
 
+            brightnessDragging = false;
 
-            increaseBrightness();
-
+            return;
 
         }
 
 
-        else if(
-            yDistance > SWIPE_THRESHOLD
-        ){
 
+        let distance =
+            event.clientX -
+            startX;
 
-            decreaseBrightness();
-
-
-        }
-
-
-    }
-
-
-
-    // Horizontal swipe
-
-    else{
 
 
         if(
-            xDistance < -SWIPE_THRESHOLD
+            distance <
+            -SWIPE_THRESHOLD
         ){
 
 
             nextMedia();
 
+
         }
-
-
         else if(
-            xDistance > SWIPE_THRESHOLD
+            distance >
+            SWIPE_THRESHOLD
         ){
 
 
@@ -790,9 +805,7 @@ function handleGesture(){
 
 
     }
-
-
-}
+);
 
 
 
@@ -800,7 +813,7 @@ function handleGesture(){
 
 
 // ======================================================
-// Brightness
+// Brightness control
 // ======================================================
 
 async function loadBrightness(){
@@ -824,7 +837,6 @@ async function loadBrightness(){
             data.brightness;
 
 
-
         maxBrightness =
             data.maximum;
 
@@ -833,60 +845,13 @@ async function loadBrightness(){
     }
     catch(error){
 
+
         console.log(
             "Brightness unavailable"
         );
 
+
     }
-
-
-}
-
-
-
-
-
-function increaseBrightness(){
-
-
-    brightness +=
-        BRIGHTNESS_STEP;
-
-
-
-    brightness =
-        Math.min(
-            brightness,
-            maxBrightness
-        );
-
-
-
-    setBrightness();
-
-
-}
-
-
-
-
-function decreaseBrightness(){
-
-
-    brightness -=
-        BRIGHTNESS_STEP;
-
-
-
-    brightness =
-        Math.max(
-            brightness,
-            0
-        );
-
-
-
-    setBrightness();
 
 
 }
@@ -896,6 +861,13 @@ function decreaseBrightness(){
 
 
 function setBrightness(){
+
+
+    brightness =
+        Math.round(
+            brightness
+        );
+
 
 
     fetch(
@@ -908,7 +880,6 @@ function setBrightness(){
 
     showBrightness();
 
-
 }
 
 
@@ -920,10 +891,8 @@ function showBrightness(){
 
     let percent =
         Math.round(
-            brightness
-            /
-            maxBrightness
-            *
+            brightness /
+            maxBrightness *
             100
         );
 
@@ -966,7 +935,6 @@ function showBrightness(){
 
 
 
-
 // ======================================================
 // Timers
 // ======================================================
@@ -987,7 +955,7 @@ setInterval(
 
 
 // ======================================================
-// Boot
+// Start
 // ======================================================
 
 createPlaylist(mediaFiles);

@@ -12,7 +12,7 @@ const IMAGE_DURATION = 8000;
 
 const REFRESH_INTERVAL = 30000;
 
-const FADE_TIME = 500;
+const FADE_TIME = 800;
 
 const SWIPE_THRESHOLD = 80;
 

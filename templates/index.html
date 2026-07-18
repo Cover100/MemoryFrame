@@ -5,15 +5,21 @@
 
     <meta charset="UTF-8">
 
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>Memory Frame</title>
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
 
 
-    <link rel="stylesheet" href="/static/style.css">
+    <title>
+        Memory Frame
+    </title>
 
+
+    <link rel="stylesheet"
+          href="/static/style.css">
 
 </head>
+
 
 
 <body>
@@ -22,11 +28,12 @@
 <div id="frame">
 
 
-    <!-- 
-        Two layers are used.
-        This allows smooth cross-fade
-        between photos and videos.
-    -->
+    <!-- ==========================================
+         Media Layers
+
+         Only one is visible at a time.
+         Two layers allow smooth crossfade.
+         ========================================== -->
 
 
     <img
@@ -48,6 +55,43 @@
 
 
 
+    <!-- ==========================================
+         Brightness Indicator
+
+         Hidden normally.
+         Appears during brightness adjustment.
+         ========================================== -->
+
+
+    <div id="brightnessOverlay">
+
+        <span id="brightnessIcon">
+            ☀
+        </span>
+
+
+        <span id="brightnessValue">
+            100%
+        </span>
+
+    </div>
+
+
+
+    <!-- ==========================================
+         Future Clock Overlay
+
+         Currently hidden.
+         We will enable later.
+         ========================================== -->
+
+
+    <div id="clockOverlay">
+
+    </div>
+
+
+
 </div>
 
 
@@ -56,9 +100,14 @@
 <script>
 
 
-// Flask injects the current media library
+// =================================================
+// Flask passes media library to Javascript
+// =================================================
 
-const mediaFiles = {{ media | tojson }};
+
+const mediaFiles =
+    {{ media | tojson }};
+
 
 
 </script>
@@ -68,7 +117,7 @@ const mediaFiles = {{ media | tojson }};
 <script src="/static/script.js"></script>
 
 
-</body>
 
+</body>
 
 </html>

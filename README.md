@@ -156,3 +156,17 @@ nano deploy/hotspot.conf                             # set SSID and PASSWORD
 - **Rollback:** `./deploy/hotspot.sh --rollback`. If wlan0 does not come back on its own:
   `sudo nmcli connection up <your Wi-Fi profile>`.
 - On-device runbook: `docs/runbooks/MF-04-MF-09-pi-runbook.md`.
+
+## Display copies (MF-15)
+
+The slideshow never loads the original files. For every image, a JPEG **display copy** is written to `<data dir>/display/<id>.jpg` with these rules:
+- **Covers** the target size: both sides are at least the target and the aspect ratio is kept, so the CSS `object-fit: cover` crop stays sharp. Copies are never upscaled.
+- EXIF orientation is applied, and all metadata is stripped, including GPS.
+- Each copy is **at most 300 KB**.
+
+Originals in `originals/` are only read, never changed. Animated GIFs are served as originals.
+
+- **Target size:** `MEMORYFRAME_DISPLAY_SIZE`, default **`800x600`**. The other candidate is `1000x750`; the choice is still open (U3). After changing it, run `python -m memoryframe display-copies --force`.
+- **New photos:** the copy is made when the photo is added, or on its first request.
+- **Existing photos:** `python -m memoryframe display-copies` creates the missing copies (`install.sh` runs it).
+- **HEIC/HEIF** from phones is accepted through `pillow-heif` (wheels exist for Pi aarch64 / Python 3.13). The original `.heic` is kept, and the display gets a JPEG copy.

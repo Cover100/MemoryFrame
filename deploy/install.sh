@@ -29,6 +29,9 @@ sudo systemctl stop memoryframe.service 2>/dev/null || true
 MEMORYFRAME_DATA_DIR="$DATA_DIR" MEMORYFRAME_LEGACY_UPLOADS="$APP_DIR/uploads" \
     "$APP_DIR/.venv/bin/python" -m memoryframe migrate \
     || echo "WARNING: migration failed (see above). Nothing was changed; the service is restarted anyway. Fix and re-run install.sh."
+# MF-15: downscaled display copies for all photos (originals untouched; idempotent).
+MEMORYFRAME_DATA_DIR="$DATA_DIR" "$APP_DIR/.venv/bin/python" -m memoryframe display-copies \
+    || echo "WARNING: some display copies failed; those photos are served as originals."
 MEMORYFRAME_DATA_DIR="$DATA_DIR" MEMORYFRAME_LEGACY_UPLOADS="$APP_DIR/uploads" \
     "$APP_DIR/.venv/bin/python" -m memoryframe status
 

@@ -56,6 +56,7 @@ def page(server):
     try:
         cdp = CDP(page_ws_url(port))
         cdp.call("Runtime.enable")
+        cdp.call("Log.enable")
         cdp.call("Page.enable")
         cdp.call("Page.navigate", {"url": server})
         yield cdp
@@ -73,9 +74,17 @@ def fmt(exc):
             for e in exc]
 
 
+def csp_violations(page):
+    msgs = [e["params"]["entry"]["text"] for e in page.events if e.get("method") == "Log.entryAdded"]
+    msgs += [str(e["params"].get("args")) for e in page.events
+             if e.get("method") == "Runtime.consoleAPICalled" and e["params"].get("type") == "error"]
+    return [m for m in msgs if "Content Security Policy" in m or "Refused to" in m]
+
+
 def test_page_runs_without_js_errors(page):
     page.pump(3)
     assert page.exceptions() == [], fmt(page.exceptions())
+    assert csp_violations(page) == []
     state = page.call("Runtime.evaluate", {
         "expression": "JSON.stringify({p: playlist.length, playing: isPlaying, b: brightnessSupported})",
         "returnByValue": True})["result"]["result"]["value"]
@@ -119,10 +128,16 @@ def overlay(page):
 
 
 def phone_pair(server, code):
+    """Like a phone: load /pair (gets the CSRF cookie + form token), then submit the code."""
+    import http.cookiejar
+    import re
     import urllib.parse
     import urllib.request
-    req = urllib.request.Request(server + "pair", data=urllib.parse.urlencode({"code": code}).encode())
-    urllib.request.urlopen(req)     # follows the 303 to /admin/
+    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+    html = opener.open(server + "pair").read().decode()
+    token = re.search(r'name="csrf_token" value="([^"]+)"', html).group(1)
+    form = urllib.parse.urlencode({"code": code, "csrf_token": token}).encode()
+    assert opener.open(urllib.request.Request(server + "pair", data=form)).geturl().endswith("/admin/")
 
 
 def test_pairing_overlay_shown_until_paired_then_long_press(page, server, mf_app):
@@ -151,3 +166,4 @@ def test_pairing_overlay_shown_until_paired_then_long_press(page, server, mf_app
     o = overlay(page)
     assert o["visible"] and o["code"].replace(" ", "") == mf_app.extensions["mf_pairing"].code
     assert page.exceptions() == [], fmt(page.exceptions())
+    assert csp_violations(page) == []        # QR svg, overlay, brightness all work under the CSP

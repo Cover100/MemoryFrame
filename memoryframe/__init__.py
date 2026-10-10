@@ -26,6 +26,8 @@ def create_app(config=None):
 
     storage.ensure_layout(app.config["DATA_DIR"])
     db.init_app(app)
+    from . import websec
+    websec.init_app(app)
 
     from .display import bp as display_bp
     from .admin import bp as admin_bp

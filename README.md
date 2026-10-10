@@ -7,6 +7,12 @@ brightness) of everything in `uploads/`.
 Target hardware: **Raspberry Pi 4 Model B**, **Raspberry Pi OS 64-bit**,
 5" DSI IPS display (800x480). Windows/other Linux is supported for development.
 
+### Upload limits
+
+- Photos over 64 megapixels (`MEMORYFRAME_MAX_MEGAPIXELS`) are refused with 415 and a clear message. This is checked from the image header before any decoding.
+- If the disk fills up while a file is being written, the upload returns 507 and partial temp files are removed.
+- Display labels keep Unicode letters and digits (for example `Été_à_Paris.jpg`). Path parts and control characters are dropped, and the label falls back to `photo.jpg`.
+
 ## Setup — Raspberry Pi (Raspberry Pi OS 64-bit)
 
 ```bash

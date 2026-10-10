@@ -153,13 +153,11 @@ def test_site_url_env_override(client, monkeypatch):
 @pytest.mark.parametrize("bad", [
     "javascript:alert(1)", "data:text/html,<script>x</script>", "ftp://frame.home",
     "JAVASCRIPT://frame.home", "http://", "http:///pair", "frame.home", "//frame.home",
-    "http://frame home", "http://frame.home\nX: y", "http://fr\x00ame.home", "http://user:pw@frame.home",
+    "http://frame home", "http://frame.home\nX: y", "http://fr\x07ame.home", "http://user:pw@frame.home",
     "http://frame.home/other/path", "http://frame.home/?q=1", "http://frame.home:99999", "http://fráme.home",
 ])
 def test_bad_site_url_never_reaches_qr(client, monkeypatch, caplog, bad):
-    from memoryframe import pairing
     payloads = []
-    real_qr = pairing._qr_svg if hasattr(pairing, "_qr_svg") else None
     import segno
     real_make = segno.make
     monkeypatch.setattr(segno, "make", lambda data, **kw: payloads.append(data) or real_make(data, **kw))
@@ -170,7 +168,12 @@ def test_bad_site_url_never_reaches_qr(client, monkeypatch, caplog, bad):
     assert st["url"] == "http://10.42.0.1:5000/pair"                    # detected address instead
     assert payloads and all(p.startswith(("http://10.42.0.1", "WIFI:")) for p in payloads), payloads
     assert "MEMORYFRAME_SITE_URL" in caplog.text
-    del real_qr
+
+
+def test_control_chars_rejected():
+    assert frameinfo.validate_site_url("http://fr\x00ame.home") is None
+    assert frameinfo.validate_site_url("http://frame.home\t") == "http://frame.home"   # outer whitespace trimmed
+    assert frameinfo.validate_site_url("http://fra\tme.home") is None
 
 
 @pytest.mark.parametrize("good,expected", [

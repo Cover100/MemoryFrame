@@ -59,3 +59,12 @@ def test_site_url_accepted(tmp_path, good):
 @pytest.mark.parametrize("bad", ["memoryframe.local", "http://x/pair", "javascript:alert(1)", "http://a b", "ftp://x"])
 def test_site_url_rejected(tmp_path, bad):
     assert run(tmp_path, "MEMORYFRAME_SITE_URL", bad).returncode == 2
+
+
+def test_max_megapixels_key(tmp_path):
+    assert run(tmp_path, "MEMORYFRAME_MAX_MEGAPIXELS", "48").returncode == 0
+    assert "MEMORYFRAME_MAX_MEGAPIXELS=48\n" in content(tmp_path)
+    for bad in ("abc", "0", "-5", "64 ", "1e3", "99999"):
+        assert run(tmp_path, "MEMORYFRAME_MAX_MEGAPIXELS", bad).returncode == 2
+    assert run(tmp_path, "MEMORYFRAME_MAX_MEGAPIXELS", "").returncode == 0
+    assert "MAX_MEGAPIXELS" not in content(tmp_path)

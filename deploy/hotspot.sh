@@ -1,22 +1,34 @@
 #!/usr/bin/env bash
-# Create/update a persistent NetworkManager Wi-Fi hotspot for Memory Frame.
+# Create/update a NetworkManager Wi-Fi hotspot profile for Memory Frame.
 #
-#   deploy/hotspot.sh              # create or update (idempotent)
-#   deploy/hotspot.sh --rollback   # delete the Memory Frame profile, re-enable the old one
+#   deploy/hotspot.sh                    # create/update profile ONLY (autoconnect=no, not activated)
+#   deploy/hotspot.sh --test SECONDS     # create/update, then bring it up for SECONDS and
+#                                        # automatically switch back to the previous Wi-Fi
+#   deploy/hotspot.sh --rollback         # take the profile down, delete it, let NM reconnect wlan0
+#
+# MANUAL ONLY: the profile always has autoconnect=no (also when an existing
+# profile is updated), so NetworkManager never starts it at boot or on its own.
+# It only comes up through an explicit --test run. Starting at boot is
+# deliberately not supported.
+#
+# SAFETY: on a Raspberry Pi 4 wlan0 cannot be a client and an AP at the same
+# time through NetworkManager. Activating the hotspot DROPS the current Wi-Fi
+# (and any remote access over it). The default run therefore never activates
+# anything. Only use --test with someone at the device
+# (keyboard + screen, or Ethernet).
 #
 # SSID/password come from deploy/hotspot.conf (git-ignored, see
 # hotspot.conf.example) or are prompted for. Nothing secret is stored in git.
-# The frame is then reachable at http://10.42.0.1:5000 (no internet needed).
+# When active, the frame is reachable at http://10.42.0.1:5000.
 #
-# WARNING: running this switches wlan0 to access-point mode. Keep a keyboard
-# + screen or Ethernet connected while installing in case you need to roll back.
+# Other NetworkManager profiles (e.g. the home Wi-Fi or the old manual
+# 'Hotspot' profile) are never modified or deleted by this script.
 set -euo pipefail
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 CONF="${MEMORYFRAME_HOTSPOT_CONF:-$DIR/hotspot.conf}"
 MIN_LEN=8
 RECOMMENDED_LEN=12
-OLD_CON="Hotspot"   # name used by 'nmcli device wifi hotspot'
 
 SSID="" PASSWORD=""
 IFACE="wlan0" ADDRESS="10.42.0.1/24" CON_NAME="MemoryFrame-hotspot" BAND="bg" CHANNEL="6"
@@ -25,14 +37,37 @@ IFACE="wlan0" ADDRESS="10.42.0.1/24" CON_NAME="MemoryFrame-hotspot" BAND="bg" CH
 
 NMCLI="${NMCLI:-nmcli}"
 SUDO="${SUDO-sudo}"
+SYSTEMD_RUN="${SYSTEMD_RUN:-systemd-run}"
 nm() { $SUDO "$NMCLI" "$@"; }
 
-if [ "${1:-}" = "--rollback" ]; then
-    nm connection delete "$CON_NAME" 2>/dev/null && echo "Deleted $CON_NAME" || echo "$CON_NAME not present"
-    if nm -g NAME connection show | grep -qx "$OLD_CON"; then
-        nm connection modify "$OLD_CON" connection.autoconnect yes
-        echo "Re-enabled autoconnect on old '$OLD_CON' profile"
+MODE="create" TEST_SECONDS=""
+case "${1:-}" in
+    "") ;;
+    --rollback) MODE="rollback" ;;
+    --enable-at-boot)
+        echo "--enable-at-boot is not supported: the hotspot is manual only (autoconnect is always off)." >&2
+        echo "Use --test SECONDS for a timed run with automatic switch-back to the home Wi-Fi." >&2
+        exit 2 ;;
+    --test)
+        MODE="test"; TEST_SECONDS="${2:-}"
+        [[ "$TEST_SECONDS" =~ ^[0-9]+$ ]] && [ "$TEST_SECONDS" -ge 30 ] && [ "$TEST_SECONDS" -le 1800 ] \
+            || { echo "--test needs SECONDS between 30 and 1800" >&2; exit 2; } ;;
+    -h|--help) sed -n '2,25p' "$0"; exit 0 ;;
+    *) echo "Unknown option: $1 (see --help)" >&2; exit 2 ;;
+esac
+
+profile_exists() { nm -g NAME connection show | grep -qx "$CON_NAME"; }
+
+if [ "$MODE" = rollback ]; then
+    if profile_exists; then
+        nm connection down "$CON_NAME" 2>/dev/null || true
+        nm connection delete "$CON_NAME"
+        echo "Deleted $CON_NAME"
+    else
+        echo "$CON_NAME not present"
     fi
+    # Let NetworkManager pick the best autoconnect profile again (e.g. home Wi-Fi).
+    nm device connect "$IFACE" || echo "NetworkManager could not reconnect $IFACE automatically; run: nmcli con up <your Wi-Fi profile>" >&2
     exit 0
 fi
 
@@ -56,17 +91,21 @@ if [ "${#PASSWORD}" -lt "$RECOMMENDED_LEN" ]; then
     echo "Warning: passwords of $RECOMMENDED_LEN+ characters are recommended." >&2
 fi
 
-if nm -g NAME connection show | grep -qx "$CON_NAME"; then
+# Always off: the hotspot is manual only.
+AUTOCONNECT=no
+
+if profile_exists; then
     echo "Updating existing profile $CON_NAME"
 else
     echo "Creating profile $CON_NAME"
-    nm connection add type wifi ifname "$IFACE" con-name "$CON_NAME" ssid "$SSID"
+    # autoconnect off from the very first moment, so NM never activates it on its own.
+    nm connection add type wifi ifname "$IFACE" con-name "$CON_NAME" ssid "$SSID" autoconnect no
 fi
 
 nm connection modify "$CON_NAME" \
     connection.interface-name "$IFACE" \
-    connection.autoconnect yes \
-    connection.autoconnect-priority 100 \
+    connection.autoconnect "$AUTOCONNECT" \
+    connection.autoconnect-priority -10 \
     802-11-wireless.ssid "$SSID" \
     802-11-wireless.mode ap \
     802-11-wireless.band "$BAND" \
@@ -80,11 +119,25 @@ nm connection modify "$CON_NAME" \
     wifi-sec.group ccmp \
     wifi-sec.psk "$PASSWORD"
 
-# Stop the old manual hotspot profile from competing for wlan0 (kept, not deleted).
-if [ "$OLD_CON" != "$CON_NAME" ] && nm -g NAME connection show | grep -qx "$OLD_CON"; then
-    nm connection modify "$OLD_CON" connection.autoconnect no
-    echo "Disabled autoconnect on old '$OLD_CON' profile (rollback re-enables it)"
-fi
-
-nm connection up "$CON_NAME"
-echo "Hotspot '$SSID' active. Frame URL: http://${ADDRESS%/*}:5000"
+case "$MODE" in
+create)
+    echo "Profile $CON_NAME saved with autoconnect=no. It is NOT active; your current Wi-Fi is untouched."
+    echo "Test it (with the user at the Pi): $0 --test 120"
+    ;;
+test)
+    PREV="$(nm -g GENERAL.CONNECTION device show "$IFACE" 2>/dev/null | head -n1 || true)"
+    [ "$PREV" = "$CON_NAME" ] && PREV=""
+    if [ -n "$PREV" ]; then
+        REVERT="'$NMCLI' connection down '$CON_NAME'; '$NMCLI' connection up '$PREV' || '$NMCLI' device connect '$IFACE'"
+    else
+        REVERT="'$NMCLI' connection down '$CON_NAME'; '$NMCLI' device connect '$IFACE'"
+    fi
+    # Schedule the revert FIRST, as a transient systemd timer (runs as root, survives
+    # this shell/SSH/Pi Connect session dying), then bring the hotspot up.
+    $SUDO "$SYSTEMD_RUN" --on-active="$TEST_SECONDS" --unit="memoryframe-hotspot-revert-$$" \
+        /bin/sh -c "$REVERT"
+    echo "Revert scheduled in ${TEST_SECONDS}s (back to: ${PREV:-whatever NetworkManager picks})."
+    nm connection up "$CON_NAME"
+    echo "Hotspot '$SSID' active for ${TEST_SECONDS}s. Frame URL: http://${ADDRESS%/*}:5000"
+    ;;
+esac

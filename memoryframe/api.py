@@ -37,7 +37,8 @@ def upload_media():
     min_free, _ = _limits()
     try:
         stored, name = upload.save_upload(get_db(), current_app.config["DATA_DIR"], f, min_free,
-                                          current_app.config["DISPLAY_TARGET"])
+                                          current_app.config["DISPLAY_TARGET"],
+                                          current_app.config.get("MAX_IMAGE_PIXELS", upload.MAX_PIXELS))
     except upload.UploadError as e:
         return jsonify({"error": e.message}), e.status
     if stored is None:

@@ -127,3 +127,65 @@ def test_upload_requires_session_and_csrf(mf_app, client, paired):
 def test_upload_page(paired):
     html = paired.get("/admin/upload", environ_base=PHONE).data
     assert b'type="file"' in html and b"multiple" in html and b'name="csrf-token"' in html
+
+
+# ---------- #25 follow-up: pixel cap, disk full mid-write, Unicode labels ----------
+
+def _tmp_empty(app):
+    d = os.path.join(app.config["DATA_DIR"], "tmp")
+    return [f for f in os.listdir(d) if f != "trash"] == []
+
+
+def test_over_pixel_cap_is_415_before_decoding(mf_app, paired, monkeypatch):
+    mf_app.config["MAX_IMAGE_PIXELS"] = 1600 * 1200 - 1
+    monkeypatch.setattr(Image.Image, "verify", lambda self: pytest.fail("decoded past the cap"))
+    r = post(paired, jpeg(1600, 1200))
+    assert r.status_code == 415 and "megapixels" in r.get_json()["error"]
+    assert media_rows(mf_app) == [] and _tmp_empty(mf_app)
+
+
+def test_default_cap_is_64mp_and_bomb_is_415(mf_app, paired, monkeypatch):
+    assert mf_app.config["MAX_IMAGE_PIXELS"] == 64_000_000
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 1000)      # header > 2x this -> DecompressionBombError
+    r = post(paired, jpeg(1600, 1200))
+    assert r.status_code == 415 and "megapixels" in r.get_json()["error"]
+
+
+@pytest.mark.parametrize("stage", ["receive", "copy"])
+def test_disk_full_while_writing_is_507_and_tmp_cleaned(mf_app, paired, monkeypatch, stage):
+    import errno
+    import shutil
+    from werkzeug.datastructures import FileStorage
+
+    def full(*a, **k):
+        dst = a[1] if stage == "copy" else a[1]
+        with open(dst if isinstance(dst, str) else a[1], "wb") as f:
+            f.write(b"partial")
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    if stage == "receive":
+        monkeypatch.setattr(FileStorage, "save", lambda self, dst, *a: full(self, dst))
+    else:
+        monkeypatch.setattr(shutil, "copy2", full)
+    r = post(paired, jpeg())
+    assert r.status_code == 507 and "full" in r.get_json()["error"]
+    assert media_rows(mf_app) == [] and _tmp_empty(mf_app)
+    assert os.listdir(os.path.join(mf_app.config["DATA_DIR"], "originals")) == []
+
+
+@pytest.mark.parametrize("name,expected", [
+    ("Été à Paris.jpg", "Été_à_Paris.jpg"),
+    ("北京 2024.JPG", "北京_2024.jpg"),
+    ("صورة.jpeg", "صورة.jpg"),
+    ("😀😀.jpg", "photo.jpg"),
+    ("../../..\\evil.jpg", "evil.jpg"),
+    ("\u202egpj.exe", "gpj.jpg"),
+    ("", "photo.jpg"),
+])
+def test_unicode_labels(name, expected):
+    assert upload.label(name, ".jpg") == expected
+
+
+def test_unicode_name_upload_label(mf_app, paired):
+    r = post(paired, jpeg(), name="Été à Paris.jpg")
+    assert r.status_code == 201 and r.get_json()["name"] == "Été_à_Paris.jpg"

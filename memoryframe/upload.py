@@ -4,7 +4,10 @@ Validation is by CONTENT (Pillow decodes the file), never by the client's name
 or Content-Type. Stored names are server-generated (library.add_file); the
 client's file name is only kept, sanitised, as a display label.
 """
+import errno
 import os
+import re
+import unicodedata
 import shutil
 import uuid
 
@@ -14,6 +17,9 @@ from . import imaging, library
 
 FORMAT_EXT = {"JPEG": ".jpg", "MPO": ".jpg", "PNG": ".png", "WEBP": ".webp", "GIF": ".gif",
               "HEIF": ".heic", "AVIF": ".heic"}
+MAX_PIXELS = 64_000_000          # ~64 MP: decoding more risks running the Pi out of memory
+TOO_BIG = "This photo is too large for the frame (over 64 megapixels). Please send a smaller copy."
+FULL = "The frame is almost full. Delete some photos and try again."
 VIDEO_EXT = {".mp4", ".mov", ".webm", ".mkv", ".avi", ".3gp", ".m4v"}
 VIDEO_MAGIC = (b"ftypmp4", b"ftypisom", b"ftypqt", b"ftyp3gp", b"ftypM4V", b"ftypmp42", b"ftypavc1")
 
@@ -42,27 +48,45 @@ def _looks_like_video(head, name):
     return any(m in head[:16] for m in VIDEO_MAGIC) or head[:4] == b"\x1aE\xdf\xa3"
 
 
-def sniff_image(path):
-    """Return the stored extension for a real image, else None."""
+def sniff_image(path, max_pixels=MAX_PIXELS):
+    """Return the stored extension for a real image, else None.
+    Raises UploadError(415) if the header says it is larger than max_pixels (checked before
+    any pixel data is decoded)."""
     from PIL import Image
     try:
-        with Image.open(path) as im:
+        with Image.open(path) as im:           # reads the header only
             fmt = im.format
+            w, h = im.size
+            if w * h > max_pixels:
+                raise UploadError(415, TOO_BIG)
             im.verify()
+    except UploadError:
+        raise
+    except Image.DecompressionBombError:
+        raise UploadError(415, TOO_BIG)
     except Exception:  # noqa: BLE001 - anything Pillow cannot decode is not an image
         return None
     return FORMAT_EXT.get(fmt)
 
 
 def label(client_name, ext):
-    base = os.path.splitext(secure_filename(os.path.basename(client_name or "")))[0][:80] or "photo"
-    return base + ext
+    """Display label from the client's name. Unicode letters/digits are kept (NFC); path
+    parts, control and punctuation characters are dropped; falls back to "photo"."""
+    name = unicodedata.normalize("NFC", str(client_name or "")).replace("\\", "/").split("/")[-1]
+    base = os.path.splitext(name)[0]
+    base = "".join(c if (c.isalnum() or c in "-_ .") else "_" for c in base)
+    base = re.sub(r"[\s_]+", "_", base).strip("._- ")[:80].strip("._- ")
+    return (base or "photo") + ext
 
 
-def save_upload(conn, data_dir, filestorage, min_free, display_target):
+def _is_enospc(e):
+    return isinstance(e, OSError) and e.errno in (errno.ENOSPC, errno.EDQUOT)
+
+
+def save_upload(conn, data_dir, filestorage, min_free, display_target, max_pixels=MAX_PIXELS):
     """Validate and add one uploaded file. Returns (stored_name or None if duplicate, label)."""
     if free_bytes(data_dir) < min_free:
-        raise UploadError(507, "The frame is almost full. Delete some photos and try again.")
+        raise UploadError(507, FULL)
     tmp = os.path.join(data_dir, "tmp", "upload-" + uuid.uuid4().hex)
     try:
         filestorage.save(tmp)
@@ -70,17 +94,23 @@ def save_upload(conn, data_dir, filestorage, min_free, display_target):
             head = f.read(32)
         if _looks_like_video(head, filestorage.filename):
             raise UploadError(415, "Videos are coming later. For now, please upload photos only.")
-        ext = sniff_image(tmp)
+        ext = sniff_image(tmp, max_pixels)
         if ext is None:
             raise UploadError(415, "This file is not a photo the frame can show (JPEG, PNG, WebP, GIF or HEIC).")
         if free_bytes(data_dir) < min_free:
-            raise UploadError(507, "The frame is almost full. Delete some photos and try again.")
+            raise UploadError(507, FULL)
         name = label(filestorage.filename, ext)
         stored = library.add_file(conn, data_dir, tmp, name, "upload", display_target=display_target)
         return stored, name
+    except OSError as e:
+        if _is_enospc(e):                     # disk filled up while writing
+            raise UploadError(507, FULL) from e
+        raise
     finally:
-        if os.path.exists(tmp):
+        try:
             os.remove(tmp)
+        except FileNotFoundError:
+            pass
 
 
 __all__ = ["UploadError", "save_upload", "storage_info", "imaging"]

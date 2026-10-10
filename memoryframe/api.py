@@ -63,7 +63,8 @@ SQLITE_MAX_INT = 2**63 - 1
 def _item(media_id):
     if not 0 < media_id <= SQLITE_MAX_INT:      # huge ids would raise OverflowError in sqlite3
         abort(404)
-    row = get_db().execute("SELECT * FROM media WHERE id = ?", (media_id,)).fetchone()
+    rows = get_db().execute("SELECT * FROM media WHERE id = ?", (media_id,)).fetchall()  # no open cursor
+    row = rows[0] if rows else None
     if row is None:
         abort(404)
     return row
@@ -112,15 +113,18 @@ def delete_media(media_id):
     data_dir = current_app.config["DATA_DIR"]
     db = get_db()
     # 1) move every file into tmp/trash (atomic renames, same filesystem)
-    staged = imaging.stage_delete(data_dir, row["stored_name"])
+    staged = imaging.stage_delete(data_dir, row["stored_name"], media_id)
     try:
         # 2) remove the row
-        db.execute("DELETE FROM media WHERE id = ?", (media_id,))
+        gone = db.execute("DELETE FROM media WHERE id = ?", (media_id,)).rowcount
         db.commit()
     except Exception:
         db.rollback()
         imaging.unstage_delete(staged)           # put the files back: no row without files
         raise
+    if gone == 0:                                # a concurrent delete of the same id won
+        imaging.unstage_delete(staged)
+        abort(404)
     # 3) only now really delete; anything left in tmp/trash is swept at the next start
     removed = imaging.purge_staged(staged)
     clear_show_now(current_app, row["stored_name"])

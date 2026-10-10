@@ -210,3 +210,101 @@ def test_sweep_removes_orphan_derivatives_keeps_originals(mf_app, lib):
     assert not os.path.exists(os.path.join(d, "thumbs", "deadbeef.jpg"))
     assert os.path.exists(os.path.join(d, "originals", "deadbeef.jpg"))   # never delete user data blindly
     assert len(os.listdir(os.path.join(d, "originals"))) == 2
+
+
+# ---------- Tester #27: crash in the middle of a delete must not lose the photo ----------
+
+def _files(app, name):
+    d = app.config["DATA_DIR"]
+    return [os.path.join(d, "originals", name), os.path.join(d, "display", imaging.display_name(name)),
+            imaging.thumb_path(d, name)]
+
+
+def test_crash_after_move_before_db_delete_restores_on_restart(paired, item, mf_app, monkeypatch):
+    from memoryframe import create_app
+    name = stored_name(mf_app, item["id"])
+    paired.get(item["thumb"], environ_base=PHONE)
+    data = open(_files(mf_app, name)[0], "rb").read()
+    real_connect = mfdb.connect
+
+    class Crash(BaseException):
+        """Simulated power loss: not an Exception, so no rollback/unstage code runs."""
+
+    class CrashOnDelete:
+        def __init__(self, conn):
+            self._c = conn
+
+        def execute(self, sql, *a):
+            if sql.startswith("DELETE FROM media"):
+                raise Crash()
+            return self._c.execute(sql, *a)
+
+        def __getattr__(self, k):
+            return getattr(self._c, k)
+
+    monkeypatch.setattr(mfdb, "connect", lambda p: CrashOnDelete(real_connect(p)))
+    with pytest.raises(Crash):
+        paired.delete(f"/api/v1/media/{item['id']}", environ_base=PHONE)
+    monkeypatch.setattr(mfdb, "connect", real_connect)
+    trash = os.path.join(mf_app.config["DATA_DIR"], "tmp", "trash")
+    assert sorted(f[:2] for f in os.listdir(trash)) == ["0-", "1-", "2-"]
+    assert not any(os.path.exists(f) for f in _files(mf_app, name))      # mid-delete state
+
+    create_app({"TESTING": True, "DATA_DIR": mf_app.config["DATA_DIR"], "DB_PATH": mf_app.config["DB_PATH"]})
+    assert all(os.path.exists(f) for f in _files(mf_app, name))          # restored, not deleted
+    assert open(_files(mf_app, name)[0], "rb").read() == data
+    assert os.listdir(trash) == []
+    assert stored_name(mf_app, item["id"]) == name
+
+
+def test_sweep_deletes_trash_only_when_row_gone(mf_app, lib):
+    from memoryframe import create_app
+    d = mf_app.config["DATA_DIR"]
+    trash = os.path.join(d, "tmp", "trash")
+    os.makedirs(trash, exist_ok=True)
+    for f in ("0-9999-gone.jpg", "1-9999-gone.jpg"):
+        open(os.path.join(trash, f), "wb").write(b"x")
+    create_app({"TESTING": True, "DATA_DIR": d, "DB_PATH": mf_app.config["DB_PATH"]})
+    assert os.listdir(trash) == []
+
+
+@pytest.mark.parametrize("fname", ["random.jpg", "3-1-x.jpg", "0-abc-x.jpg", "0-1-wrongname.jpg",
+                                   "0-99999999999999999999-x.jpg"])
+def test_sweep_keeps_ambiguous_trash(mf_app, lib, fname):
+    from memoryframe import create_app
+    lib.add("a.jpg", jpeg(300, 200))       # row id 1 exists
+    d = mf_app.config["DATA_DIR"]
+    trash = os.path.join(d, "tmp", "trash")
+    os.makedirs(trash, exist_ok=True)
+    open(os.path.join(trash, fname), "wb").write(b"x")
+    create_app({"TESTING": True, "DATA_DIR": d, "DB_PATH": mf_app.config["DB_PATH"]})
+    assert os.listdir(trash) == [fname]
+
+
+def test_sweep_keeps_trash_if_target_exists(mf_app, lib):
+    from memoryframe import create_app
+    lib.add("a.jpg", jpeg(300, 200))
+    d = mf_app.config["DATA_DIR"]
+    name = stored_name(mf_app, 1)
+    trash = os.path.join(d, "tmp", "trash")
+    os.makedirs(trash, exist_ok=True)
+    open(os.path.join(trash, f"0-1-{name}"), "wb").write(b"other bytes")
+    create_app({"TESTING": True, "DATA_DIR": d, "DB_PATH": mf_app.config["DB_PATH"]})
+    assert os.listdir(trash) == [f"0-1-{name}"]                 # never overwrite, never delete
+    assert open(os.path.join(d, "originals", name), "rb").read() != b"other bytes"
+
+
+def test_concurrent_second_delete_is_404(paired, item, mf_app, monkeypatch):
+    """Both requests passed _item(); the first committed first -> the second gets 404."""
+    real_stage = imaging.stage_delete
+
+    def first_wins(data_dir, stored, media_id):
+        conn = mfdb.connect(mf_app.config["DB_PATH"])
+        conn.execute("DELETE FROM media WHERE id = ?", (media_id,))      # the other request's commit
+        conn.commit()
+        conn.close()
+        return real_stage(data_dir, stored, media_id)
+
+    monkeypatch.setattr(imaging, "stage_delete", first_wins)
+    r = paired.delete(f"/api/v1/media/{item['id']}", environ_base=PHONE)
+    assert r.status_code == 404

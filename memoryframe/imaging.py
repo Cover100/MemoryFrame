@@ -184,15 +184,19 @@ def _derived_paths(data_dir, stored_name):
             thumb_path(data_dir, stored_name)]
 
 
-def stage_delete(data_dir, stored_name):
-    """Move the original and derivatives into tmp/trash. Returns [(staged, original_path)]."""
+TRASH_SUBDIRS = ("originals", "display", "thumbs")     # index = the 0-/1-/2- prefix
+
+
+def stage_delete(data_dir, stored_name, media_id):
+    """Move the original and derivatives into tmp/trash as "<kind>-<media id>-<name>".
+    Returns [(staged, original_path)]."""
     trash = os.path.join(data_dir, "tmp", "trash")
     os.makedirs(trash, exist_ok=True)
     staged = []
     try:
         for i, p in enumerate(_derived_paths(data_dir, stored_name)):
             if os.path.exists(p):
-                dst = os.path.join(trash, f"{i}-{os.path.basename(p)}")
+                dst = os.path.join(trash, f"{i}-{int(media_id)}-{os.path.basename(p)}")
                 os.replace(p, dst)
                 staged.append((dst, p))
     except OSError:
@@ -220,19 +224,57 @@ def purge_staged(staged):
     return n
 
 
-def sweep(conn, data_dir):
-    """Startup cleanup: empty tmp/trash, and remove display copies/thumbnails whose photo
-    is no longer in the database. Originals are never deleted by the sweep (only logged)."""
-    known = {os.path.splitext(r[0])[0] for r in conn.execute("SELECT stored_name FROM media")}
-    swept = 0
+def _sweep_trash(conn, data_dir):
+    """Recover from a crash in the middle of a delete.
+
+    Trash files are named "<0|1|2>-<media id>-<file>". If that media row still exists the
+    delete never committed: move the file back. Only when the row is gone is the file
+    deleted. Anything unexpected is kept and logged - never deleted.
+    """
+    import re
     trash = os.path.join(data_dir, "tmp", "trash")
-    if os.path.isdir(trash):
-        for f in os.listdir(trash):
+    restored = removed = kept = 0
+    if not os.path.isdir(trash):
+        return restored, removed, kept
+    for f in sorted(os.listdir(trash)):
+        path = os.path.join(trash, f)
+        m = re.fullmatch(r"([012])-(\d{1,19})-([0-9A-Za-z._-]+)", f)
+        if not m or not os.path.isfile(path):
+            log.warning("trash: keeping unrecognised %s", f)
+            kept += 1
+            continue
+        kind, media_id, name = int(m.group(1)), int(m.group(2)), m.group(3)
+        if media_id > 2**63 - 1:
+            log.warning("trash: keeping %s (id out of range)", f)
+            kept += 1
+            continue
+        row = conn.execute("SELECT stored_name FROM media WHERE id = ?", (media_id,)).fetchone()
+        if row is None:
             try:
-                os.remove(os.path.join(trash, f))
-                swept += 1
-            except OSError:
-                pass
+                os.remove(path)
+                removed += 1
+            except OSError as e:
+                log.warning("trash: could not remove %s: %s", f, e)
+            continue
+        stored = row[0]
+        expected = stored if kind == 0 else os.path.splitext(stored)[0] + ".jpg"
+        dest = os.path.join(data_dir, TRASH_SUBDIRS[kind], name)
+        if name != expected or os.path.exists(dest):
+            log.warning("trash: keeping %s (row %d is %s; target exists: %s)",
+                        f, media_id, stored, os.path.exists(dest))
+            kept += 1
+            continue
+        os.replace(path, dest)
+        log.warning("trash: restored %s after an interrupted delete", dest)
+        restored += 1
+    return restored, removed, kept
+
+
+def sweep(conn, data_dir):
+    """Start-up cleanup: recover tmp/trash (see _sweep_trash), then remove display copies and
+    thumbnails whose photo is no longer in the database. Originals are never deleted here."""
+    known = {os.path.splitext(r[0])[0] for r in conn.execute("SELECT stored_name FROM media")}
+    restored, swept, kept = _sweep_trash(conn, data_dir)
     for sub in ("display", "thumbs"):
         d = os.path.join(data_dir, sub)
         for f in os.listdir(d) if os.path.isdir(d) else []:
@@ -242,8 +284,8 @@ def sweep(conn, data_dir):
                     swept += 1
                 except OSError:
                     pass
-    orphans = [f for f in os.listdir(os.path.join(data_dir, "originals"))
-               if os.path.splitext(f)[0] not in known] if os.path.isdir(os.path.join(data_dir, "originals")) else []
+    odir = os.path.join(data_dir, "originals")
+    orphans = [f for f in os.listdir(odir) if os.path.splitext(f)[0] not in known] if os.path.isdir(odir) else []
     if orphans:
         log.warning("%d original(s) not in the database were kept: %s", len(orphans), orphans[:5])
     return swept

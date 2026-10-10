@@ -5,22 +5,65 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+import tempfile  # noqa: E402
+
+# Never touch /var/lib/memoryframe or ./data from tests: point the module-level
+# app (created at import time in app.py) at a throwaway directory.
+os.environ["MEMORYFRAME_DATA_DIR"] = tempfile.mkdtemp(prefix="mf-test-data-")
+os.environ["MEMORYFRAME_AUTO_MIGRATE"] = "0"
+
 import app as app_module  # noqa: E402
+import memoryframe.brightness as brightness_module  # noqa: E402
+from memoryframe import create_app, db as mfdb, library  # noqa: E402
 
 
 @pytest.fixture
-def uploads(tmp_path, monkeypatch):
-    folder = tmp_path / "uploads"
-    folder.mkdir()
-    monkeypatch.setattr(app_module, "UPLOAD_FOLDER", str(folder))
-    return folder
+def data_dir(tmp_path):
+    d = tmp_path / "data"
+    return d
 
 
 @pytest.fixture
-def client(uploads):
-    app_module.app.config["TESTING"] = True
-    with app_module.app.test_client() as c:
+def mf_app(tmp_path, data_dir):
+    """A fresh app with its own data dir and legacy folder per test."""
+    legacy = tmp_path / "uploads"
+    legacy.mkdir()
+    a = create_app({
+        "TESTING": True,
+        "DATA_DIR": str(data_dir),
+        "DB_PATH": str(data_dir / "memoryframe.db"),
+        "LEGACY_UPLOADS": str(legacy),
+    })
+    return a
+
+
+@pytest.fixture
+def client(mf_app):
+    with mf_app.test_client() as c:
         yield c
+
+
+class Library:
+    """Test helper: add files to the library like an import/upload would."""
+
+    def __init__(self, app, tmp_path):
+        self.app = app
+        self.src = tmp_path / "src"
+        self.src.mkdir(exist_ok=True)
+
+    def add(self, name, data=b"x"):
+        p = self.src / name
+        p.write_bytes(data)
+        conn = mfdb.connect(self.app.config["DB_PATH"])
+        try:
+            return library.add_file(conn, self.app.config["DATA_DIR"], str(p), name, "upload")
+        finally:
+            conn.close()
+
+
+@pytest.fixture
+def lib(mf_app, tmp_path):
+    return Library(mf_app, tmp_path)
 
 
 @pytest.fixture
@@ -38,4 +81,4 @@ def backlight(tmp_path, monkeypatch):
 def no_backlight(tmp_path, monkeypatch):
     """No backlight node at all (Windows / non-Pi Linux)."""
     monkeypatch.delenv("MEMORYFRAME_BACKLIGHT", raising=False)
-    monkeypatch.setattr(app_module, "BACKLIGHT_ROOT", str(tmp_path / "none"))
+    monkeypatch.setattr(brightness_module, "BACKLIGHT_ROOT", str(tmp_path / "none"))

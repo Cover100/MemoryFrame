@@ -34,11 +34,37 @@ python app.py
 
 The default browser opens http://localhost:5000.
 
-## Media
+## Media and data directory (MF-11)
 
-Put photos (`.jpg .jpeg .png .webp .gif`) and videos (`.mp4 .mov .webm`) in
-`uploads/`. The folder is not tracked by git; the app creates it automatically. Its contents are
-git-ignored: **never commit personal media** (photos can carry EXIF/GPS data).
+Photos and the database live in the **data directory**:
+
+| Where | What |
+|---|---|
+| `/var/lib/memoryframe` | Pi (created by `deploy/install.sh`; the service sets `MEMORYFRAME_DATA_DIR`) |
+| `./data` | development fallback when `/var/lib/memoryframe` isn't writable (git-ignored) |
+
+```
+<data dir>/memoryframe.db   SQLite: media, devices, sessions, settings
+<data dir>/originals/       photos exactly as imported/uploaded, server-generated names
+<data dir>/display/         display copies (MF-15)   thumbs/  thumbnails (MF-15)
+<data dir>/tmp/             in-progress files        backups/ migration backups
+```
+
+**One-time migration of the old `uploads/` folder.** On first start (or `python -m memoryframe migrate`):
+1. A tar backup of every photo in `uploads/` is written to `<data dir>/backups/legacy-uploads-<time>.tar`
+   with a SHA-256 manifest, and verified by reading it back. If there isn't room for backup + copies,
+   it stops and changes nothing.
+2. Each photo is **copied** into `originals/` (checksum-verified) and added to the library.
+   `uploads/` is never changed or deleted. Identical files are imported once.
+3. The import is marked done; running it again imports nothing.
+
+`python -m memoryframe status` shows the data dir, media count and backup path. Copy the backup tar
+off the Pi as well (it is on the same SD card). Supported types: `.jpg .jpeg .png .webp .gif`, and
+`.mp4 .mov .webm` (video upload comes later, D5).
+
+URL layout: display `/`, `/media`, `/uploads/<name>`, `/brightness`, `/healthz`; management site
+`/admin/` (MF-12+); API `/api/v1/` (MF-12+). Display write routes (`POST /brightness`) only accept
+requests from the frame itself (127.0.0.1 / ::1); from the network they return 403.
 
 ## Known limitations
 

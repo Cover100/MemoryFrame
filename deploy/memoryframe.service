@@ -13,6 +13,12 @@ WorkingDirectory=@APP_DIR@
 Environment=PYTHONUNBUFFERED=1
 Environment=MEMORYFRAME_DATA_DIR=/var/lib/memoryframe
 Environment=MEMORYFRAME_LEGACY_UPLOADS=@APP_DIR@/uploads
+# MF-10: port 80 (http://10.42.0.1/, the NFC tag URL) plus 5000 for existing tools.
+Environment=MEMORYFRAME_PORTS=80,5000
+# Allow binding port 80 without running as root; nothing else is granted.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
 ExecStart=@APP_DIR@/.venv/bin/python @APP_DIR@/app.py
 Restart=always
 RestartSec=2

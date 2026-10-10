@@ -128,7 +128,7 @@ def _run_main(monkeypatch, system, env=None):
 
 def test_main_serves_with_waitress_without_browser_on_linux(monkeypatch):
     served = _run_main(monkeypatch, "Linux")
-    assert served["host"] == "0.0.0.0" and served["port"] == 5000
+    assert served["listen"] == "0.0.0.0:5000"
     assert _Thread.started == []
 
 
@@ -141,5 +141,10 @@ def test_main_env_overrides(monkeypatch):
     served = _run_main(monkeypatch, "Linux",
                        {"MEMORYFRAME_PORT": "8080", "MEMORYFRAME_HOST": "127.0.0.1",
                         "MEMORYFRAME_OPEN_BROWSER": "1"})
-    assert served["port"] == 8080 and served["host"] == "127.0.0.1"
+    assert served["listen"] == "127.0.0.1:8080"
     assert _Thread.started == [app_module.launch_browser]
+
+
+def test_main_multiple_ports(monkeypatch):
+    served = _run_main(monkeypatch, "Linux", {"MEMORYFRAME_PORTS": "80, 5000"})
+    assert served["listen"] == "0.0.0.0:80 0.0.0.0:5000"

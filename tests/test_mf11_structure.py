@@ -75,7 +75,7 @@ def test_display_read_routes_open_to_network(client):
 READ_ONLY_GET_ENDPOINTS = {
     "static", "display.index", "display.media", "display.uploads", "display.healthz",
     "display.get_brightness", "admin.home", "api.status",
-    "pairing.state", "pairing.pair_page",
+    "pairing.state", "pairing.pair_page", "admin.upload_page", "api.storage",
 }
 
 

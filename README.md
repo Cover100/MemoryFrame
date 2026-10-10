@@ -197,3 +197,17 @@ There is one owner (D6), who may pair several phones.
 - **Origin check:** a non-GET request with an `Origin`/`Referer` from another host gets **403**.
 - **CSRF:** the `mf_csrf` cookie (HttpOnly, SameSite=Strict) must be echoed in the `X-CSRF-Token` header (read it from `<meta name="csrf-token">`) or in a `csrf_token` form field. Otherwise the request gets **403**. The localhost-only kiosk routes are exempt.
 - **Headers:** `Content-Security-Policy: default-src 'self'; ... frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`. Templates contain no inline scripts or styles and no external URLs (enforced by a test).
+
+## Uploading photos from the phone (MF-14)
+
+- **Page:** after pairing, open `/admin/upload` (linked from `/admin/`). Pick any number of photos; they upload **one request per file**, each with its own progress bar and result. The page also shows free space and roughly how many more photos fit.
+- **API:** `POST /api/v1/media` (multipart, field `file`) needs a session and a CSRF token. It returns:
+  - **201** added
+  - **200** already on the frame (same SHA-256)
+  - **400** no file
+  - **413** too large (`MEMORYFRAME_MAX_UPLOAD_MB`, default 50)
+  - **415** not a photo, or a video ("videos are coming later", D5)
+  - **507** less than `MEMORYFRAME_MIN_FREE_MB` (default 500) free
+- **Validation:** files are checked by **content**: Pillow must decode them as JPEG, PNG, WebP, GIF or HEIC. The stored extension comes from the content, and stored names are server-generated. The client's file name is only kept, sanitised, as a label.
+- **Storage:** the original is stored byte-identical in `originals/`, and the display copy (MF-15) is made right away.
+- **Frame refresh:** the frame now polls `/media` every 10 s, so new photos show up without a reload. `GET /api/v1/storage` returns the disk numbers.

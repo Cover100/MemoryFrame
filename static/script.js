@@ -10,7 +10,7 @@
 
 const IMAGE_DURATION = 10000;
 
-const REFRESH_INTERVAL = 30000;
+const REFRESH_INTERVAL = 10000; // MF-14: new uploads appear within ~10 s
 
 const FADE_TIME = 800;
 

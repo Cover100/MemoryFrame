@@ -21,3 +21,8 @@ def home():
 def sign_out_all():
     auth.sign_out_all(get_db())
     return redirect("/pair", code=303)
+
+
+@bp.route("/upload")
+def upload_page():
+    return render_template("upload.html")

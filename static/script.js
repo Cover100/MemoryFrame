@@ -22,6 +22,9 @@ const BRIGHTNESS_DISPLAY_TIME = 1500;
 
 const MIN_BRIGHTNESS = 40;
 
+// At most one backlight write per BRIGHTNESS_WRITE_INTERVAL ms (< 10/s, with margin for timer jitter).
+const BRIGHTNESS_WRITE_INTERVAL = 110;
+
 
 // ======================================================
 // Elements
@@ -84,6 +87,17 @@ let maxBrightness = 255;
 let brightnessTimer = null;
 
 let brightnessActive = false;
+
+// Set from GET /brightness; brightness gestures stay disabled until true.
+let brightnessSupported = false;
+
+let minBrightness = MIN_BRIGHTNESS;
+
+let lastBrightnessWrite = 0;
+
+let brightnessWriteTimer = null;
+
+let lastSentBrightness = null;
 
 
 
@@ -172,9 +186,6 @@ function startSlideshow(){
 
 
     isPlaying = true;
-
-
-    loadBrightness();
 
 
     showCurrent();
@@ -689,6 +700,12 @@ document.addEventListener(
 
         clearTimeout(brightnessHoldTimer);
 
+        if(!brightnessSupported){
+
+            return;
+
+        }
+
         brightnessHoldTimer =
             setTimeout(()=>{
 
@@ -777,6 +794,9 @@ document.addEventListener(
             brightnessDragging
         ){
 
+            // Always apply the final value of the drag.
+            flushBrightness();
+
             brightnessDragging = false;
             brightnessMode = false;
             return;
@@ -823,71 +843,151 @@ async function loadBrightness(){
     try{
 
         let response =
-            await fetch(
-                "/brightness"
-            );
+            await fetch("/brightness");
 
         let data =
             await response.json();
 
-        brightness =
-            data.brightness;
+        if(
+            !response.ok ||
+            !data.supported ||
+            !Number.isFinite(data.brightness) ||
+            !Number.isFinite(data.maximum)
+        ){
 
-        maxBrightness =
-            data.maximum;
+            brightnessSupported = false;
 
-        brightness =
-            Math.max(
-                MIN_BRIGHTNESS,
-                Math.min(
-                    brightness,
-                    maxBrightness
-                )
-            );
+            console.log("Brightness control unsupported on this device");
 
-        // Keep the Pi in sync if the loaded value
-        // was below the minimum brightness.
-        setBrightness();
+            return;
+
+        }
+
+        maxBrightness = data.maximum;
+
+        minBrightness =
+            Number.isFinite(data.minimum)
+                ? data.minimum
+                : Math.min(MIN_BRIGHTNESS, maxBrightness);
+
+        brightness = data.brightness;
+
+        brightnessSupported = true;
+
+        // Bring the Pi up to the minimum if it was set below it.
+        if(brightness < minBrightness){
+
+            setBrightness();
+
+        }
 
     }
     catch(error){
 
-        console.log(
-            "Brightness unavailable"
-        );
+        brightnessSupported = false;
+
+        console.log("Brightness unavailable");
 
     }
 
 }
-
-
 
 
 
 function setBrightness(){
 
+    if(!brightnessSupported){
+
+        return;
+
+    }
+
     brightness =
         Math.round(
             Math.max(
-                MIN_BRIGHTNESS,
-                Math.min(
-                    brightness,
-                    maxBrightness
-                )
+                minBrightness,
+                Math.min(brightness, maxBrightness)
             )
         );
 
-    fetch(
-        "/brightness/"
-        +
-        brightness
-    );
-
     showBrightness();
+
+    // Throttle: send now if allowed, else schedule one trailing write
+    // so the latest value is always applied.
+    let wait =
+        BRIGHTNESS_WRITE_INTERVAL -
+        (Date.now() - lastBrightnessWrite);
+
+    if(wait <= 0){
+
+        sendBrightness();
+
+    }
+    else if(!brightnessWriteTimer){
+
+        brightnessWriteTimer =
+            setTimeout(sendBrightness, wait);
+
+    }
 
 }
 
 
+
+function flushBrightness(){
+
+    if(
+        brightnessSupported &&
+        brightness !== lastSentBrightness &&
+        !brightnessWriteTimer
+    ){
+
+        let wait =
+            BRIGHTNESS_WRITE_INTERVAL -
+            (Date.now() - lastBrightnessWrite);
+
+        brightnessWriteTimer =
+            setTimeout(sendBrightness, Math.max(0, wait));
+
+    }
+
+}
+
+
+
+function sendBrightness(){
+
+    clearTimeout(brightnessWriteTimer);
+
+    brightnessWriteTimer = null;
+
+    if(
+        !Number.isFinite(brightness) ||
+        brightness === lastSentBrightness
+    ){
+
+        return;
+
+    }
+
+    lastBrightnessWrite = Date.now();
+
+    lastSentBrightness = brightness;
+
+    fetch(
+        "/brightness",
+        {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({value: brightness})
+        }
+    ).catch(()=>{
+
+        console.log("Brightness write failed");
+
+    });
+
+}
 
 
 
@@ -896,8 +996,8 @@ function showBrightness(){
     let percent =
         Math.round(
             (
-                (brightness - MIN_BRIGHTNESS) /
-                (maxBrightness - MIN_BRIGHTNESS)
+                (brightness - minBrightness) /
+                Math.max(1, maxBrightness - minBrightness)
             ) * 100
         );
 
@@ -955,5 +1055,8 @@ setInterval(
 // ======================================================
 
 createPlaylist(mediaFiles);
+
+// Brightness is independent of media, so load it even with an empty folder.
+loadBrightness();
 
 startSlideshow();

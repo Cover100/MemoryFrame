@@ -58,62 +58,7 @@ def test_uploads_path_traversal_rejected(client, uploads, tmp_path):
         assert b"secret" not in res.data
 
 
-# ---------------- brightness: GET ----------------
-
-def test_get_brightness_reads_sysfs(client, backlight):
-    res = client.get("/brightness")
-    assert res.status_code == 200
-    assert res.get_json() == {"brightness": 100, "maximum": 255}
-
-
-def test_get_brightness_windows_unsupported(client, monkeypatch):
-    monkeypatch.setattr(app_module.platform, "system", lambda: "Windows")
-    res = client.get("/brightness")
-    assert res.status_code == 200
-    assert res.get_json()["status"] == "unsupported"
-
-
-def test_get_brightness_missing_sysfs(client, tmp_path, monkeypatch):
-    # Non-Pi Linux: node absent. Current behaviour is 500; MF-03 AC expects "unsupported".
-    monkeypatch.setattr(app_module.platform, "system", lambda: "Linux")
-    monkeypatch.setattr(app_module, "BACKLIGHT_PATH", str(tmp_path / "none"))
-    res = client.get("/brightness")
-    assert res.status_code == 500
-    assert res.get_json()["status"] == "error"
-
-
-# ---------------- brightness: set ----------------
-# NOTE: tests the current GET /brightness/<int> route. MF-03 replaces it with a
-# validated POST (floor 40); update these when that lands.
-
-def test_set_brightness_writes_value(client, backlight):
-    res = client.get("/brightness/150")
-    assert res.status_code == 200
-    assert res.get_json() == {"status": "success", "brightness": 150, "maximum": 255}
-    assert (backlight / "brightness").read_text() == "150"
-
-
-def test_set_brightness_clamped_to_max(client, backlight):
-    res = client.get("/brightness/9999")
-    assert res.get_json()["brightness"] == 255
-    assert (backlight / "brightness").read_text() == "255"
-
-
-def test_set_brightness_non_int_404(client, backlight):
-    assert client.get("/brightness/NaN").status_code == 404
-
-
-def test_set_brightness_windows_unsupported(client, monkeypatch):
-    monkeypatch.setattr(app_module.platform, "system", lambda: "Windows")
-    assert client.get("/brightness/100").get_json()["status"] == "unsupported"
-
-
-def test_set_brightness_missing_sysfs(client, tmp_path, monkeypatch):
-    monkeypatch.setattr(app_module.platform, "system", lambda: "Linux")
-    monkeypatch.setattr(app_module, "MAX_BRIGHTNESS_PATH", str(tmp_path / "none"))
-    res = client.get("/brightness/100")
-    assert res.status_code == 500
-    assert res.get_json()["status"] == "error"
+# Brightness API tests (MF-03 POST contract) live in tests/test_brightness.py.
 
 
 # ---------------- launch_browser ----------------

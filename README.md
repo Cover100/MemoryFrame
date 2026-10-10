@@ -211,3 +211,12 @@ There is one owner (D6), who may pair several phones.
 - **Validation:** files are checked by **content**: Pillow must decode them as JPEG, PNG, WebP, GIF or HEIC. The stored extension comes from the content, and stored names are server-generated. The client's file name is only kept, sanitised, as a label.
 - **Storage:** the original is stored byte-identical in `originals/`, and the display copy (MF-15) is made right away.
 - **Frame refresh:** the frame now polls `/media` every 10 s, so new photos show up without a reload. `GET /api/v1/storage` returns the disk numbers.
+
+## Library management (MF-16)
+
+- **Page:** `/admin/library` (linked from `/admin/`) shows every photo as a lazily loaded **240 px thumbnail** (`thumbs/<id>.jpg`, made at upload or on first request), newest first, with these buttons:
+  - **Show now:** the frame jumps to that photo within about 2 s.
+  - **Hide / Unhide:** a hidden photo leaves the slideshow within about 2 s, even if it is on screen; it stays in the library.
+  - **Delete:** after a confirmation, removes the original, the display copy, the thumbnail and the database row.
+- **API** (session and CSRF): `GET /api/v1/media`, `GET /api/v1/media/<id>/thumb`, `PUT /api/v1/media/<id>/hidden {"hidden": bool}`, `DELETE /api/v1/media/<id>`, `POST /api/v1/media/<id>/show-now`.
+- **Frame:** it polls `GET /show-now` every 2 s. That response carries the show-now request and a library revision, so uploads, hides and deletes reach the frame fast.

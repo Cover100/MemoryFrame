@@ -27,6 +27,7 @@ def test_write_routes_need_csrf_token(mf_app, paired):
     rules = write_rules(mf_app)
     assert ("/pair", "POST") in rules and ("/admin/sign-out-all", "POST") in rules
     for rule, m in rules:
+        rule = re.sub(r"<(?:\w+:)?\w+>", "1", rule)        # a real id: the check runs before 404
         r = paired.open(rule, method=m, environ_base=PHONE, csrf=False)
         assert r.status_code == 403, (rule, m)
         r = paired.open(rule, method=m, environ_base=PHONE, csrf=False,

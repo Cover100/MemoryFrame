@@ -158,8 +158,9 @@ def current_device():
     cur = conn.execute("UPDATE devices SET last_seen = ? WHERE id = ? AND "
                        "(last_seen IS NULL OR last_seen < ?)",
                        (now, row["device_id"], now - LAST_SEEN_EVERY))
-    if cur.rowcount:
-        conn.commit()
+    # Always end the implicit transaction: an UPDATE that matched nothing still holds the
+    # write lock until commit/rollback, which would block other writers (e.g. a second delete).
+    conn.commit() if cur.rowcount else conn.rollback()
     return row["device_id"]
 
 

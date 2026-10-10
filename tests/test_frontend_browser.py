@@ -58,6 +58,9 @@ def page(server):
         cdp.call("Runtime.enable")
         cdp.call("Log.enable")
         cdp.call("Page.enable")
+        # The frame's screen is exactly 800x480; don't depend on how this Chrome sizes its window.
+        cdp.call("Emulation.setDeviceMetricsOverride",
+                 {"width": 800, "height": 480, "deviceScaleFactor": 1, "mobile": False})
         cdp.call("Page.navigate", {"url": server})
         yield cdp
     finally:
@@ -148,6 +151,7 @@ def test_pairing_overlay_shown_until_paired_then_long_press(page, server, mf_app
     assert o["code"].replace(" ", "") == code
     assert o["font"] >= 72
     left, top, right, bottom = o["box"]
+    assert (o["vw"], o["vh"]) == (800, 480)
     assert left >= 0 and top >= 0 and right <= o["vw"] and bottom <= o["vh"], o   # fits 800x480
 
     phone_pair(server, code)
@@ -207,5 +211,81 @@ def test_upload_page_uploads_files_with_progress(page, server, mf_app, tmp_path)
     conn = mfdb.connect(mf_app.config["DB_PATH"])
     assert conn.execute("SELECT COUNT(*) FROM media WHERE original_name LIKE 'up_.jpg'").fetchone()[0] == 3
     conn.close()
+    assert page.exceptions() == [], fmt(page.exceptions())
+    assert csp_violations(page) == []
+
+
+# ---------------- MF-16 frame reactions + library page ----------------
+
+def on_screen(page):
+    return evaluate(page, "(document.getElementById('image').getAttribute('src')||'').split('/').pop()")
+
+
+def wait_for(page, cond, timeout):
+    import time
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        if cond():
+            return time.monotonic() - (end - timeout)
+        page.pump(0.25)
+    return None
+
+
+def test_frame_show_now_and_hide(page, server, mf_app):
+    import time
+    from memoryframe import db as mfdb
+    from memoryframe.display import bump_media_rev
+    page.pump(3)
+    names = [r[0] for r in mfdb.connect(mf_app.config["DB_PATH"]).execute("SELECT stored_name FROM media")]
+    current = on_screen(page)
+    assert current in names
+    target = next(n for n in names if n != current)
+    # Show now (what POST /api/v1/media/<id>/show-now does)
+    st = mf_app.extensions.setdefault("mf_show_now", {"seq": 0, "filename": None, "at": 0})
+    st.update(seq=st["seq"] + 1, filename=target, at=time.time())
+    took = wait_for(page, lambda: on_screen(page) == target, 5)
+    assert took is not None, "show now did not reach the frame within 5 s"
+    # Hide what is on screen -> gone within 10 s
+    conn = mfdb.connect(mf_app.config["DB_PATH"])
+    conn.execute("UPDATE media SET hidden = 1 WHERE stored_name = ?", (target,))
+    conn.commit()
+    conn.close()
+    bump_media_rev(mf_app)
+    took = wait_for(page, lambda: on_screen(page) not in ("", target), 10)
+    assert took is not None, "hidden photo still on screen after 10 s"
+    assert page.exceptions() == [], fmt(page.exceptions())
+
+
+def test_library_page_500_items_lazy(page, server, mf_app, tmp_path):
+    import json
+    from urllib.parse import urlsplit
+    from PIL import Image
+    from memoryframe import auth, db as mfdb, imaging, library
+    conn = mfdb.connect(mf_app.config["DB_PATH"])
+    src = tmp_path / "src.jpg"
+    for i in range(500):
+        Image.new("RGB", (64 + i, 48), (i % 256, (i * 7) % 256, (i * 13) % 256)).save(src, quality=90)
+        name = library.add_file(conn, mf_app.config["DATA_DIR"], str(src), f"photo{i:03}.jpg", "upload")
+        # realistic 240 px thumbnails (~10 KB) instead of tiny ones
+        noise = Image.effect_noise((240, 240), 60).convert("RGB")
+        noise.save(imaging.thumb_path(mf_app.config["DATA_DIR"], name), quality=75)
+    token = auth.create_session(conn, "phone")
+    conn.close()
+    host = urlsplit(server).hostname
+    page.call("Network.enable")
+    page.call("Network.setCookie", {"name": "mf_session", "value": token, "domain": host, "path": "/",
+                                    "httpOnly": True, "sameSite": "Strict"})
+    page.call("Page.navigate", {"url": server + "admin/library"})
+    page.events.clear()
+    page.pump(4)
+    done = [e for e in page.events if e.get("method") == "Network.loadingFinished"]
+    total = sum(e["params"]["encodedDataLength"] for e in done)
+    thumbs = [e for e in page.events if e.get("method") == "Network.requestWillBeSent"
+              and "/thumb" in e["params"]["request"]["url"]]
+    assert evaluate(page, "document.querySelectorAll('#grid li').length") == 502
+    print(f"library first load: {len(thumbs)} thumbnails, {total} bytes")
+    assert 0 < len(thumbs) < 150, len(thumbs)          # lazy: only what is near the viewport
+    assert total < 5 * 1024 * 1024, total
+    assert "502 photos" in evaluate(page, "document.getElementById('count').textContent")
     assert page.exceptions() == [], fmt(page.exceptions())
     assert csp_violations(page) == []

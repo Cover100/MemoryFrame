@@ -122,3 +122,195 @@ def backfill(conn, data_dir, target, force=False):
         else:
             failed += 1
     return made, failed
+
+
+# ---------------- MF-16: thumbnails and removal ----------------
+
+THUMB_SIZE = 240
+
+
+def thumb_path(data_dir, stored_name):
+    return os.path.join(data_dir, "thumbs", os.path.splitext(stored_name)[0] + ".jpg")
+
+
+def make_thumb(src, dst, size=THUMB_SIZE):
+    """Square 240 px JPEG (cover + centre crop), orientation applied, no metadata."""
+    with Image.open(src) as im:
+        im = ImageOps.exif_transpose(im)
+        if im.mode not in ("RGB", "L"):
+            bg = Image.new("RGB", im.size, (0, 0, 0))
+            rgba = im.convert("RGBA")
+            bg.paste(rgba, mask=rgba.getchannel("A"))
+            im = bg
+        im = ImageOps.fit(im, (size, size), Image.LANCZOS)
+        tmp = dst + ".tmp"
+        im.save(tmp, "JPEG", quality=75, optimize=True)
+        os.replace(tmp, dst)
+
+
+def ensure_thumb(data_dir, stored_name):
+    """Path of the thumbnail (made on demand), or None if the image cannot be decoded."""
+    dst = thumb_path(data_dir, stored_name)
+    if os.path.exists(dst):
+        return dst
+    src = os.path.join(data_dir, "originals", stored_name)
+    with _lock:
+        if not os.path.exists(dst):
+            try:
+                make_thumb(src, dst)
+            except Exception as e:  # noqa: BLE001
+                log.warning("thumbnail failed for %s: %s", stored_name, e)
+                return None
+    return dst
+
+
+def remove_all(data_dir, stored_name):
+    """Delete the original and every derivative. Returns the paths that were removed."""
+    removed = []
+    for p in (os.path.join(data_dir, "originals", stored_name),
+              os.path.join(data_dir, "display", display_name(stored_name)),
+              thumb_path(data_dir, stored_name)):
+        try:
+            os.remove(p)
+            removed.append(p)
+        except FileNotFoundError:
+            pass
+    return removed
+
+
+def _derived_paths(data_dir, stored_name):
+    return [os.path.join(data_dir, "originals", stored_name),
+            os.path.join(data_dir, "display", display_name(stored_name)),
+            thumb_path(data_dir, stored_name)]
+
+
+TRASH_SUBDIRS = ("originals", "display", "thumbs")     # index = the 0-/1-/2- prefix
+
+
+def stage_delete(data_dir, stored_name, media_id):
+    """Move the original and derivatives into tmp/trash as "<kind>-<media id>-<name>".
+    Returns [(staged, original_path)]."""
+    trash = os.path.join(data_dir, "tmp", "trash")
+    os.makedirs(trash, exist_ok=True)
+    staged = []
+    try:
+        for i, p in enumerate(_derived_paths(data_dir, stored_name)):
+            if os.path.exists(p):
+                dst = os.path.join(trash, f"{i}-{int(media_id)}-{os.path.basename(p)}")
+                os.replace(p, dst)
+                staged.append((dst, p))
+    except OSError:
+        unstage_delete(staged)
+        raise
+    return staged
+
+
+def unstage_delete(staged):
+    for dst, original in staged:
+        try:
+            os.replace(dst, original)
+        except OSError as e:
+            log.error("could not restore %s from %s: %s", original, dst, e)
+
+
+def purge_staged(staged):
+    n = 0
+    for dst, _ in staged:
+        try:
+            os.remove(dst)
+            n += 1
+        except OSError as e:
+            log.warning("left %s in the trash (swept at next start): %s", dst, e)
+    return n
+
+
+def _restore_legacy(conn, data_dir, path, kind, name):
+    """Pre-id trash names ("<kind>-<uuid>.<ext>"): restore if exactly one row matches the
+    stored name, else keep and log. Never deletes. Returns 1 if restored."""
+    stem = os.path.splitext(name)[0]
+    if kind == 0:
+        rows = conn.execute("SELECT stored_name FROM media WHERE stored_name = ?", (name,)).fetchall()
+    else:
+        rows = conn.execute("SELECT stored_name FROM media WHERE stored_name LIKE ?",
+                            (stem + ".%",)).fetchall() if name.endswith(".jpg") else []
+    dest = os.path.join(data_dir, TRASH_SUBDIRS[kind], name)
+    if len(rows) != 1 or os.path.exists(dest):
+        log.warning("trash: keeping legacy %s (matching rows: %d, target exists: %s)",
+                    os.path.basename(path), len(rows), os.path.exists(dest))
+        return 0
+    os.replace(path, dest)
+    log.warning("trash: restored legacy %s", dest)
+    return 1
+
+
+def _sweep_trash(conn, data_dir):
+    """Recover from a crash in the middle of a delete.
+
+    Trash files are named "<0|1|2>-<media id>-<file>". If that media row still exists the
+    delete never committed: move the file back. Only when the row is gone is the file
+    deleted. Anything unexpected is kept and logged - never deleted.
+    """
+    import re
+    trash = os.path.join(data_dir, "tmp", "trash")
+    restored = removed = kept = 0
+    if not os.path.isdir(trash):
+        return restored, removed, kept
+    for f in sorted(os.listdir(trash)):
+        path = os.path.join(trash, f)
+        m = re.fullmatch(r"([012])-(\d{1,19})-([0-9A-Za-z._-]+)", f)
+        legacy = None if m else re.fullmatch(r"([012])-([0-9a-f]{32}\.[0-9a-z]{1,5})", f)
+        if legacy and os.path.isfile(path):
+            restored_one = _restore_legacy(conn, data_dir, path, int(legacy.group(1)), legacy.group(2))
+            restored += restored_one
+            kept += 1 - restored_one
+            continue
+        if not m or not os.path.isfile(path):
+            log.warning("trash: keeping unrecognised %s", f)
+            kept += 1
+            continue
+        kind, media_id, name = int(m.group(1)), int(m.group(2)), m.group(3)
+        if media_id > 2**63 - 1:
+            log.warning("trash: keeping %s (id out of range)", f)
+            kept += 1
+            continue
+        row = conn.execute("SELECT stored_name FROM media WHERE id = ?", (media_id,)).fetchone()
+        if row is None:
+            try:
+                os.remove(path)
+                removed += 1
+            except OSError as e:
+                log.warning("trash: could not remove %s: %s", f, e)
+            continue
+        stored = row[0]
+        expected = stored if kind == 0 else os.path.splitext(stored)[0] + ".jpg"
+        dest = os.path.join(data_dir, TRASH_SUBDIRS[kind], name)
+        if name != expected or os.path.exists(dest):
+            log.warning("trash: keeping %s (row %d is %s; target exists: %s)",
+                        f, media_id, stored, os.path.exists(dest))
+            kept += 1
+            continue
+        os.replace(path, dest)
+        log.warning("trash: restored %s after an interrupted delete", dest)
+        restored += 1
+    return restored, removed, kept
+
+
+def sweep(conn, data_dir):
+    """Start-up cleanup: recover tmp/trash (see _sweep_trash), then remove display copies and
+    thumbnails whose photo is no longer in the database. Originals are never deleted here."""
+    known = {os.path.splitext(r[0])[0] for r in conn.execute("SELECT stored_name FROM media")}
+    restored, swept, kept = _sweep_trash(conn, data_dir)
+    for sub in ("display", "thumbs"):
+        d = os.path.join(data_dir, sub)
+        for f in os.listdir(d) if os.path.isdir(d) else []:
+            if f.endswith(".jpg") and os.path.splitext(f)[0] not in known:
+                try:
+                    os.remove(os.path.join(d, f))
+                    swept += 1
+                except OSError:
+                    pass
+    odir = os.path.join(data_dir, "originals")
+    orphans = [f for f in os.listdir(odir) if os.path.splitext(f)[0] not in known] if os.path.isdir(odir) else []
+    if orphans:
+        log.warning("%d original(s) not in the database were kept: %s", len(orphans), orphans[:5])
+    return swept

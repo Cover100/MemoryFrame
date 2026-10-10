@@ -26,3 +26,8 @@ def sign_out_all():
 @bp.route("/upload")
 def upload_page():
     return render_template("upload.html")
+
+
+@bp.route("/library")
+def library_page():
+    return render_template("library.html")

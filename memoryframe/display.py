@@ -48,6 +48,19 @@ def uploads(filename):
     return send_from_directory(os.path.dirname(served), os.path.basename(served))
 
 
+@bp.route("/show-now")
+def show_now_state():
+    """MF-16: the frame polls this; a new seq means "jump to filename now"."""
+    state = current_app.extensions.get("mf_show_now", {"seq": 0, "filename": None})
+    return jsonify({"seq": state["seq"], "filename": state["filename"],
+                    "rev": current_app.extensions.get("mf_media_rev", 0)})
+
+
+def bump_media_rev(app):
+    """Library changed (upload/hide/delete): the frame refreshes on its next 2 s poll."""
+    app.extensions["mf_media_rev"] = app.extensions.get("mf_media_rev", 0) + 1
+
+
 @bp.route("/healthz")
 def healthz():
     return jsonify({"status": "ok"})

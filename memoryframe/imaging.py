@@ -122,3 +122,57 @@ def backfill(conn, data_dir, target, force=False):
         else:
             failed += 1
     return made, failed
+
+
+# ---------------- MF-16: thumbnails and removal ----------------
+
+THUMB_SIZE = 240
+
+
+def thumb_path(data_dir, stored_name):
+    return os.path.join(data_dir, "thumbs", os.path.splitext(stored_name)[0] + ".jpg")
+
+
+def make_thumb(src, dst, size=THUMB_SIZE):
+    """Square 240 px JPEG (cover + centre crop), orientation applied, no metadata."""
+    with Image.open(src) as im:
+        im = ImageOps.exif_transpose(im)
+        if im.mode not in ("RGB", "L"):
+            bg = Image.new("RGB", im.size, (0, 0, 0))
+            rgba = im.convert("RGBA")
+            bg.paste(rgba, mask=rgba.getchannel("A"))
+            im = bg
+        im = ImageOps.fit(im, (size, size), Image.LANCZOS)
+        tmp = dst + ".tmp"
+        im.save(tmp, "JPEG", quality=75, optimize=True)
+        os.replace(tmp, dst)
+
+
+def ensure_thumb(data_dir, stored_name):
+    """Path of the thumbnail (made on demand), or None if the image cannot be decoded."""
+    dst = thumb_path(data_dir, stored_name)
+    if os.path.exists(dst):
+        return dst
+    src = os.path.join(data_dir, "originals", stored_name)
+    with _lock:
+        if not os.path.exists(dst):
+            try:
+                make_thumb(src, dst)
+            except Exception as e:  # noqa: BLE001
+                log.warning("thumbnail failed for %s: %s", stored_name, e)
+                return None
+    return dst
+
+
+def remove_all(data_dir, stored_name):
+    """Delete the original and every derivative. Returns the paths that were removed."""
+    removed = []
+    for p in (os.path.join(data_dir, "originals", stored_name),
+              os.path.join(data_dir, "display", display_name(stored_name)),
+              thumb_path(data_dir, stored_name)):
+        try:
+            os.remove(p)
+            removed.append(p)
+        except FileNotFoundError:
+            pass
+    return removed

@@ -45,4 +45,5 @@ def add_file(conn, data_dir, src, original_name, source, display_target=None):
     conn.commit()
     if kind == "image" and display_target:
         imaging.ensure_display_copy(data_dir, stored, display_target)
+        imaging.ensure_thumb(data_dir, stored)
     return stored

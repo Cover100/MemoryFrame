@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pair with Memory Frame</title>
+<link rel="stylesheet" href="/static/pair.css">
+</head>
+<body>
+<h1>Pair this phone</h1>
+{% if error %}<p class="err" role="alert">{{ error }}</p>{% endif %}
+{% if token %}
+<form method="post" action="/pair" id="tokenForm">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="token" value="{{ token }}">
+  <p>You scanned the code on the frame.</p>
+  <button type="submit">Pair this phone</button>
+</form>
+{% endif %}
+<form method="post" action="/pair">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <p>Enter the 6-digit code shown on the frame:</p>
+  <input name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required>
+  <button type="submit">Pair</button>
+</form>
+</body>
+</html>

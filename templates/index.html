@@ -86,6 +86,22 @@
          ========================================== -->
 
 
+    <!-- MF-12 pairing overlay (static/pairing.js) -->
+    <div id="pairOverlay" aria-live="polite">
+        <div id="pairBox">
+            <div id="pairQr"></div>
+            <div id="pairText">
+                <div id="pairTitle">Pair your phone</div>
+                <div id="pairSsid"></div>
+                <div id="pairCode">--- ---</div>
+                <div id="pairHint">Scan the code, or open <span id="pairUrl"></span> and enter the number.</div>
+                <button id="pairClose" type="button" hidden>Close</button>
+                <button id="pairSignOut" type="button" hidden>Sign out all phones</button>
+            </div>
+        </div>
+    </div>
+
+
     <div id="clockOverlay">
 
     </div>
@@ -97,24 +113,15 @@
 
 
 
-<script>
+<script id="mediaData" type="application/json">{{ media | tojson }}</script>
 
-
-// =================================================
-// Flask passes media library to Javascript
-// =================================================
-
-
-const mediaFiles =
-    {{ media | tojson }};
-
-
-
-</script>
+<script src="/static/media-data.js"></script>
 
 
 
 <script src="/static/script.js"></script>
+
+<script src="/static/pairing.js"></script>
 
 
 

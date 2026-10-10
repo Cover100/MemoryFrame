@@ -165,3 +165,34 @@ nano deploy/hotspot.conf                             # set SSID and PASSWORD
   - a NetworkManager `dnsmasq-shared.d` drop-in for the hotspot: `memoryframe.lan` → `10.42.0.1`, and every other name gets an **immediate NXDOMAIN**. There is no upstream DNS and no captive-portal redirect.
   - Wi-Fi power save off (`wifi.powersave = 2`) and the Wi-Fi country (`AU` by default).
 - The script never brings a connection up or down. It only reloads NetworkManager's config, so it is safe to run over Pi Connect. The hotspot is still manual only (MF-09).
+
+## Display copies (MF-15)
+
+The slideshow never loads the original files. For every image, a JPEG **display copy** is written to `<data dir>/display/<id>.jpg` with these rules:
+- **Covers** the target size: both sides are at least the target and the aspect ratio is kept, so the CSS `object-fit: cover` crop stays sharp. Copies are never upscaled.
+- EXIF orientation is applied, and all metadata is stripped, including GPS.
+- Each copy is **at most 300 KB**.
+
+Originals in `originals/` are only read, never changed. Animated GIFs are served as originals.
+
+- **Target size:** `MEMORYFRAME_DISPLAY_SIZE`, default **`800x600`**. The other candidate is `1000x750`; the choice is still open (U3). After changing it, run `python -m memoryframe display-copies --force`.
+- **New photos:** the copy is made when the photo is added, or on its first request.
+- **Existing photos:** `python -m memoryframe display-copies` creates the missing copies (`install.sh` runs it).
+- **HEIC/HEIF** from phones is accepted through `pillow-heif` (wheels exist for Pi aarch64 / Python 3.13). The original `.heic` is kept, and the display gets a JPEG copy.
+
+## Pairing a phone (MF-12)
+
+There is one owner (D6), who may pair several phones.
+- **Overlay:** with no paired phone, the frame shows a pairing overlay: a QR code, a 6-digit code, and the Wi-Fi name (from `MEMORYFRAME_SSID` or `deploy/hotspot.conf`). A still long-press of **3 s or more** on the screen shows it at any time.
+- **Pairing:** scan the QR (it opens `http://10.42.0.1/pair?t=…`; tap "Pair this phone"), or open `http://10.42.0.1/pair` and type the code. Either lands on `/admin/`.
+- **Code rules:** codes and QR links are single-use and expire after 120 s. 5 wrong codes rotate the code. More than 10 attempts per minute from one phone get HTTP 429.
+- **Session:** the phone gets an HttpOnly, SameSite=Strict cookie (`mf_session`, valid 1 year). Only its SHA-256 is stored in the database.
+- **Access rules:** every `/admin/*` route redirects to `/pair` and every `/api/v1/*` route returns 401 without a session. The frame's own pairing routes (`/pairing/*`) are localhost only.
+- **Sign out all phones:** available on the site, or on the frame's overlay (long-press). It revokes every session; phones then re-pair.
+
+## Web security (MF-13)
+
+- **Host allow-list:** requests are answered only for `10.42.0.1`, `memoryframe.lan`, `memoryframe.local`, `localhost`, `127.0.0.1` and `::1`. Any other Host gets **400**, which blocks DNS rebinding. Add more with `MEMORYFRAME_EXTRA_HOSTS`, e.g. `MEMORYFRAME_EXTRA_HOSTS=192.168.50.124` to test from the home network over Pi Connect.
+- **Origin check:** a non-GET request with an `Origin`/`Referer` from another host gets **403**.
+- **CSRF:** the `mf_csrf` cookie (HttpOnly, SameSite=Strict) must be echoed in the `X-CSRF-Token` header (read it from `<meta name="csrf-token">`) or in a `csrf_token` form field. Otherwise the request gets **403**. The localhost-only kiosk routes are exempt.
+- **Headers:** `Content-Security-Policy: default-src 'self'; ... frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`. Templates contain no inline scripts or styles and no external URLs (enforced by a test).

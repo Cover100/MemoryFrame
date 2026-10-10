@@ -28,13 +28,17 @@ def create_app(config=None):
     app.config["DISPLAY_TARGET"] = imaging.parse_target(app.config.get("DISPLAY_SIZE", imaging.DEFAULT_TARGET))
     storage.ensure_layout(app.config["DATA_DIR"])
     db.init_app(app)
+    from . import websec
+    websec.init_app(app)
 
     from .display import bp as display_bp
     from .admin import bp as admin_bp
     from .api import bp as api_bp
+    from .pairing import bp as pairing_bp
 
     app.register_blueprint(display_bp)
     app.register_blueprint(admin_bp, url_prefix="/admin")
     app.register_blueprint(api_bp, url_prefix="/api/v1")
+    app.register_blueprint(pairing_bp)
 
     return app

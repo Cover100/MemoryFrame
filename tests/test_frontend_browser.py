@@ -56,6 +56,7 @@ def page(server):
     try:
         cdp = CDP(page_ws_url(port))
         cdp.call("Runtime.enable")
+        cdp.call("Log.enable")
         cdp.call("Page.enable")
         cdp.call("Page.navigate", {"url": server})
         yield cdp
@@ -73,9 +74,17 @@ def fmt(exc):
             for e in exc]
 
 
+def csp_violations(page):
+    msgs = [e["params"]["entry"]["text"] for e in page.events if e.get("method") == "Log.entryAdded"]
+    msgs += [str(e["params"].get("args")) for e in page.events
+             if e.get("method") == "Runtime.consoleAPICalled" and e["params"].get("type") == "error"]
+    return [m for m in msgs if "Content Security Policy" in m or "Refused to" in m]
+
+
 def test_page_runs_without_js_errors(page):
     page.pump(3)
     assert page.exceptions() == [], fmt(page.exceptions())
+    assert csp_violations(page) == []
     state = page.call("Runtime.evaluate", {
         "expression": "JSON.stringify({p: playlist.length, playing: isPlaying, b: brightnessSupported})",
         "returnByValue": True})["result"]["result"]["value"]
@@ -97,3 +106,64 @@ def test_brightness_drag_has_no_js_errors_and_writes(page, backlight):
     page.pump(1)
     assert page.exceptions() == [], fmt(page.exceptions())
     assert (backlight / "brightness").read_text().strip() != "100"   # a POST reached the fake sysfs
+
+
+# ---------------- MF-12 pairing overlay ----------------
+
+def evaluate(page, expr):
+    return page.call("Runtime.evaluate", {"expression": expr, "returnByValue": True})["result"]["result"].get("value")
+
+
+OVERLAY = """JSON.stringify((()=>{const o=document.getElementById('pairOverlay');
+ const c=document.getElementById('pairCode'); const r=document.getElementById('pairBox').getBoundingClientRect();
+ const q=document.querySelector('#pairQr svg');
+ return {visible:getComputedStyle(o).display!=='none', code:c.textContent,
+   font:parseFloat(getComputedStyle(c).fontSize), box:[r.left,r.top,r.right,r.bottom], qr:!!q,
+   vw:innerWidth, vh:innerHeight};})())"""
+
+
+def overlay(page):
+    import json
+    return json.loads(evaluate(page, OVERLAY))
+
+
+def phone_pair(server, code):
+    """Like a phone: load /pair (gets the CSRF cookie + form token), then submit the code."""
+    import http.cookiejar
+    import re
+    import urllib.parse
+    import urllib.request
+    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+    html = opener.open(server + "pair").read().decode()
+    token = re.search(r'name="csrf_token" value="([^"]+)"', html).group(1)
+    form = urllib.parse.urlencode({"code": code, "csrf_token": token}).encode()
+    assert opener.open(urllib.request.Request(server + "pair", data=form)).geturl().endswith("/admin/")
+
+
+def test_pairing_overlay_shown_until_paired_then_long_press(page, server, mf_app):
+    page.pump(2.5)
+    o = overlay(page)
+    assert o["visible"] and o["qr"]
+    code = mf_app.extensions["mf_pairing"].code
+    assert o["code"].replace(" ", "") == code
+    assert o["font"] >= 72
+    left, top, right, bottom = o["box"]
+    assert left >= 0 and top >= 0 and right <= o["vw"] and bottom <= o["vh"], o   # fits 800x480
+
+    phone_pair(server, code)
+    page.pump(2.5)
+    assert not overlay(page)["visible"]
+
+    # still >= 3 s long-press shows it on demand with a fresh code
+    page.call("Input.dispatchMouseEvent", {"type": "mousePressed", "x": 400, "y": 240,
+                                           "button": "left", "clickCount": 1})
+    page.pump(2.0)
+    assert not overlay(page)["visible"]          # 2 s is not enough
+    page.pump(1.5)
+    page.call("Input.dispatchMouseEvent", {"type": "mouseReleased", "x": 400, "y": 240,
+                                           "button": "left", "clickCount": 1})
+    page.pump(1.0)
+    o = overlay(page)
+    assert o["visible"] and o["code"].replace(" ", "") == mf_app.extensions["mf_pairing"].code
+    assert page.exceptions() == [], fmt(page.exceptions())
+    assert csp_violations(page) == []        # QR svg, overlay, brightness all work under the CSP

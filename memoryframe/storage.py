@@ -21,7 +21,7 @@ REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SYSTEM_DATA_DIR = "/var/lib/memoryframe"
 SUBDIRS = ("originals", "display", "thumbs", "tmp", "backups")
 
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif"}
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm"}
 
 
@@ -59,6 +59,8 @@ def default_config():
         "DB_PATH": os.path.join(data_dir, "memoryframe.db"),
         "LEGACY_UPLOADS": os.environ.get(
             "MEMORYFRAME_LEGACY_UPLOADS", os.path.join(REPO_DIR, "uploads")),
+        # MF-15: display copies cover this size (U3 open: 800x600 default, or 1000x750).
+        "DISPLAY_SIZE": os.environ.get("MEMORYFRAME_DISPLAY_SIZE", "800x600"),
     }
 
 

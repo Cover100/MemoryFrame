@@ -157,12 +157,11 @@ nano deploy/hotspot.conf                             # set SSID and PASSWORD
   `sudo nmcli connection up <your Wi-Fi profile>`.
 - On-device runbook: `docs/runbooks/MF-04-MF-09-pi-runbook.md`.
 
-## Pairing a phone (MF-12)
+## Frame address: port 80, memoryframe.lan / .local (MF-10)
 
-There is one owner (D6), who may pair several phones.
-- **Overlay:** with no paired phone, the frame shows a pairing overlay: a QR code, a 6-digit code, and the Wi-Fi name (from `MEMORYFRAME_SSID` or `deploy/hotspot.conf`). A still long-press of **3 s or more** on the screen shows it at any time.
-- **Pairing:** scan the QR (it opens `http://10.42.0.1/pair?t=…`; tap "Pair this phone"), or open `http://10.42.0.1/pair` and type the code. Either lands on `/admin/`.
-- **Code rules:** codes and QR links are single-use and expire after 120 s. 5 wrong codes rotate the code. More than 10 attempts per minute from one phone get HTTP 429.
-- **Session:** the phone gets an HttpOnly, SameSite=Strict cookie (`mf_session`, valid 1 year). Only its SHA-256 is stored in the database.
-- **Access rules:** every `/admin/*` route redirects to `/pair` and every `/api/v1/*` route returns 401 without a session. The frame's own pairing routes (`/pairing/*`) are localhost only.
-- **Sign out all phones:** available on the site, or on the frame's overlay (long-press). It revokes every session; phones then re-pair.
+- The service listens on **port 80 and 5000** (`MEMORYFRAME_PORTS=80,5000` in `deploy/memoryframe.service`). It still runs as the normal user; only `CAP_NET_BIND_SERVICE` is granted. `MEMORYFRAME_PORT` (single port) still works for development.
+- `sudo deploy/network-setup.sh` (idempotent; `--remove` undoes its files) sets:
+  - the hostname `memoryframe` and avahi, so `http://memoryframe.local/` works on the home network and on Android 12+.
+  - a NetworkManager `dnsmasq-shared.d` drop-in for the hotspot: `memoryframe.lan` → `10.42.0.1`, and every other name gets an **immediate NXDOMAIN**. There is no upstream DNS and no captive-portal redirect.
+  - Wi-Fi power save off (`wifi.powersave = 2`) and the Wi-Fi country (`AU` by default).
+- The script never brings a connection up or down. It only reloads NetworkManager's config, so it is safe to run over Pi Connect. The hotspot is still manual only (MF-09).

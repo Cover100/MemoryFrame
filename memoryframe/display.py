@@ -9,7 +9,7 @@ import os
 from flask import Blueprint, abort, current_app, jsonify, render_template, request, send_from_directory
 
 from . import brightness as bl
-from . import storage
+from . import imaging, storage
 from .db import get_db
 from .security import localhost_only
 
@@ -41,7 +41,11 @@ def uploads(filename):
         "SELECT 1 FROM media WHERE stored_name = ? AND hidden = 0", (filename,)).fetchone()
     if row is None:
         abort(404)
-    return send_from_directory(storage.path(current_app, "originals"), filename)
+    # MF-15: serve the downscaled display copy (made on first request if the
+    # backfill has not run yet); originals are never modified.
+    served = imaging.ensure_display_copy(
+        current_app.config["DATA_DIR"], filename, current_app.config["DISPLAY_TARGET"])
+    return send_from_directory(os.path.dirname(served), os.path.basename(served))
 
 
 @bp.route("/healthz")

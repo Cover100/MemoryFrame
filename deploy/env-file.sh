@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Set or clear one KEY=VALUE in the service's EnvironmentFile (/etc/default/memoryframe).
 #   deploy/env-file.sh MEMORYFRAME_EXTRA_HOSTS 192.168.50.124,pi.home   # set/replace
+#   deploy/env-file.sh MEMORYFRAME_MAX_MEGAPIXELS 48                     # pixel cap for uploads/import
 #   deploy/env-file.sh MEMORYFRAME_EXTRA_HOSTS ""                         # remove the line
+#   deploy/env-file.sh MEMORYFRAME_SITE_URL http://memoryframe.local      # pairing/site URL override
 # Other lines are kept. ROOT and SUDO are overridable for tests.
 set -euo pipefail
 ROOT="${ROOT:-}"
@@ -13,6 +15,10 @@ value="${2-}"
 case "$key" in
     MEMORYFRAME_EXTRA_HOSTS)
         [[ "$value" =~ ^[A-Za-z0-9.:,_-]*$ ]] || { echo "Invalid host list: $value" >&2; exit 2; } ;;
+    MEMORYFRAME_SITE_URL)
+        [[ "$value" =~ ^(https?://[A-Za-z0-9.:_-]+)?$ ]] || { echo "Invalid site URL: $value" >&2; exit 2; } ;;
+    MEMORYFRAME_MAX_MEGAPIXELS)
+        [[ -z "$value" || "$value" =~ ^[1-9][0-9]{0,3}$ ]] || { echo "Invalid megapixels (1-9999): $value" >&2; exit 2; } ;;
     *) echo "Unsupported key: $key" >&2; exit 2 ;;
 esac
 

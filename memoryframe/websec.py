@@ -35,7 +35,21 @@ def _hostname(host):
 
 
 def allowed(host):
-    return _hostname(host) in current_app.config.get("ALLOWED_HOSTS", DEFAULT_ALLOWED_HOSTS)
+    name = _hostname(host)
+    if name in current_app.config.get("ALLOWED_HOSTS", DEFAULT_ALLOWED_HOSTS):
+        return True
+    # The frame's own current interface addresses (e.g. its home-Wi-Fi IP shown as the pairing
+    # fallback). Only IP literals that this machine really holds: no DNS name can rebind to them.
+    from . import frameinfo
+    return _is_ipv4(name) and name in frameinfo.own_ips()
+
+
+def _is_ipv4(name):
+    import ipaddress
+    try:
+        return isinstance(ipaddress.ip_address(name), ipaddress.IPv4Address)
+    except ValueError:
+        return False
 
 
 def csrf_token():

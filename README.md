@@ -7,6 +7,12 @@ brightness) of everything in `uploads/`.
 Target hardware: **Raspberry Pi 4 Model B**, **Raspberry Pi OS 64-bit**,
 5" DSI IPS display (800x480). Windows/other Linux is supported for development.
 
+### Upload limits
+
+- Photos over 64 megapixels (`MEMORYFRAME_MAX_MEGAPIXELS`) are refused with 415 and a clear message. This is checked from the image header before any decoding.
+- If the disk fills up while a file is being written, the upload returns 507 and partial temp files are removed.
+- Display labels keep Unicode letters and digits (for example `Été_à_Paris.jpg`). Path parts and control characters are dropped, and the label falls back to `photo.jpg`.
+
 ## Setup — Raspberry Pi (Raspberry Pi OS 64-bit)
 
 ```bash
@@ -211,6 +217,22 @@ There is one owner (D6), who may pair several phones.
 - **Validation:** files are checked by **content**: Pillow must decode them as JPEG, PNG, WebP, GIF or HEIC. The stored extension comes from the content, and stored names are server-generated. The client's file name is only kept, sanitised, as a label.
 - **Storage:** the original is stored byte-identical in `originals/`, and the display copy (MF-15) is made right away.
 - **Frame refresh:** the frame now polls `/media` every 10 s, so new photos show up without a reload. `GET /api/v1/storage` returns the disk numbers.
+
+## On-device onboarding and menu (MF-19)
+
+- **No photos and no phone paired:** full onboarding. On the hotspot it shows **1. Join Wi-Fi** (a standard `WIFI:` QR), then **2. Open site** (the pairing QR) and the 6-digit code.
+- **Close:** every overlay has a Close button. It dismisses the onboarding and empty-library screens for the browser session, in every state including no photos, and a reboot or kiosk restart brings them back. While dismissed, only the small corner hint shows, and pairing stays in the long-press menu.
+- **Photos but no phone paired:** the slideshow runs. Only a small "Hold 3 s for menu to pair a phone" hint shows in the corner.
+- **Paired but no photos:** a "No photos yet" screen.
+- **Still long-press of 3 s or more:** a menu with IP, Wi-Fi, site address, free storage, phones paired and version, plus **Pair new device** (always available), **Sign out all phones** and **Close**. Text is at least 24 px at 800x480.
+- **Addresses follow the current network** (checked on every request):
+  - **Hotspot** (the frame holds 10.42.0.1): `http://10.42.0.1/pair`, or `memoryframe.lan`.
+  - **Home Wi-Fi:** `http://memoryframe.local/pair`, plus the frame's own IP as a fallback (e.g. `http://192.168.50.124/pair`).
+  - `:5000` is added unless the app actually serves port 80 (`MEMORYFRAME_PORTS`).
+  - The Host check accepts the frame's own current IP addresses automatically.
+  - **Override:** `MEMORYFRAME_SITE_URL=http://frame.home` (no path) replaces the detected address. Set it on the Pi with `deploy/env-file.sh MEMORYFRAME_SITE_URL http://…` and restart the service. The `PAIR_BASE_URL` app config key still wins for tests and development.
+- **Wi-Fi QR:** shown only on the hotspot, and **on by default** (D3). Turn it off with `MEMORYFRAME_SHOW_WIFI_QR=0` or the database setting `show_wifi_qr=0` (the settings UI comes with MF-17). SSID and password come from `deploy/hotspot.conf`, or `MEMORYFRAME_SSID` / `MEMORYFRAME_WIFI_PASSWORD`.
+- **Privacy:** these screens use localhost-only routes (`/pairing/state`, `/frame/status`). The Wi-Fi password only leaves the frame as the on-screen QR.
 
 ## Library management (MF-16)
 

@@ -52,6 +52,21 @@ def resolve_data_dir():
     return fallback
 
 
+def _env_int(name, default):
+    """Positive int from the environment; anything else falls back to default (and is logged)."""
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        v = int(raw)
+        if v > 0:
+            return v
+    except ValueError:
+        pass
+    logging.getLogger(__name__).warning("%s=%r is not a positive whole number; using %d", name, raw, default)
+    return default
+
+
 def default_config():
     data_dir = resolve_data_dir()
     return {
@@ -62,6 +77,7 @@ def default_config():
         # MF-15: display copies cover this size (U3 open: 800x600 default, or 1000x750).
         # MF-14 upload limits
         "MAX_CONTENT_LENGTH": int(os.environ.get("MEMORYFRAME_MAX_UPLOAD_MB", "50")) * 1024 * 1024,
+        "MAX_IMAGE_PIXELS": _env_int("MEMORYFRAME_MAX_MEGAPIXELS", 64) * 1_000_000,
         "MIN_FREE_BYTES": int(os.environ.get("MEMORYFRAME_MIN_FREE_MB", "500")) * 1024 * 1024,
         "AVG_PHOTO_BYTES": 5 * 1024 * 1024 + 300 * 1024,   # ~5 MB original + display copy
         "DISPLAY_SIZE": os.environ.get("MEMORYFRAME_DISPLAY_SIZE", "800x600"),

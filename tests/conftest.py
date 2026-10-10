@@ -112,3 +112,18 @@ def pair_client(c):
 @pytest.fixture
 def paired(client):
     return pair_client(client)
+
+
+# Network detection is mocked for every test (deterministic: the frame is on its hotspot and
+# holds no other addresses). Tests of the detection itself use the originals below.
+from memoryframe import frameinfo as _frameinfo  # noqa: E402
+
+REAL_NETWORK = _frameinfo.network
+REAL_OWN_IPS = _frameinfo.own_ips
+
+
+@pytest.fixture(autouse=True)
+def _mock_network(monkeypatch):
+    monkeypatch.setattr(_frameinfo, "network",
+                        lambda: {"mode": "hotspot", "lan_ip": "10.42.0.1", "ips": ["10.42.0.1"]})
+    monkeypatch.setattr(_frameinfo, "own_ips", lambda max_age=0: [])

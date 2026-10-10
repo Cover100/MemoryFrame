@@ -164,6 +164,20 @@ def ensure_thumb(data_dir, stored_name):
     return dst
 
 
+def over_pixel_cap(path, max_pixels):
+    """True if the image header says width*height > max_pixels (no pixel data is decoded).
+    Unreadable files return False; callers validate content separately."""
+    from PIL import Image
+    try:
+        with Image.open(path) as im:
+            w, h = im.size
+    except Image.DecompressionBombError:
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+    return w * h > max_pixels
+
+
 def remove_all(data_dir, stored_name):
     """Delete the original and every derivative. Returns the paths that were removed."""
     removed = []

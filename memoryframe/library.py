@@ -1,4 +1,5 @@
 """Adding files to the media library (used by the legacy import; MF-14 uploads reuse it)."""
+import logging
 import hashlib
 import os
 import shutil
@@ -9,6 +10,9 @@ from . import db, imaging, storage
 
 class CopyVerificationError(Exception):
     pass
+
+
+log = logging.getLogger(__name__)
 
 
 def sha256_file(path):
@@ -33,17 +37,35 @@ def add_file(conn, data_dir, src, original_name, source, display_target=None):
         return None
     stored = uuid.uuid4().hex + os.path.splitext(original_name)[1].lower()
     tmp = os.path.join(data_dir, "tmp", stored)
-    shutil.copy2(src, tmp)
+    try:
+        shutil.copy2(src, tmp)
+    except OSError:
+        if os.path.exists(tmp):
+            os.remove(tmp)                    # e.g. disk full: never leave a partial copy
+        raise
     if sha256_file(tmp) != digest:
         os.remove(tmp)
         raise CopyVerificationError(f"copy verification failed for {original_name}")
-    os.replace(tmp, os.path.join(data_dir, "originals", stored))
-    conn.execute(
-        "INSERT INTO media (stored_name, original_name, kind, sha256, size_bytes, source, created_at)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (stored, original_name, kind, digest, os.path.getsize(src), source, db.now()))
-    conn.commit()
+    original = os.path.join(data_dir, "originals", stored)
+    os.replace(tmp, original)
+    try:
+        conn.execute(
+            "INSERT INTO media (stored_name, original_name, kind, sha256, size_bytes, source, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (stored, original_name, kind, digest, os.path.getsize(src), source, db.now()))
+        conn.commit()
+    except BaseException:
+        # no row -> no files: remove the original (and any derivative) we just placed
+        try:
+            conn.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+        imaging.remove_all(data_dir, stored)
+        raise
     if kind == "image" and display_target:
-        imaging.ensure_display_copy(data_dir, stored, display_target)
-        imaging.ensure_thumb(data_dir, stored)
+        try:
+            imaging.ensure_display_copy(data_dir, stored, display_target)
+            imaging.ensure_thumb(data_dir, stored)
+        except OSError as e:                  # photo is saved; derivatives are rebuilt later
+            log.warning("display copy/thumbnail for %s failed: %s", stored, e)
     return stored

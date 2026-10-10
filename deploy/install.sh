@@ -2,7 +2,21 @@
 # Install Memory Frame on a Raspberry Pi 4B (Raspberry Pi OS 64-bit, desktop).
 # Run from the repo checkout as the desktop user (not root):  ./deploy/install.sh
 # Idempotent: safe to re-run after a git pull.
+# Options:
+#   --extra-hosts LIST   extra Host names/IPs the app answers (comma list, e.g. 192.168.50.124);
+#                        "" removes them. Also taken from $MEMORYFRAME_EXTRA_HOSTS. Omit to keep.
 set -euo pipefail
+
+EXTRA_HOSTS_SET=0
+EXTRA_HOSTS="${MEMORYFRAME_EXTRA_HOSTS-}"
+[ -n "${MEMORYFRAME_EXTRA_HOSTS+x}" ] && EXTRA_HOSTS_SET=1
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --extra-hosts) EXTRA_HOSTS="${2-}"; EXTRA_HOSTS_SET=1; shift 2 || shift ;;
+        --extra-hosts=*) EXTRA_HOSTS="${1#*=}"; EXTRA_HOSTS_SET=1; shift ;;
+        *) echo "Unknown option: $1" >&2; exit 2 ;;
+    esac
+done
 
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 APP_USER="$(id -un)"
@@ -37,6 +51,11 @@ MEMORYFRAME_DATA_DIR="$DATA_DIR" MEMORYFRAME_LEGACY_UPLOADS="$APP_DIR/uploads" \
 
 echo "== Audit and disable existing autostart entries"
 "$APP_DIR/deploy/audit-autostart.sh" --disable
+
+if [ "$EXTRA_HOSTS_SET" = 1 ]; then
+    echo "== Extra allowed hosts (MF-13)"
+    "$APP_DIR/deploy/env-file.sh" MEMORYFRAME_EXTRA_HOSTS "$EXTRA_HOSTS"
+fi
 
 echo "== systemd service"
 sed -e "s#@USER@#$APP_USER#g" -e "s#@APP_DIR@#$APP_DIR#g" \

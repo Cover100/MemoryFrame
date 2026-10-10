@@ -16,7 +16,7 @@ from urllib.parse import urlsplit
 
 from flask import abort, current_app, g, request
 
-DEFAULT_ALLOWED_HOSTS = ("10.42.0.1", "memoryframe.lan", "memoryframe.local", "localhost",
+DEFAULT_ALLOWED_HOSTS = ("10.42.0.1", "memoryframe", "memoryframe.lan", "memoryframe.local", "localhost",
                          "127.0.0.1", "::1")
 CSRF_COOKIE = "mf_csrf"
 SAFE = {"GET", "HEAD", "OPTIONS"}
@@ -28,8 +28,10 @@ CSP = ("default-src 'self'; img-src 'self' data:; media-src 'self'; object-src '
 def _hostname(host):
     host = (host or "").strip().lower()
     if host.startswith("["):                       # [::1]:5000
-        return host[1:host.find("]")] if "]" in host else host
-    return host.rsplit(":", 1)[0] if host.count(":") == 1 else host
+        host = host[1:host.find("]")] if "]" in host else host
+    elif host.count(":") == 1:
+        host = host.rsplit(":", 1)[0]
+    return host[:-1] if host.endswith(".") else host   # FQDN form: memoryframe.lan.
 
 
 def allowed(host):
@@ -61,7 +63,8 @@ def check_request():
         return None
     cookie = request.cookies.get(CSRF_COOKIE)
     sent = request.headers.get("X-CSRF-Token") or request.form.get("csrf_token")
-    if not cookie or not sent or not hmac.compare_digest(cookie, sent):
+    if (not cookie or not sent or not cookie.isascii() or not sent.isascii()
+            or not hmac.compare_digest(cookie.encode(), sent.encode())):
         abort(403, "Missing or invalid CSRF token")
     return None
 
@@ -80,7 +83,8 @@ def add_headers(resp):
 
 def init_app(app):
     import os
-    extra = [h.strip().lower() for h in os.environ.get("MEMORYFRAME_EXTRA_HOSTS", "").split(",") if h.strip()]
+    extra = [h.strip().lower().rstrip(".") for h in os.environ.get("MEMORYFRAME_EXTRA_HOSTS", "").split(",")
+             if h.strip()]
     app.config.setdefault("ALLOWED_HOSTS", tuple(DEFAULT_ALLOWED_HOSTS) + tuple(extra))
     app.before_request(check_request)
     app.after_request(add_headers)

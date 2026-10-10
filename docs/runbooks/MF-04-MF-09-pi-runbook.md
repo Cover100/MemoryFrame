@@ -1,6 +1,6 @@
 # Memory Frame: on-device runbooks (MF-04 deploy, MF-09 hotspot)
 
-Written 10 Oct 2026 by Developer for Tester. Updated 17:50 AEST: hotspot manual only, Phase C removed, uploads backup mandatory. Based on the scripts as they are on GitHub:
+Written 10 Oct 2026 by Developer for Tester. Updated 17:50 AEST: hotspot manual only, Phase C removed, uploads backup mandatory. Updated 18:00 AEST: kiosk fixes retest (1.7b). Based on the scripts as they are on GitHub:
 - MF-04 scripts: `origin/main` (merged via #9). `deploy/install.sh`, `deploy/audit-autostart.sh`, `deploy/kiosk.sh`, `deploy/memoryframe.service`, `deploy/memoryframe-kiosk.desktop`, `deploy/uninstall.sh`.
 - **Hotspot use is MANUAL ONLY (user decision, 10 Oct 2026).** The profile always has autoconnect=no; nothing starts it at boot. The first hotspot test happens only with the **user physically at the Pi**.
 - **`uploads/` is ALWAYS backed up before any Pi update** (git reset, pull or install). See 1.1.
@@ -161,6 +161,41 @@ curl -s http://localhost:5000/healthz                # {"status":"ok"}
 # Screen: the slideshow continues; any image that failed during the ~2 s gap is skipped (MF-02). No manual action.
 ```
 Browser crash: `pkill -9 -f chromium`. `kiosk.sh` relaunches it within about 2 s once `/healthz` answers.
+
+### 1.7b Kiosk fixes retest (PR #14, branch `mf-04-kiosk-fixes`): keyring dialog + grey screen
+Fixes: `--password-store=basic` (no "Unlock Keyring"); dedicated profile `~/.cache/memoryframe/chromium-profile` with crash flags reset before each launch; `--no-first-run`, `--hide-crash-restore-bubble`; log at `~/.cache/memoryframe/kiosk.log`; extra flags via `MEMORYFRAME_CHROMIUM_FLAGS`.
+
+**Step 0: check the photos are still there** (the reset to the new main deletes the photos that the old main tracked):
+```bash
+R=/home/memoryframe/Documents/GitHub/MemoryFrame
+ls "$R/uploads" | wc -l
+curl -s http://localhost:5000/media; echo        # [] means no media: the page will be black, not grey
+ls -d ~/memoryframe-uploads-backup-*              # restore if needed:
+cp -an ~/memoryframe-uploads-backup-<stamp>/. "$R/uploads/"
+```
+With zero media the page is **black** (CSS `background: black`) and the console says "No media found". A **grey** window means Chromium isn't painting the page at all, so look at steps 2–4.
+
+**Step 1: update to the fix branch** (back up uploads first, every time):
+```bash
+cd "$R"; B=~/memoryframe-uploads-backup-$(date +%Y%m%d-%H%M%S); cp -a uploads "$B" && diff -r uploads "$B" && echo "backup OK"
+git status --porcelain                  # must be empty
+git fetch origin && git checkout --detach origin/mf-04-kiosk-fixes   # after #14 merges: git checkout main && git reset --hard origin/main
+pkill -f deploy/kiosk.sh; pkill -f chromium
+```
+
+**Step 2: reboot and capture**
+```bash
+sudo reboot
+# after login, wait 30 s, then:
+tail -n 80 ~/.cache/memoryframe/kiosk.log        # session type, "/media has N item(s)", Chromium stderr
+pgrep -fa deploy/kiosk.sh; pgrep -c -f chromium
+curl -s http://localhost:5000/healthz; curl -s http://localhost:5000/media | head -c 300; echo
+```
+Expected: no keyring dialog, the slideshow is visible within 60 s, and the log shows `server healthy; /media has N item(s)` with N > 0.
+
+**Step 3: if still grey.** Send `kiosk.log` to Developer, then try these one at a time. Edit `~/.config/autostart/memoryframe-kiosk.desktop` to `Exec=env MEMORYFRAME_CHROMIUM_FLAGS="--ozone-platform=wayland" /home/memoryframe/Documents/GitHub/MemoryFrame/deploy/kiosk.sh`, then reboot. Next try `"--ozone-platform=wayland --disable-gpu"`.
+
+**Step 4: crash recovery.** Run `pkill -9 -f chromium`. Within about 5 s the slideshow returns with no "Restore pages?" bubble, and `kiosk.log` shows `browser exited with status ..., restarting`.
 
 ### 1.8 Roll back MF-04
 ```bash

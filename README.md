@@ -197,3 +197,10 @@ There is one owner (D6), who may pair several phones.
 - **Origin check:** a non-GET request with an `Origin`/`Referer` from another host gets **403**.
 - **CSRF:** the `mf_csrf` cookie (HttpOnly, SameSite=Strict) must be echoed in the `X-CSRF-Token` header (read it from `<meta name="csrf-token">`) or in a `csrf_token` form field. Otherwise the request gets **403**. The localhost-only kiosk routes are exempt.
 - **Headers:** `Content-Security-Policy: default-src 'self'; ... frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`. Templates contain no inline scripts or styles and no external URLs (enforced by a test).
+
+## On-device onboarding and menu (MF-19)
+
+- **No phone paired:** the frame shows **1. Join Wi-Fi** (a standard `WIFI:` QR the Android camera understands), then **2. Open site** (the pairing QR), plus the 6-digit code. The SSID and password come from `deploy/hotspot.conf`, or `MEMORYFRAME_SSID` / `MEMORYFRAME_WIFI_PASSWORD`. The Wi-Fi QR is **on by default** (D3). Turn it off with `MEMORYFRAME_SHOW_WIFI_QR=0`, or the database setting `show_wifi_qr=0` (the settings UI comes with MF-17).
+- **Paired but no photos:** a "No photos yet" screen with the site address.
+- **Still long-press of 3 s or more:** a menu with IP, Wi-Fi name, free storage, phones paired and version, plus **Pair new device**, **Sign out all phones** and **Close**. Text is at least 24 px at 800x480.
+- **Privacy:** all of this uses localhost-only routes (`/pairing/state`, `/frame/status`). The Wi-Fi password never leaves the frame except as the on-screen QR.

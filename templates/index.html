@@ -86,17 +86,50 @@
          ========================================== -->
 
 
-    <!-- MF-12 pairing overlay (static/pairing.js) -->
-    <div id="pairOverlay" aria-live="polite">
+    <!-- MF-12/MF-19 onboarding: Wi-Fi QR -> site QR + code (static/pairing.js) -->
+    <div id="pairOverlay" class="overlay" aria-live="polite">
         <div id="pairBox">
-            <div id="pairQr"></div>
-            <div id="pairText">
-                <div id="pairTitle">Pair your phone</div>
-                <div id="pairSsid"></div>
+            <div class="step" id="wifiStep" hidden>
+                <div class="stepTitle">1. Join Wi-Fi</div>
+                <div id="wifiQr" class="qr"></div>
+                <div id="pairSsid" class="stepText"></div>
+            </div>
+            <div class="step">
+                <div class="stepTitle" id="siteTitle">Pair your phone</div>
+                <div id="pairQr" class="qr"></div>
+                <div class="stepText">or open <span id="pairUrl"></span></div>
+            </div>
+            <div class="step" id="codeStep">
+                <div class="stepText">Code</div>
                 <div id="pairCode">--- ---</div>
-                <div id="pairHint">Scan the code, or open <span id="pairUrl"></span> and enter the number.</div>
                 <button id="pairClose" type="button" hidden>Close</button>
-                <button id="pairSignOut" type="button" hidden>Sign out all phones</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MF-19: empty library -->
+    <div id="emptyOverlay" class="overlay">
+        <div class="emptyText">
+            <div class="emptyTitle">No photos yet</div>
+            <div>Open <b id="emptyUrl">10.42.0.1</b> on your paired phone and tap "Upload photos".</div>
+        </div>
+    </div>
+
+    <!-- MF-19: long-press menu -->
+    <div id="menuOverlay" class="overlay">
+        <div id="menuBox">
+            <div class="menuTitle">Memory Frame</div>
+            <table id="menuInfo">
+                <tr><th>IP</th><td id="menuIp">-</td></tr>
+                <tr><th>Wi-Fi</th><td id="menuSsid">-</td></tr>
+                <tr><th>Free storage</th><td id="menuFree">-</td></tr>
+                <tr><th>Phones paired</th><td id="menuPaired">-</td></tr>
+                <tr><th>Version</th><td id="menuVersion">-</td></tr>
+            </table>
+            <div class="menuButtons">
+                <button id="menuPair" type="button">Pair new device</button>
+                <button id="menuSignOut" type="button">Sign out all phones</button>
+                <button id="menuClose" type="button">Close</button>
             </div>
         </div>
     </div>

@@ -579,14 +579,24 @@ video {
 
 
 
-/* MF-12 pairing overlay: sized for 800x480 */
-#pairOverlay{position:fixed;inset:0;z-index:50;display:none;align-items:center;justify-content:center;
-  background:rgba(0,0,0,.88);color:#fff;font-family:system-ui,sans-serif}
-#pairOverlay.visible{display:flex}
-#pairBox{display:flex;gap:28px;align-items:center;max-width:780px;max-height:460px}
-#pairQr svg{width:260px;height:260px;display:block;background:#fff}
-#pairTitle{font-size:30px;font-weight:600}
-#pairSsid{font-size:24px;margin-top:6px;opacity:.9}
-#pairCode{font-size:80px;font-weight:700;letter-spacing:4px;margin:10px 0;font-variant-numeric:tabular-nums;white-space:nowrap}
-#pairHint{font-size:20px;max-width:420px;opacity:.85}
-#pairOverlay button{font-size:20px;margin:14px 10px 0 0;padding:8px 16px;border-radius:8px;border:0}
+/* MF-12/MF-19 overlays: sized for 800x480, legible from 1 m */
+.overlay{position:fixed;inset:0;z-index:50;display:none;align-items:center;justify-content:center;
+  background:rgba(0,0,0,.9);color:#fff;font-family:system-ui,sans-serif}
+.overlay.visible{display:flex}
+#menuOverlay{z-index:60}
+#pairBox{display:flex;gap:22px;align-items:center;max-width:790px;max-height:470px}
+.step{display:flex;flex-direction:column;align-items:center;text-align:center}
+.step[hidden]{display:none}
+.stepTitle{font-size:28px;font-weight:600;margin-bottom:8px}
+.stepText{font-size:22px;margin-top:6px;max-width:240px;overflow-wrap:anywhere}
+.qr svg{width:220px;height:220px;display:block;background:#fff}
+#pairCode{font-size:80px;font-weight:700;letter-spacing:2px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.overlay button{font-size:24px;margin:10px 8px 0 0;padding:10px 18px;border-radius:8px;border:0}
+.emptyText{font-size:30px;text-align:center;max-width:720px;line-height:1.4}
+.emptyTitle{font-size:48px;font-weight:700;margin-bottom:16px}
+#menuBox{max-width:760px}
+.menuTitle{font-size:34px;font-weight:700;margin-bottom:10px}
+#menuInfo{font-size:28px;border-collapse:collapse}
+#menuInfo th{text-align:left;font-weight:400;opacity:.8;padding:4px 24px 4px 0}
+#menuInfo td{font-weight:600}
+.menuButtons{margin-top:14px}

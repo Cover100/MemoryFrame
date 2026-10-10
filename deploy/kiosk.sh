@@ -37,10 +37,17 @@ if ! flock -n 9; then
     exit 0
 fi
 
-BROWSER=""
-for b in chromium-browser chromium; do
-    if command -v "$b" >/dev/null 2>&1; then BROWSER="$b"; break; fi
-done
+# MEMORYFRAME_BROWSER overrides detection (absolute path or command name).
+BROWSER="${MEMORYFRAME_BROWSER:-}"
+if [ -n "$BROWSER" ] && ! command -v "$BROWSER" >/dev/null 2>&1; then
+    log "MEMORYFRAME_BROWSER=$BROWSER not found"
+    exit 1
+fi
+if [ -z "$BROWSER" ]; then
+    for b in chromium-browser chromium; do
+        if command -v "$b" >/dev/null 2>&1; then BROWSER="$b"; break; fi
+    done
+fi
 if [ -z "$BROWSER" ]; then
     log "chromium not found"
     exit 1

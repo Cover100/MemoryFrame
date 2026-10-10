@@ -1,6 +1,6 @@
 # Memory Frame: on-device runbooks (MF-04 deploy, MF-09 hotspot)
 
-Written 10 Oct 2026 by Developer for Tester. Updated 17:50 AEST: hotspot manual only, Phase C removed, uploads backup mandatory. Updated 18:00 AEST: kiosk fixes retest (1.7b). Updated 18:05 AEST: grey-screen diagnostics (1.7c). Updated 18:10 AEST: MF-11 migration (section 3). Based on the scripts as they are on GitHub:
+Written 10 Oct 2026 by Developer for Tester. Updated 17:50 AEST: hotspot manual only, Phase C removed, uploads backup mandatory. Updated 18:00 AEST: kiosk fixes retest (1.7b). Updated 18:05 AEST: grey-screen diagnostics (1.7c). Based on the scripts as they are on GitHub:
 - MF-04 scripts: `origin/main` (merged via #9). `deploy/install.sh`, `deploy/audit-autostart.sh`, `deploy/kiosk.sh`, `deploy/memoryframe.service`, `deploy/memoryframe-kiosk.desktop`, `deploy/uninstall.sh`.
 - **Hotspot use is MANUAL ONLY (user decision, 10 Oct 2026).** The profile always has autoconnect=no; nothing starts it at boot. The first hotspot test happens only with the **user physically at the Pi**.
 - **`uploads/` is ALWAYS backed up before any Pi update** (git reset, pull or install). See 1.1.

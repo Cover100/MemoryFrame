@@ -4,22 +4,24 @@
 #  - waits until the app answers /healthz (no "connection refused" page)
 #  - runs exactly one Chromium kiosk, restarting it if it exits
 #  - uses a dedicated Chromium profile and never touches the OS keyring
-#  - logs to ~/.cache/memoryframe/kiosk.log (launcher + Chromium stderr)
+#  - logs to ~/.cache/memoryframe-kiosk.log (launcher + Chromium stdout/stderr, rotated at 1 MB)
 #
 # Environment overrides:
 #   MEMORYFRAME_URL             default http://localhost:5000
 #   MEMORYFRAME_CHROMIUM_FLAGS  extra flags, e.g. "--ozone-platform=wayland" or "--disable-gpu"
-#   MEMORYFRAME_STATE_DIR       default ~/.cache/memoryframe
+#   MEMORYFRAME_STATE_DIR       Chromium profile parent, default ~/.cache/memoryframe
+#   MEMORYFRAME_KIOSK_LOG       default ~/.cache/memoryframe-kiosk.log
+#   MEMORYFRAME_KIOSK_DEBUG=1   adds DevTools on 127.0.0.1:9222 only + verbose Chromium logging
 set -u
 
 URL="${MEMORYFRAME_URL:-http://localhost:5000}"
 HEALTH="$URL/healthz"
 STATE_DIR="${MEMORYFRAME_STATE_DIR:-$HOME/.cache/memoryframe}"
 PROFILE_DIR="$STATE_DIR/chromium-profile"
-LOG="$STATE_DIR/kiosk.log"
+LOG="${MEMORYFRAME_KIOSK_LOG:-$HOME/.cache/memoryframe-kiosk.log}"
 LOCK="${XDG_RUNTIME_DIR:-/tmp}/memoryframe-kiosk.lock"
 
-mkdir -p "$STATE_DIR" "$PROFILE_DIR"
+mkdir -p "$STATE_DIR" "$PROFILE_DIR" "$(dirname "$LOG")"
 
 # Keep the log small: rotate once it passes 1 MB.
 if [ -f "$LOG" ] && [ "$(stat -c %s "$LOG" 2>/dev/null || echo 0)" -gt 1048576 ]; then
@@ -74,6 +76,21 @@ mark_clean_exit() {
            -e 's/"exit_type":"[A-Za-z]*"/"exit_type":"Normal"/g' "$prefs"
 }
 
+# Wayland (labwc on Raspberry Pi OS trixie): ask for the Wayland backend
+# explicitly instead of relying only on the auto hint.
+PLATFORM_FLAGS=(--ozone-platform-hint=auto)
+if [ -n "${WAYLAND_DISPLAY:-}" ]; then
+    PLATFORM_FLAGS=(--ozone-platform=wayland --enable-features=UseOzonePlatform)
+fi
+
+# Opt-in debugging: DevTools bound to localhost only, Chromium logs to stderr (-> log file).
+DEBUG_FLAGS=()
+if [ "${MEMORYFRAME_KIOSK_DEBUG:-0}" = 1 ]; then
+    DEBUG_FLAGS=(--remote-debugging-port=9222 --remote-debugging-address=127.0.0.1
+                 --remote-allow-origins=http://127.0.0.1:9222 --enable-logging=stderr --v=0)
+    log "DEBUG mode: DevTools on 127.0.0.1:9222"
+fi
+
 # Don't let the screen blank (X11 only; harmless elsewhere).
 if [ -n "${DISPLAY:-}" ] && command -v xset >/dev/null 2>&1; then
     xset s off -dpms s noblank 2>/dev/null || true
@@ -96,7 +113,8 @@ while true; do
         --hide-crash-restore-bubble \
         --disable-features=Translate \
         --autoplay-policy=no-user-gesture-required \
-        --ozone-platform-hint=auto \
+        "${PLATFORM_FLAGS[@]}" \
+        "${DEBUG_FLAGS[@]}" \
         --check-for-update-interval=31536000 \
         ${MEMORYFRAME_CHROMIUM_FLAGS:-} \
         "$URL"

@@ -39,21 +39,34 @@ def env(tmp_path):
         real = shutil.which(name)
         assert real, f"missing system tool {name}"
         (tools / name).symlink_to(real)
-    state = tmp_path / "state"
     e = {k: v for k, v in os.environ.items() if not k.startswith("MEMORYFRAME_")}
     e.update(PATH=f"{bin_}:{tools}", HOME=str(tmp_path),
              MEMORYFRAME_STATE_DIR=str(state), XDG_RUNTIME_DIR=str(tmp_path),
              MEMORYFRAME_BROWSER=str(bin_ / "chromium"),
-             MEMORYFRAME_CHROMIUM_FLAGS="--ozone-platform=wayland")
+             MEMORYFRAME_CHROMIUM_FLAGS="--disable-gpu")
     e.pop("DISPLAY", None)
+    e.pop("WAYLAND_DISPLAY", None)
     return tmp_path, state, calls, e
 
 
-def run_for(e, seconds):
+def log_text(tmp_path):
+    f = tmp_path / ".cache" / "memoryframe-kiosk.log"
+    return f.read_text() if f.exists() else ""
+
+
+def run_until(e, condition, timeout=15):
+    """Run kiosk.sh until condition() is true (polling), then stop it.
+    No fixed sleeps, so slow CI runners don't cause flaky failures."""
     p = subprocess.Popen([BASH, str(SCRIPT)], env=e)
-    time.sleep(seconds)
-    p.terminate()
-    p.wait(timeout=5)
+    try:
+        deadline = time.monotonic() + timeout
+        while not condition():
+            assert p.poll() is None, "kiosk.sh exited early"
+            assert time.monotonic() < deadline, "condition not met in time"
+            time.sleep(0.05)
+    finally:
+        p.terminate()
+        p.wait(timeout=5)
 
 
 def launches(tmp_path):
@@ -67,24 +80,25 @@ def test_flags_profile_and_restart(env):
     prefs.mkdir(parents=True)
     (prefs / "Preferences").write_text(json.dumps(
         {"profile": {"exited_cleanly": False, "exit_type": "Crashed"}}, separators=(",", ":")))
-    run_for(e, 3.5)
+    run_until(e, lambda: len(launches(tmp_path)) >= 2)
     runs = launches(tmp_path)
     assert len(runs) >= 2                          # restarted after exit
     args = runs[0]
     for flag in ["--kiosk", "--password-store=basic", "--no-first-run", "--noerrdialogs",
                  "--disable-infobars", "--disable-session-crashed-bubble",
                  "--autoplay-policy=no-user-gesture-required", "--ozone-platform-hint=auto",
-                 f"--user-data-dir={state}/chromium-profile", "--ozone-platform=wayland"]:
+                 f"--user-data-dir={state}/chromium-profile", "--disable-gpu"]:
         assert flag in args, flag
     assert args[-1] == "http://localhost:5000"
+    assert not any(a.startswith("--remote-debugging") for a in args)   # debug is opt-in
     p = json.loads((prefs / "Preferences").read_text())["profile"]
     assert p == {"exited_cleanly": True, "exit_type": "Normal"}
 
 
 def test_log_has_launcher_and_chromium_stderr(env):
     tmp_path, state, _, e = env
-    run_for(e, 1.5)
-    log = (state / "kiosk.log").read_text()
+    run_until(e, lambda: "browser exited with status 1" in log_text(tmp_path))
+    log = log_text(tmp_path)
     assert f"start: browser={tmp_path}/bin/chromium url=http://localhost:5000" in log
     assert "/media has 2 item(s)" in log
     assert "stub chromium stderr line" in log
@@ -94,12 +108,15 @@ def test_log_has_launcher_and_chromium_stderr(env):
 def test_single_instance(env):
     tmp_path, state, _, e = env
     p = subprocess.Popen([BASH, str(SCRIPT)], env=e)
-    time.sleep(0.5)
+    deadline = time.monotonic() + 15
+    while "start:" not in log_text(tmp_path):
+        assert time.monotonic() < deadline
+        time.sleep(0.05)
     r = subprocess.run([BASH, str(SCRIPT)], env=e, timeout=5)
     p.terminate()
     p.wait(timeout=5)
     assert r.returncode == 0
-    assert "already running" in (state / "kiosk.log").read_text()
+    assert "already running" in log_text(tmp_path)
 
 
 def test_no_real_browser_reachable(env):
@@ -111,13 +128,60 @@ def test_no_real_browser_reachable(env):
 
 def test_browser_override_and_detection_use_stub(env):
     tmp_path, state, _, e = env
-    run_for(e, 1.0)
-    assert f"browser={tmp_path}/bin/chromium" in (state / "kiosk.log").read_text()
+    run_until(e, lambda: len(launches(tmp_path)) >= 1)
+    assert f"browser={tmp_path}/bin/chromium" in log_text(tmp_path)
 
 
 def test_missing_override_fails_cleanly(env):
-    _, state, _, e = env
+    tmp_path, state, _, e = env
     e["MEMORYFRAME_BROWSER"] = "/nonexistent/chromium"
     r = subprocess.run([BASH, str(SCRIPT)], env=e, timeout=5)
     assert r.returncode == 1
-    assert "not found" in (state / "kiosk.log").read_text()
+    assert "not found" in log_text(tmp_path)
+
+
+def test_wayland_flags(env):
+    tmp_path, _, _, e = env
+    e["WAYLAND_DISPLAY"] = "wayland-0"
+    run_until(e, lambda: len(launches(tmp_path)) >= 1)
+    args = launches(tmp_path)[0]
+    assert "--ozone-platform=wayland" in args
+    assert "--ozone-platform-hint=auto" not in args
+
+
+def test_debug_mode_localhost_only(env):
+    tmp_path, _, _, e = env
+    e["MEMORYFRAME_KIOSK_DEBUG"] = "1"
+    run_until(e, lambda: len(launches(tmp_path)) >= 1)
+    args = launches(tmp_path)[0]
+    for flag in ["--remote-debugging-port=9222", "--remote-debugging-address=127.0.0.1",
+                 "--enable-logging=stderr", "--v=0"]:
+        assert flag in args, flag
+    assert "--ozone-platform-hint=auto" in args       # no WAYLAND_DISPLAY in this test
+
+
+def test_log_rotation(env):
+    tmp_path, _, _, e = env
+    log = tmp_path / ".cache" / "memoryframe-kiosk.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text("x" * 1100000)
+    run_until(e, lambda: len(launches(tmp_path)) >= 1)
+    assert (tmp_path / ".cache" / "memoryframe-kiosk.log.1").stat().st_size == 1100000
+    assert log.stat().st_size < 100000
+
+
+def test_autodetect_prefers_chromium_browser_when_override_unset(env):
+    tmp_path, _, _, e = env
+    del e["MEMORYFRAME_BROWSER"]
+    stub = tmp_path / "bin" / "chromium"
+    (tmp_path / "bin" / "chromium-browser").write_text(stub.read_text())
+    (tmp_path / "bin" / "chromium-browser").chmod(0o755)
+    run_until(e, lambda: len(launches(tmp_path)) >= 1)
+    assert "start: browser=chromium-browser " in log_text(tmp_path)
+
+
+def test_autodetect_falls_back_to_chromium(env):
+    tmp_path, _, _, e = env
+    del e["MEMORYFRAME_BROWSER"]
+    run_until(e, lambda: len(launches(tmp_path)) >= 1)
+    assert "start: browser=chromium " in log_text(tmp_path)

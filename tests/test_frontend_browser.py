@@ -167,3 +167,45 @@ def test_pairing_overlay_shown_until_paired_then_long_press(page, server, mf_app
     assert o["visible"] and o["code"].replace(" ", "") == mf_app.extensions["mf_pairing"].code
     assert page.exceptions() == [], fmt(page.exceptions())
     assert csp_violations(page) == []        # QR svg, overlay, brightness all work under the CSP
+
+
+# ---------------- MF-14 upload page ----------------
+
+def test_upload_page_uploads_files_with_progress(page, server, mf_app, tmp_path):
+    import json
+    from urllib.parse import urlsplit
+    from PIL import Image
+    from memoryframe import auth, db as mfdb
+    conn = mfdb.connect(mf_app.config["DB_PATH"])
+    token = auth.create_session(conn, "test phone")
+    conn.close()
+    host = urlsplit(server).hostname
+    page.call("Network.enable")
+    page.call("Network.setCookie", {"name": "mf_session", "value": token, "domain": host, "path": "/",
+                                    "httpOnly": True, "sameSite": "Strict"})
+    page.call("Page.navigate", {"url": server + "admin/upload"})
+    page.pump(2)
+    files = []
+    for i in range(3):
+        p = tmp_path / f"up{i}.jpg"
+        Image.new("RGB", (1200, 900), (i * 70, 100, 50)).save(p, quality=90)
+        files.append(str(p))
+    bad = tmp_path / "notes.jpg"
+    bad.write_text("not a photo")
+    files.append(str(bad))
+    doc = page.call("DOM.getDocument")["result"]["root"]["nodeId"]
+    node = page.call("DOM.querySelector", {"nodeId": doc, "selector": "#files"})["result"]["nodeId"]
+    page.call("DOM.setFileInputFiles", {"nodeId": node, "files": files})
+    page.pump(4)
+    rows = json.loads(evaluate(page, "JSON.stringify([...document.querySelectorAll('#list li')].map("
+                                     "l=>[l.className,l.querySelector('progress').value,l.querySelector('.msg').textContent]))"))
+    assert [r[0] for r in rows] == ["ok", "ok", "ok", "bad"], rows
+    assert all(r[1] == 100 for r in rows)
+    assert "not a photo" in rows[3][2]
+    assert "4 of 4 done" in evaluate(page, "document.getElementById('summary').textContent")
+    assert "Free space" in evaluate(page, "document.getElementById('storage').textContent")
+    conn = mfdb.connect(mf_app.config["DB_PATH"])
+    assert conn.execute("SELECT COUNT(*) FROM media WHERE original_name LIKE 'up_.jpg'").fetchone()[0] == 3
+    conn.close()
+    assert page.exceptions() == [], fmt(page.exceptions())
+    assert csp_violations(page) == []

@@ -1,0 +1,10 @@
+# Copy to deploy/hotspot.conf (git-ignored) and edit, or just run
+# deploy/hotspot.sh and answer the prompts.
+SSID="CHANGE_ME_SSID"
+PASSWORD="CHANGE_ME_AT_LEAST_12_CHARS"
+# Optional (defaults shown)
+# IFACE="wlan0"
+# ADDRESS="10.42.0.1/24"
+# CON_NAME="MemoryFrame-hotspot"
+# BAND="bg"
+# CHANNEL="6"

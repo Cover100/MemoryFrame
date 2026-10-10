@@ -1,16 +1,16 @@
 # MF-07 Discovery Spike: Hotspot, Phone Management Site, NFC, Access Control
 
-- Ticket: MF-07 (Sprint 1) · Owner: Analyst · Status: Draft for review
+- Ticket: MF-07 (Sprint 1) · Owner: Analyst · Status: Draft for review · Rev 2 (10 Oct 2026): updated with user decisions D1–D5 (section 6)
 - Target: Raspberry Pi 4 Model B, Raspberry Pi OS 64-bit (Bookworm, NetworkManager), 5" DSI IPS 800x480
 - Baseline: `app.py` (Flask, port 5000, unauthenticated routes `/`, `/media`, `/uploads/<f>`, `GET /brightness[/<int>]`), kiosk slideshow in `templates/index.html` + `static/script.js`. No phone-side UI exists.
 - Builds on: MF-03 (brightness POST), MF-04 (systemd + WSGI), MF-09 (persistent NM hotspot profile).
 
 ## 0. Summary of recommendations
-1. **Network:** keep NetworkManager. One saved AP profile (`MemoryFrame-AP`, WPA2-PSK, `ipv4.method shared`, 10.42.0.1/24) plus optional saved home-Wi-Fi client profiles. Default AP-only; "client with AP fallback" via a small watchdog. Do not run AP+client concurrently on the single onboard radio in v1 (supported only on same channel, fragile).
+1. **Network:** keep NetworkManager. One saved AP profile (`MemoryFrame-AP`, WPA2-PSK, `ipv4.method shared`, 10.42.0.1/24) **Hotspot-only, permanently** (D1): the frame never joins home Wi-Fi, so there are no client profiles, fallback logic or concurrent AP+client.
 2. **Name resolution:** fixed IP `10.42.0.1`, mDNS `memoryframe.local` (avahi), plus a dnsmasq drop-in resolving `frame.home`/`memoryframe.lan` to 10.42.0.1. **No captive-portal hijacking in v1**; instead tell the OS "no internet" cleanly and deep-link via QR/NFC. Captive portal is an optional later ticket.
 3. **Phone site:** same Flask app, split into `/admin/*` (phone UI, auth) and display routes (localhost-only writes). Server-rendered Jinja + a little vanilla JS (no build step, no Node on the Pi), Pillow for 800x480 optimisation, SQLite for metadata/sessions, waitress behind systemd (MF-04).
 4. **Access control:** WPA2 password is layer 1; layer 2 is device pairing: on-screen 6-digit PIN / QR with one-time token shown on the 800x480 display -> long-lived signed session cookie per phone, revocable. CSRF tokens, rate limiting, `SameSite=Strict`, admin-only state changes via POST.
-5. **NFC:** phase 2 / optional. Passive NTAG215 sticker on the frame holding (a) Wi-Fi record (Android) + (b) URL record `http://10.42.0.1/` . No reader hardware needed for v1. A PN532 reader (I2C) is only needed for "tap a tag to trigger an album" features — defer.
+5. **NFC:** Passive NTAG215 sticker: Android-only target (D2) makes tap-to-join viable: Wi-Fi record + URL record `http://10.42.0.1/admin/pair`. No reader hardware needed for v1. A PN532 reader (I2C) is only needed for "tap a tag to trigger an album" features — defer.
 
 ---
 
@@ -25,11 +25,11 @@
 | Option | How | Pros | Cons |
 |---|---|---|---|
 | A. AP-only (recommended v1) | Saved NM profile, autoconnect, priority high | Simple, deterministic, what MF-09 delivers | Frame has no internet (no NTP time -> clock overlay #14 drifts; no updates) |
-| B. Client preferred, AP fallback | Saved home-Wi-Fi profiles; watchdog (systemd timer, ~30s after boot) brings up AP if no client connection | Internet when at home, still reachable when away | Phone must find frame on home LAN (mDNS); switching modes drops connections; more logic to test |
-| C. Concurrent AP + client | `iw dev wlan0 interface add uap0 type __ap` or second USB adapter | Both at once | Single-radio: same channel forced, flaky; dongle: extra hardware/driver risk |
+| ~~B. Client preferred, AP fallback~~ (rejected, D1) | Saved home-Wi-Fi profiles; watchdog (systemd timer, ~30s after boot) brings up AP if no client connection | Internet when at home, still reachable when away | Phone must find frame on home LAN (mDNS); switching modes drops connections; more logic to test |
+| ~~C. Concurrent AP + client~~ (rejected, D1) | `iw dev wlan0 interface add uap0 type __ap` or second USB adapter | Both at once | Single-radio: same channel forced, flaky; dongle: extra hardware/driver risk |
 | D. hostapd + dnsmasq (classic) | Disable NM on wlan0 | Fine control, captive tricks easy | Fights Bookworm defaults; two network stacks; not recommended |
 
-**Recommendation:** A now (MF-09), design for B in Sprint 2 (stretch), C only with a USB dongle if the user wants internet + AP simultaneously.
+**Decision (D1):** Option A only, permanently. Consequences: no internet ever -> time comes only from the Pi clock, and the Pi 4 has no RTC (options: set time from the phone browser on pairing/visit via `/api/v1/time`, or a DS3231 RTC HAT; see backlog #14), no OS updates over the air (updates via SD/USB or temporary ethernet), and no LAN exposure.
 
 Reference profile (MF-09 script already scoped):
 ```
@@ -44,13 +44,13 @@ Also disable Wi-Fi power save on wlan0 (`802-11-wireless.powersave 2`) — known
 
 ### 1.3 Hostname, DNS, port
 - Serve the admin site on **port 80** (phones type/scan a clean URL). Options: waitress binds 5000 and NM/nftables redirects 80->5000, or grant `CAP_NET_BIND_SERVICE` in the systemd unit (recommended; simplest).
-- DNS: NM shared mode reads drop-ins from `/etc/NetworkManager/dnsmasq-shared.d/`. Add `address=/memoryframe.lan/10.42.0.1`. Avoid `.local` in dnsmasq (that's mDNS); use avahi for `memoryframe.local` (works on iOS, recent Android, and on home LAN in option B).
+- DNS: NM shared mode reads drop-ins from `/etc/NetworkManager/dnsmasq-shared.d/`. Add `address=/memoryframe.lan/10.42.0.1`. Avoid `.local` in dnsmasq (that's mDNS); use avahi for `memoryframe.local` (works on recent Android, 12+).
 - Canonical URL printed everywhere: `http://10.42.0.1/` (IP always works; names are convenience).
 
-### 1.4 Captive portal behaviour (iOS/Android)
+### 1.4 Captive portal behaviour (Android; iOS out of scope, D2)
 - On joining, phones probe `captive.apple.com`, `connectivitycheck.gstatic.com/generate_204`, etc.
-- If probes **fail (no DNS answer / no route)**: iOS shows "No Internet Connection", stays joined if user confirms; Android may show "Wi-Fi has no internet access" and *may switch to mobile data*, routing `10.42.0.1` requests poorly unless the user taps "stay connected". Accessing a local IP generally still works on Android because the route is on-link, but some OEMs prefer cellular — risk.
-- If probes are **hijacked** (wildcard DNS to 10.42.0.1 + redirect): OS opens a captive mini-browser (CNA). CNA sheets have limited cookie persistence, block file pickers on some iOS versions, and close when "Done" tapped -> **bad for photo upload and persistent sessions.**
+- If probes **fail (no DNS answer / no route)**: Android may show "Wi-Fi has no internet access" and *may switch to mobile data*, routing `10.42.0.1` requests poorly unless the user taps "stay connected". Accessing a local IP generally still works on Android because the route is on-link, but some OEMs prefer cellular — risk.
+- If probes are **hijacked** (wildcard DNS to 10.42.0.1 + redirect): OS opens a captive mini-browser (CNA). CNA sheets have limited cookie persistence, restrict file pickers, and close when "Done" tapped -> **bad for photo upload and persistent sessions.**
 - **Recommendation:** no hijack. Return honest "no internet" (dnsmasq answers only our names; everything else NXDOMAIN fast so probes fail quickly). Onboarding via QR/NFC opens the real browser. Revisit an optional "captive welcome page that only shows 'Open in browser' link" later.
 
 ### 1.5 Risks
@@ -86,10 +86,10 @@ Libraries: `waitress`, `Pillow` (+`pillow-heif` for iPhone HEIC), `Flask-WTF` (C
 ### 2.3 Pages (mobile-first, works offline, single CSS file)
 1. **Pair** `/admin/pair` — enter 6-digit code shown on frame (or arrive via QR token link).
 2. **Home / Library** `/admin/` — grid of thumbnails (lazy loaded), count, storage used/free; tap = detail.
-3. **Upload** `/admin/upload` — `<input type=file multiple accept="image/*,video/*">`, per-file progress bars (XHR/fetch), resumes as separate requests per file, shows "optimising…" state.
+3. **Upload** `/admin/upload` — `<input type=file multiple accept="image/*">` (images only in Sprint 2; video is backlog, D5), per-file progress bars (XHR/fetch), resumes as separate requests per file, shows "optimising…" state.
 4. **Item detail** — preview, hide/show from slideshow, rotate, delete (confirm), show next on frame.
 5. **Display settings** `/admin/settings` — slide duration, transition (fade/Ken Burns), shuffle, brightness slider (uses MF-03 POST), schedule (night off / dim), clock overlay toggle (#14).
-6. **Network** `/admin/network` — change SSID/password (warn: will disconnect), add home Wi-Fi (option B), show IP/hostname.
+6. **Network** `/admin/network` — change SSID/password (warn: will disconnect), show IP/hostname.
 7. **Devices** `/admin/devices` — list paired phones (name, last seen), revoke; "pair new device" button (puts code on screen).
 8. **System** `/admin/system` — storage, version, restart app, reboot/shutdown, download log bundle.
 
@@ -113,16 +113,17 @@ Libraries: `waitress`, `Pillow` (+`pillow-heif` for iPhone HEIC), `Flask-WTF` (C
 Display side: `GET /media` (existing, now returns optimised `display/` URLs), `GET /events` (SSE: `media-changed`, `settings-changed`, `show`, `pairing-code`).
 
 ### 2.5 Upload & image pipeline (backlog #12, #13)
-- Limits: `MAX_CONTENT_LENGTH` 50 MB/request for images, 300 MB for video (configurable); max 50 files per batch; allow-list by **magic bytes** (Pillow open / ffprobe), not extension; random server-side filenames (UUID), never user-supplied paths.
-- On upload: save to `tmp/`, verify, apply EXIF orientation, **strip EXIF/GPS** from derivatives, produce **display version fitting 800x480** (`ImageOps.contain`, keep aspect; generate at **1.0x = 800x480 max** — display is native 800x480, 1.25x headroom only if Ken Burns zoom looks soft: decide in testing, suggested 1000x600), JPEG q85 / WebP; thumbnail 240px. Keep original (optional setting "keep originals" for space).
-- HEIC: `pillow-heif` (iPhones send JPEG via browser file picker usually, but not always).
-- Video: no transcode in v1 (Pi 4 H.264 decode OK up to 1080p); reject >1080p or non-H.264 with a clear message; optional ffmpeg transcode later.
+- Limits: `MAX_CONTENT_LENGTH` 50 MB/request (configurable); max 50 files per batch; allow-list by **magic bytes** (Pillow open / ffprobe), not extension; random server-side filenames (UUID), never user-supplied paths.
+- On upload: save to `tmp/`, verify, apply EXIF orientation, **strip EXIF/GPS** from derivatives, produce **display version fitting 800x480** (`ImageOps.contain`, keep aspect; generate at **1.0x = 800x480 max** — display is native 800x480, 1.25x headroom only if Ken Burns zoom looks soft: decide in testing, suggested 1000x600), JPEG q85 / WebP; thumbnail 240px. **Originals are always kept** (D4), unmodified, in `originals/`; derivatives in `display/` and `thumbs/`.
+- HEIC: `pillow-heif` (some Android phones, e.g. Samsung with "high efficiency" on, save HEIC).
+- Storage budget (D4): typical phone photo 3–8 MB original + ~150 KB display + ~20 KB thumb ≈ 5 MB/photo avg. 32 GB card (~22 GB free after OS) ≈ 4,000 photos; 64 GB ≈ 10,000. Recommend ≥ 64 GB A1/A2 card (or USB SSD for heavy use). Show usage + estimated remaining photo count in UI.
+- Video (D5): **not in Sprint 2.** New uploads of video are rejected with 415 and a friendly message. Existing playback of videos already in the library keeps working. Seamless video integration is backlog item BL-V1 (section 7).
 - Storage safeguard: refuse uploads when free space < 1 GB (507); show usage.
 - Processing in a background thread queue (single worker) so requests return quickly.
 
 ### 2.6 On-device UX (800x480 DSI)
 - **Pairing overlay** (on slideshow): large 6-digit code (≥ 72 px), QR code ≈ 300x300 px containing `http://10.42.0.1/admin/pair?t=<one-time token>`, SSID shown, 2-minute countdown. Triggered by: first boot with no paired devices, long-press (≥ 3 s) on screen, or "pair new device" from an existing phone.
-- **Wi-Fi join QR** (separate screen, shown first if no devices paired): `WIFI:T:WPA;S:<ssid>;P:<psk>;;` — iOS/Android camera joins network, then second QR opens site. Showing PSK on screen is acceptable (physical access = trust) but make it optional.
+- **Wi-Fi join QR** (separate screen, shown first if no devices paired): `WIFI:T:WPA;S:<ssid>;P:<psk>;;` — Android camera / Google Lens joins network, then second QR opens site. Showing the PSK as QR is **approved** (D3): physical access = trust; enabled by default.
 - **Status strip** on long-press: IP, SSID, storage free, version.
 - Empty-library screen: "Scan to add photos" + QR (replaces blank screen; ties into MF-02).
 - Touch targets ≥ 48 px; DSI touch is single-touch-ish; no on-screen keyboard needed anywhere.
@@ -141,7 +142,7 @@ Display side: `GET /media` (existing, now returns optimised `display/` URLs), `G
 ### 3.2 Tags (N1)
 - **NTAG215** (504 B user memory; NTAG213 144 B may be too small for Wi-Fi + URL). Sticker on the back/bezel; on-metal variant if the case is metal.
 - NDEF content: record 1 URI `http://10.42.0.1/admin/pair` (no secret token — a static tag can't hold a one-time token); record 2 Wi-Fi WSC record (`application/vnd.wfa.wsc`) with SSID/PSK.
-- Platform caveats: **Android** supports the Wi-Fi record natively (Android 10+ prompts to join). **iOS cannot join Wi-Fi from NFC**, and background tag reading opens only the first URL record (iPhone XS+). So on iOS: join via QR/settings, then tap tag opens site. -> Put URI record **first**.
+- Platform (D2, Android only): Android 10+ handles the Wi-Fi (WSC) record natively and prompts to join, so one tap = join. Android then dispatches the URI record; behaviour with both records varies by vendor, so recommended approach: **Wi-Fi record first, URI record second**, and verify on the user's phone; fallback is two tags (or tap twice) if the URI does not open. iOS is out of scope.
 - Writing tags: NFC Tools app on the user's phone (no hardware needed); doc a step. Lock the tag (read-only) after writing **or** don't include PSK if tag could be read by strangers (the tag is a password leak to anyone who taps it — acceptable for home use, document it).
 - If the PSK changes, the tag must be rewritten (or N2 reader writes it).
 
@@ -161,7 +162,7 @@ A reader-based feature would run as a small systemd service posting to the local
 ## 4. Access control & security
 
 ### 4.1 Threat model (home device)
-- Neighbours/guests in Wi-Fi range; anyone who joined the AP (password shared with family); physical access to frame (trusted by design); no internet exposure in option A. In option B the site is reachable by **everyone on the home LAN** -> app auth must not rely on WPA2 alone.
+- Neighbours/guests in Wi-Fi range; anyone who joined the AP (password shared with family); physical access to frame (trusted by design); no internet or home-LAN exposure (hotspot-only, D1). App auth is still required because the Wi-Fi password is shared and shown as QR (D3).
 
 ### 4.2 Layers
 1. **Network:** WPA2-PSK ≥ 12 chars generated randomly at install (MF-09), shown on frame's Wi-Fi QR. Optional "hide SSID" adds nothing; skip.
@@ -178,30 +179,33 @@ A reader-based feature would run as a small systemd service posting to the local
 ### 4.3 Sessions
 - Server-side session table in SQLite (token hash -> device). Sliding `last_seen`. No JWT needed.
 ### 4.4 HTTPS?
-- Self-signed cert on an offline AP triggers scary warnings and breaks PWA install; Let's Encrypt impossible offline. **Decision: HTTP on the WPA2 AP** (link-layer encrypted). In option B (home LAN) traffic is protected by home Wi-Fi encryption only — accepted risk, documented. Revisit if remote access is ever requested.
+- Self-signed cert on an offline AP triggers scary warnings and breaks PWA install; Let's Encrypt impossible offline. **Decision: HTTP on the WPA2 AP** (link-layer encrypted). Revisit if remote access is ever requested.
 
 ---
 
 ## 5. Risks
 | Risk | Impact | Mitigation |
 |---|---|---|
-| Android drops to mobile data on no-internet AP | Site unreachable | Onboarding copy: "Stay connected"; test on user's phones (Q-B) |
+| Android drops to mobile data on no-internet AP | Site unreachable | Onboarding copy: "Stay connected"; test on user's Android phone(s) |
 | Network change locks out headless Pi | No access | Boot-partition reset file, on-screen status, delayed apply + auto-revert if no phone reconnects in 2 min |
-| iOS HEIC / large videos | Upload failures | pillow-heif, clear error messages, limits |
+| HEIC / oversized photos | Upload failures | pillow-heif, clear error messages, limits |
+| SD fills up (originals kept, D4) | Uploads fail / OS instability | ≥ 64 GB card, 1 GB reserve -> 507, usage + remaining estimate in UI |
 | SD card wear / power loss during write | Corrupt library | Write to tmp + atomic rename, SQLite WAL, optional backup export |
 | Static NFC tag leaks PSK | Neighbour can join | Document; optional URL-only tag |
-| Concurrent AP+client fragility | Flaky network | Not in v1 |
+| No internet -> clock drift, no updates (D1) | Wrong clock overlay, unpatched OS | Time sync from phone on visit or RTC HAT; offline update procedure |
 | Pi 4 CPU for image processing | Slow uploads | Single worker queue, Pillow `draft()` for JPEG downscale; ~1-2 s/12 MP photo expected (verify) |
 
-## 6. Open questions (for user via Delivery Lead)
-- Q-A: Should the frame ever join home Wi-Fi (internet for clock/time sync, updates)? Determines option A vs B.
-- Q-B: Which phones (iOS/Android, models) must be supported? Drives captive/NFC testing.
-- Q-C: How many people will manage the frame? (pairing vs shared PIN)
-- Q-D: Keep originals or only optimised copies? (storage)
-- Q-E: Video support required, and max length?
-- Q-F: Want NFC sticker (cheap, N1) and/or album cards (reader, N2)?
-- Q-G: Is a real-time clock or internet time required for the clock overlay (#14)? (Pi 4 has no RTC.)
-- Q-H: Is showing the Wi-Fi password as a QR on the frame acceptable?
+## 6. Questions and decisions
+| # | Question | Status / decision (user, 10 Oct 2026) |
+|---|---|---|
+| Q-A | Should the frame ever join home Wi-Fi? | **Resolved — D1:** No. Standalone, hotspot-only permanently. Options B/C and MF-21 dropped. |
+| Q-B | Which phones must be supported? | **Resolved — D2:** Android only for now; iOS out of scope. NFC Wi-Fi record now viable. |
+| Q-H | Show Wi-Fi password as QR on frame? | **Resolved — D3:** Yes, OK (on by default). |
+| Q-D | Keep originals or only optimised copies? | **Resolved — D4:** Keep originals plus 800x480 display renditions (and thumbs). Storage sizing in 2.5. |
+| Q-E | Video support? | **Resolved — D5:** Nice-to-have, seamless integration later -> backlog BL-V1, not Sprint 2. |
+| Q-C | How many people manage the frame? | Open (design supports many paired phones either way) |
+| Q-F | NFC sticker and/or album cards? | Open (MF-20 optional) |
+| Q-G | Clock overlay time source (no internet, no RTC)? | Open — more important after D1: phone-provided time vs DS3231 RTC HAT |
 
 ## 7. Proposed Sprint 2 tickets
 Sizes S/M/L as in Sprint 1. IDs continue after MF-09.
@@ -210,8 +214,8 @@ Sizes S/M/L as in Sprint 1. IDs continue after MF-09.
 - Depends: MF-04, MF-09 · Size: S
 - Description: avahi `memoryframe.local`, dnsmasq-shared drop-in `memoryframe.lan`, waitress on port 80 via `CAP_NET_BIND_SERVICE`, country code set, Wi-Fi power save off. Non-local names return NXDOMAIN quickly.
 - AC:
-  - From a phone joined to the AP, `http://10.42.0.1/` and `http://memoryframe.lan/` load the app; `http://memoryframe.local/` loads on iOS and on Android 12+.
-  - `nslookup example.com 10.42.0.1` returns NXDOMAIN in < 1 s; no captive-portal sheet appears on iOS or Android after joining (verified on ≥ 1 device each).
+  - From a phone joined to the AP, `http://10.42.0.1/` and `http://memoryframe.lan/` load the app; `http://memoryframe.local/` loads on Android 12+.
+  - `nslookup example.com 10.42.0.1` returns NXDOMAIN in < 1 s; no captive-portal sheet appears on the user's Android phone after joining.
   - After reboot, all of the above still work; `iw wlan0 get power_save` reports off.
 
 ### MF-11 App restructure: blueprints, storage layout, SQLite, display/admin split
@@ -243,7 +247,7 @@ Sizes S/M/L as in Sprint 1. IDs continue after MF-09.
 ### MF-14 Phone upload page + upload API
 - Depends: MF-12, MF-13 · Size: M
 - AC:
-  - On iOS Safari and Android Chrome, selecting 20 photos uploads them with per-file progress; all appear on the frame within 30 s of completion without a page reload on the frame (SSE or polling).
+  - On Android Chrome, selecting 20 photos uploads them with per-file progress; all appear on the frame within 30 s of completion without a page reload on the frame (SSE or polling).
   - Files are validated by content: a `.jpg`-renamed text file returns 415; a file over the limit returns 413 with a readable message.
   - Stored names are server-generated; path traversal names (`../x.jpg`) cannot escape the data dir (test).
   - Uploads are refused with 507 when free space < configured minimum (test with mocked disk usage).
@@ -253,7 +257,10 @@ Sizes S/M/L as in Sprint 1. IDs continue after MF-09.
 - AC:
   - Each uploaded image gets a display derivative fitting within the agreed target (default 800x480 or 1000x600 after visual check) and a 240 px thumbnail; EXIF orientation applied.
   - Derivatives contain no EXIF GPS data (test with a GPS-tagged fixture).
-  - HEIC from iPhone is accepted and converted.
+  - The original file is stored byte-identical (checksum match) in `originals/` and is never served to the display; deleting an item removes original + derivatives.
+  - HEIC from Android is accepted and converted.
+  - Uploading 20 photos increases used storage by ≈ sum of originals + < 250 KB per photo for derivatives (measured); the UI shows used/free space and an estimated remaining photo count.
+  - Video uploads return 415 with a "video coming later" message (D5).
   - Processing a 12 MP JPEG on the Pi 4 takes < 3 s (measured, recorded); the slideshow uses derivatives, not originals.
 
 ### MF-16 Library management page (grid, hide, delete, show now)
@@ -280,26 +287,30 @@ Sizes S/M/L as in Sprint 1. IDs continue after MF-09.
 ### MF-19 On-device onboarding screens (Wi-Fi QR, empty library, status)
 - Depends: MF-12 · Size: S
 - AC:
-  - With no media and no paired devices, the frame shows Wi-Fi join QR then site QR; scanning with iOS Camera and Android Camera joins the network and opens the site (verified on hardware).
+  - With no media and no paired devices, the frame shows Wi-Fi join QR then site QR; scanning with the Android camera joins the network and opens the site (verified on hardware).
   - Long-press menu shows IP, SSID, free storage, version and "pair new device"; all text legible at 800x480 from 1 m.
-  - Wi-Fi QR can be disabled in settings (Q-H).
+  - Wi-Fi QR is shown by default (D3); it can be disabled in settings.
 
-### MF-20 NFC sticker (passive NTAG215) setup guide
-- Depends: MF-10 · Size: S · Optional (Q-F)
+### MF-20 NFC sticker (passive NTAG215): Android tap-to-join + open site
+- Depends: MF-10 · Size: S · Optional (Q-F still open)
 - AC:
   - README section documents writing an NTAG215 with URI record first and optional Wi-Fi record, using a free phone app, and the PSK-leak caveat.
-  - Tapping the tag opens the site on an iPhone (XS+) already on the AP, and joins + opens on an Android 10+ phone (hardware verified).
+  - Tapping the tag with the user's Android 10+ phone (not yet on the AP) prompts to join the frame's Wi-Fi; after joining, the site opens from the tag (same tap or a second tap), hardware verified.
+  - Tag record order and any vendor quirks found are documented.
 
-### MF-21 Spike: client Wi-Fi with AP fallback (option B)
-- Depends: MF-09, answer to Q-A · Size: S (spike)
-- AC:
-  - Prototype watchdog brings up the AP within 60 s of boot when no known Wi-Fi is available, and stays on client when it is; result and recommendation (incl. USB dongle option) written up.
+### MF-21 ~~Spike: client Wi-Fi with AP fallback~~ — WON'T DO
+- Dropped per D1 (frame is hotspot-only permanently). ID retained to avoid renumbering.
 
 ### MF-22 Tests & hardware checklist for Sprint 2 features
 - Owner: Tester · Depends: MF-10…MF-19 · Size: M
 - AC:
   - pytest covers auth, CSRF, upload validation, settings validation; coverage of new modules ≥ 80%; CI green.
-  - Hardware checklist executed on Pi 4B + 800x480 DSI with ≥ 1 iOS and ≥ 1 Android phone: join, pair, upload 20 photos, settings, revoke, network reset; results recorded.
+  - Hardware checklist executed on Pi 4B + 800x480 DSI with the user's Android phone(s): join, pair, upload 20 photos, settings, revoke, network reset; results recorded.
 
 ### Suggested sequencing
-MF-10, MF-11 -> MF-12, MF-13, MF-15 -> MF-14, MF-17, MF-19 -> MF-16, MF-18 -> MF-20, MF-22. MF-21 any time after Q-A.
+MF-10, MF-11 -> MF-12, MF-13, MF-15 -> MF-14, MF-17, MF-19 -> MF-16, MF-18 -> MF-20, MF-22.
+
+## 8. Backlog additions (not Sprint 2)
+### BL-V1 Seamless video integration (D5)
+- Description: Upload, validate (ffprobe), optionally transcode (ffmpeg, H.264 ≤ 1080p) and play video in the slideshow seamlessly alongside photos (poster frame thumbnail, mute default, max length setting, skip on error).
+- Draft AC: Android-recorded MP4 (≤ configured length) uploads, appears in library with thumbnail, plays to end then advances without gap > 1 s; unsupported codec is transcoded or rejected with a message; storage accounting includes video.

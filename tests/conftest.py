@@ -82,3 +82,16 @@ def no_backlight(tmp_path, monkeypatch):
     """No backlight node at all (Windows / non-Pi Linux)."""
     monkeypatch.delenv("MEMORYFRAME_BACKLIGHT", raising=False)
     monkeypatch.setattr(brightness_module, "BACKLIGHT_ROOT", str(tmp_path / "none"))
+
+
+def pair_client(c):
+    """Pair a test client the way a phone does: the frame starts a round, the phone enters the code."""
+    code = c.post("/pairing/start", environ_base={"REMOTE_ADDR": "127.0.0.1"}).get_json()["round"]["code"]
+    r = c.post("/pair", data={"code": code}, environ_base={"REMOTE_ADDR": "10.42.0.23"})
+    assert r.status_code == 303, r.data
+    return c
+
+
+@pytest.fixture
+def paired(client):
+    return pair_client(client)

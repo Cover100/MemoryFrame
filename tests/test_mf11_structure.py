@@ -24,10 +24,10 @@ def test_blueprints_registered(mf_app):
     assert rules["/api/v1/status"] == "api.status"
 
 
-def test_admin_and_api_placeholders(client, lib):
-    assert client.get("/admin/").status_code == 200
+def test_admin_and_api_placeholders(paired, lib):
+    assert paired.get("/admin/").status_code == 200
     lib.add("a.jpg")
-    assert client.get("/api/v1/status").get_json() == {"media": {"total": 1, "visible": 1}}
+    assert paired.get("/api/v1/status").get_json() == {"media": {"total": 1, "visible": 1}}
 
 
 def test_schema_tables(mf_app):
@@ -75,6 +75,7 @@ def test_display_read_routes_open_to_network(client):
 READ_ONLY_GET_ENDPOINTS = {
     "static", "display.index", "display.media", "display.uploads", "display.healthz",
     "display.get_brightness", "admin.home", "api.status",
+    "pairing.state", "pairing.pair_page",
 }
 
 

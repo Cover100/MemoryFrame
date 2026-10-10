@@ -30,9 +30,11 @@ def create_app(config=None):
     from .display import bp as display_bp
     from .admin import bp as admin_bp
     from .api import bp as api_bp
+    from .pairing import bp as pairing_bp
 
     app.register_blueprint(display_bp)
     app.register_blueprint(admin_bp, url_prefix="/admin")
     app.register_blueprint(api_bp, url_prefix="/api/v1")
+    app.register_blueprint(pairing_bp)
 
     return app

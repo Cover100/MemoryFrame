@@ -1,9 +1,11 @@
-"""API blueprint (/api/v1). Write endpoints arrive with MF-12/MF-14."""
+"""API blueprint (/api/v1). Every route requires a paired session (MF-12): 401 otherwise."""
 from flask import Blueprint, jsonify
 
+from . import auth
 from .db import get_db
 
 bp = Blueprint("api", __name__)
+bp.before_request(auth.require_session("api"))
 
 
 @bp.route("/status")

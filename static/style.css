@@ -578,3 +578,15 @@ video {
 }
 
 
+
+/* MF-12 pairing overlay: sized for 800x480 */
+#pairOverlay{position:fixed;inset:0;z-index:50;display:none;align-items:center;justify-content:center;
+  background:rgba(0,0,0,.88);color:#fff;font-family:system-ui,sans-serif}
+#pairOverlay.visible{display:flex}
+#pairBox{display:flex;gap:28px;align-items:center;max-width:780px;max-height:460px}
+#pairQr svg{width:260px;height:260px;display:block;background:#fff}
+#pairTitle{font-size:30px;font-weight:600}
+#pairSsid{font-size:24px;margin-top:6px;opacity:.9}
+#pairCode{font-size:80px;font-weight:700;letter-spacing:4px;margin:10px 0;font-variant-numeric:tabular-nums;white-space:nowrap}
+#pairHint{font-size:20px;max-width:420px;opacity:.85}
+#pairOverlay button{font-size:20px;margin:14px 10px 0 0;padding:8px 16px;border-radius:8px;border:0}

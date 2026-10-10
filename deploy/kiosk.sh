@@ -79,7 +79,9 @@ mark_clean_exit() {
 # Wayland (labwc on Raspberry Pi OS trixie): ask for the Wayland backend
 # explicitly instead of relying only on the auto hint.
 PLATFORM_FLAGS=(--ozone-platform-hint=auto)
-if [ -n "${WAYLAND_DISPLAY:-}" ]; then
+# labwc on Raspberry Pi OS does not always export WAYLAND_DISPLAY to autostart
+# programs, so XDG_SESSION_TYPE=wayland also counts.
+if [ -n "${WAYLAND_DISPLAY:-}" ] || [ "${XDG_SESSION_TYPE:-}" = wayland ]; then
     PLATFORM_FLAGS=(--ozone-platform=wayland --enable-features=UseOzonePlatform)
 fi
 
@@ -101,23 +103,14 @@ while true; do
     mark_clean_exit
     rm -f "$PROFILE_DIR"/Singleton{Lock,Socket,Cookie}
     # shellcheck disable=SC2086
-    "$BROWSER" \
-        --kiosk \
-        --user-data-dir="$PROFILE_DIR" \
-        --password-store=basic \
-        --no-first-run \
-        --no-default-browser-check \
-        --noerrdialogs \
-        --disable-infobars \
-        --disable-session-crashed-bubble \
-        --hide-crash-restore-bubble \
-        --disable-features=Translate \
-        --autoplay-policy=no-user-gesture-required \
-        "${PLATFORM_FLAGS[@]}" \
-        "${DEBUG_FLAGS[@]}" \
+    set -- --kiosk --user-data-dir="$PROFILE_DIR" --password-store=basic --no-first-run \
+        --no-default-browser-check --noerrdialogs --disable-infobars \
+        --disable-session-crashed-bubble --hide-crash-restore-bubble \
+        --disable-features=Translate --autoplay-policy=no-user-gesture-required \
         --check-for-update-interval=31536000 \
-        ${MEMORYFRAME_CHROMIUM_FLAGS:-} \
-        "$URL"
+        "${PLATFORM_FLAGS[@]}" "${DEBUG_FLAGS[@]}" ${MEMORYFRAME_CHROMIUM_FLAGS:-} "$URL"
+    log "launch: $BROWSER $*"
+    "$BROWSER" "$@"
     log "browser exited with status $?, restarting in 2 s"
     sleep 2
 done

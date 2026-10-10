@@ -12,7 +12,6 @@ import time
 import pytest
 from werkzeug.serving import make_server
 
-import app as app_module
 from cdp import CDP, page_ws_url
 
 BROWSER = next((shutil.which(b) for b in ("google-chrome", "chromium", "chromium-browser")
@@ -33,12 +32,11 @@ def free_port():
 
 
 @pytest.fixture
-def server(uploads, backlight):
-    (uploads / "a.png").write_bytes(PNG)
-    (uploads / "b.png").write_bytes(PNG)
-    app_module.app.config["TESTING"] = True
+def server(mf_app, lib, backlight):
+    lib.add("a.png", PNG)
+    lib.add("b.png", PNG + b"\0")   # distinct checksum (duplicates are skipped)
     port = free_port()
-    srv = make_server("127.0.0.1", port, app_module.app, threaded=True)
+    srv = make_server("127.0.0.1", port, mf_app, threaded=True)
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()
     yield f"http://127.0.0.1:{port}/"

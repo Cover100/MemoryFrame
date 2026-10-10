@@ -64,6 +64,11 @@ What it does:
 - `deploy/memoryframe-kiosk.desktop` → `~/.config/autostart/`, which runs
   `deploy/kiosk.sh`: waits for `GET /healthz`, then runs one Chromium kiosk
   (restarted if it exits; a lock prevents a second launcher).
+  Chromium runs with its own profile (`~/.cache/memoryframe/chromium-profile`),
+  `--password-store=basic` (no keyring prompt) and no first-run/restore bubbles. The launcher and
+  Chromium's stderr are logged to `~/.cache/memoryframe/kiosk.log`. Extra flags can be passed
+  with `MEMORYFRAME_CHROMIUM_FLAGS` (e.g. `--ozone-platform=wayland` or `--disable-gpu`) in the
+  autostart entry.
 - `deploy/audit-autostart.sh --disable` checks user/system XDG autostart, LXDE/labwc/wayfire
   autostart, shell profiles, crontab `@reboot`, `/etc/rc.local` and systemd units for anything
   else that starts the app or Chromium, and disables it (with backups).

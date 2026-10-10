@@ -8,3 +8,6 @@ __pycache__/
 venv/
 .pytest_cache/
 .coverage
+
+# Local hotspot config (contains the Wi-Fi password)
+deploy/hotspot.conf

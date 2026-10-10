@@ -83,3 +83,27 @@ original files as `*.disabled-by-memoryframe.*` / `*.bak-memoryframe.*`).
 
 Development: on Windows `python app.py` also opens the default browser; on Linux set
 `MEMORYFRAME_OPEN_BROWSER=1` to do the same. `MEMORYFRAME_HOST` / `MEMORYFRAME_PORT` override the bind address.
+
+## Wi-Fi hotspot (Raspberry Pi)
+
+`deploy/hotspot.sh` replaces the one-off `nmcli device wifi hotspot` with a saved
+NetworkManager profile (`MemoryFrame-hotspot`) that autoconnects on `wlan0` at boot.
+It is independent of the app service/kiosk from `install.sh` (it only touches NetworkManager),
+so the two can be run in either order.
+
+```bash
+cp deploy/hotspot.conf.example deploy/hotspot.conf   # optional; git-ignored
+nano deploy/hotspot.conf                             # set SSID and PASSWORD
+./deploy/hotspot.sh                                  # or run without a config to be prompted
+```
+
+- Security: WPA2-PSK (AES/CCMP). Password must be 8–63 characters, 12+ recommended; the old
+  default `MemoryFrame123` is refused. Never commit `deploy/hotspot.conf`.
+- Address: the frame is **10.42.0.1** on the hotspot; open **http://10.42.0.1:5000** from a
+  phone (no internet needed). Hostname/captive-portal behaviour is designed in MF-07.
+- Keep a keyboard + screen or Ethernet connected while running it: wlan0 switches to AP
+  mode, so the Pi leaves any Wi-Fi network it was on.
+- **Change password/SSID:** edit `deploy/hotspot.conf` (or delete it to be prompted) and re-run
+  `./deploy/hotspot.sh`. Re-running updates the same profile; it never creates duplicates.
+- **Rollback:** `./deploy/hotspot.sh --rollback` deletes `MemoryFrame-hotspot` and re-enables
+  autoconnect on the old manual `Hotspot` profile if it exists.

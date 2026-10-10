@@ -35,7 +35,11 @@ def main():
 
     host = os.environ.get("MEMORYFRAME_HOST", "0.0.0.0")
 
-    port = int(os.environ.get("MEMORYFRAME_PORT", "5000"))
+    # MEMORYFRAME_PORTS="80,5000" listens on several ports (the Pi service uses
+    # 80 for http://10.42.0.1/ and keeps 5000 for existing bookmarks/tools).
+    # MEMORYFRAME_PORT (single port) is still honoured; default 5000.
+    ports_env = os.environ.get("MEMORYFRAME_PORTS") or os.environ.get("MEMORYFRAME_PORT", "5000")
+    ports = [int(p) for p in ports_env.replace(" ", "").split(",") if p]
 
     # On the Pi the kiosk is started by deploy/kiosk.sh after /healthz
     # answers. For development (Windows, or MEMORYFRAME_OPEN_BROWSER=1)
@@ -55,9 +59,11 @@ def main():
 
     from waitress import serve
 
-    print(f"Memory Frame serving on http://{host}:{port}")
+    listen = " ".join(f"{host}:{p}" for p in ports)
 
-    serve(app, host=host, port=port, threads=4)
+    print(f"Memory Frame serving on {listen}")
+
+    serve(app, listen=listen, threads=4)
 
 
 if __name__ == "__main__":

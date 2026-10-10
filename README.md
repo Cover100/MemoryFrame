@@ -66,7 +66,7 @@ What it does:
   (restarted if it exits; a lock prevents a second launcher).
   Chromium runs with its own profile (`~/.cache/memoryframe/chromium-profile`),
   `--password-store=basic` (no keyring prompt), no first-run/restore bubbles, and
-  `--ozone-platform=wayland` when a Wayland session is detected. The launcher and Chromium's
+  `--ozone-platform=wayland` when a Wayland session is detected (`WAYLAND_DISPLAY` or `XDG_SESSION_TYPE=wayland`; the exact command line is logged as `launch: ...`). The launcher and Chromium's
   stdout/stderr go to `~/.cache/memoryframe-kiosk.log` (rotated at 1 MB). Extra flags:
   `MEMORYFRAME_CHROMIUM_FLAGS`; browser override: `MEMORYFRAME_BROWSER`.
   Debugging: `MEMORYFRAME_KIOSK_DEBUG=1` adds DevTools on **127.0.0.1:9222 only** plus Chromium

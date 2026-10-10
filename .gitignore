@@ -1,1 +1,2 @@
-uploads/
+uploads/__pycache__/
+.coverage

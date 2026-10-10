@@ -68,6 +68,11 @@ What it does:
   autostart, shell profiles, crontab `@reboot`, `/etc/rc.local` and systemd units for anything
   else that starts the app or Chromium, and disables it (with backups).
   Run `./deploy/audit-autostart.sh` without arguments for a report only.
+  It only flags commands that actually launch Memory Frame or a kiosk browser
+  (`.../MemoryFrame/app.py`, `cd .../MemoryFrame && python app.py`, `localhost:5000` / `127.0.0.1:5000`,
+  `chromium --kiosk`, a duplicate `deploy/kiosk.sh`); a file that only contains the home path
+  (e.g. `/home/memoryframe/pi-apps/updater`) is not flagged. For `.desktop` files only `Exec=` is checked.
+  Lines containing `memoryframe-managed` are always left alone. Crontab backups go to `$HOME`.
 
 Check after reboot (expect exactly one of each):
 

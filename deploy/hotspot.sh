@@ -4,13 +4,17 @@
 #   deploy/hotspot.sh                    # create/update profile ONLY (autoconnect=no, not activated)
 #   deploy/hotspot.sh --test SECONDS     # create/update, then bring it up for SECONDS and
 #                                        # automatically switch back to the previous Wi-Fi
-#   deploy/hotspot.sh --enable-at-boot   # create/update with autoconnect=yes (hotspot wins wlan0 at boot)
 #   deploy/hotspot.sh --rollback         # take the profile down, delete it, let NM reconnect wlan0
+#
+# MANUAL ONLY: the profile always has autoconnect=no (also when an existing
+# profile is updated), so NetworkManager never starts it at boot or on its own.
+# It only comes up through an explicit --test run. Starting at boot is
+# deliberately not supported.
 #
 # SAFETY: on a Raspberry Pi 4 wlan0 cannot be a client and an AP at the same
 # time through NetworkManager. Activating the hotspot DROPS the current Wi-Fi
 # (and any remote access over it). The default run therefore never activates
-# anything. Only use --test / --enable-at-boot with someone at the device
+# anything. Only use --test with someone at the device
 # (keyboard + screen, or Ethernet).
 #
 # SSID/password come from deploy/hotspot.conf (git-ignored, see
@@ -40,12 +44,15 @@ MODE="create" TEST_SECONDS=""
 case "${1:-}" in
     "") ;;
     --rollback) MODE="rollback" ;;
-    --enable-at-boot) MODE="enable" ;;
+    --enable-at-boot)
+        echo "--enable-at-boot is not supported: the hotspot is manual only (autoconnect is always off)." >&2
+        echo "Use --test SECONDS for a timed run with automatic switch-back to the home Wi-Fi." >&2
+        exit 2 ;;
     --test)
         MODE="test"; TEST_SECONDS="${2:-}"
         [[ "$TEST_SECONDS" =~ ^[0-9]+$ ]] && [ "$TEST_SECONDS" -ge 30 ] && [ "$TEST_SECONDS" -le 1800 ] \
             || { echo "--test needs SECONDS between 30 and 1800" >&2; exit 2; } ;;
-    -h|--help) sed -n '2,21p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,25p' "$0"; exit 0 ;;
     *) echo "Unknown option: $1 (see --help)" >&2; exit 2 ;;
 esac
 
@@ -84,8 +91,8 @@ if [ "${#PASSWORD}" -lt "$RECOMMENDED_LEN" ]; then
     echo "Warning: passwords of $RECOMMENDED_LEN+ characters are recommended." >&2
 fi
 
+# Always off: the hotspot is manual only.
 AUTOCONNECT=no
-[ "$MODE" = enable ] && AUTOCONNECT=yes
 
 if profile_exists; then
     echo "Updating existing profile $CON_NAME"
@@ -98,7 +105,7 @@ fi
 nm connection modify "$CON_NAME" \
     connection.interface-name "$IFACE" \
     connection.autoconnect "$AUTOCONNECT" \
-    connection.autoconnect-priority 100 \
+    connection.autoconnect-priority -10 \
     802-11-wireless.ssid "$SSID" \
     802-11-wireless.mode ap \
     802-11-wireless.band "$BAND" \
@@ -115,12 +122,7 @@ nm connection modify "$CON_NAME" \
 case "$MODE" in
 create)
     echo "Profile $CON_NAME saved with autoconnect=no. It is NOT active; your current Wi-Fi is untouched."
-    echo "Test it (on site): $0 --test 120   Enable at boot: $0 --enable-at-boot"
-    ;;
-enable)
-    echo "Profile $CON_NAME saved with autoconnect=yes (priority 100)."
-    echo "At the next boot (or next time wlan0 reconnects) it will take wlan0 and the current Wi-Fi will drop."
-    echo "Nothing was activated now. Undo with: $0 --rollback"
+    echo "Test it (with the user at the Pi): $0 --test 120"
     ;;
 test)
     PREV="$(nm -g GENERAL.CONNECTION device show "$IFACE" 2>/dev/null | head -n1 || true)"

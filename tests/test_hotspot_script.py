@@ -99,9 +99,14 @@ def test_rerun_is_idempotent(stub):
 def test_never_touches_other_profiles(stub):
     d, _, env = stub
     run(env)
-    run(env, "--enable-at-boot")
+    run(env, "--test", "120")
     run(env, "--rollback")
     for line in read(d, "log").splitlines():
+        if line.startswith("systemd-run"):
+            # The revert timer may only bring the home Wi-Fi back *up*.
+            assert f"connection up {HOME_WIFI}" in line.replace("'", ""), line
+            assert "modify" not in line and "delete" not in line, line
+            continue
         assert HOME_WIFI not in line, line
         assert " Hotspot" not in line.replace("MemoryFrame-hotspot", ""), line
     assert read(d, f"ac-{HOME_WIFI}") == "yes"
@@ -116,11 +121,36 @@ def test_rejects_weak_passwords(stub, pw):
     assert "MemoryFrame-hotspot" not in read(d, "profiles")
 
 
-def test_enable_at_boot_sets_autoconnect_but_does_not_activate(stub):
+def test_enable_at_boot_is_rejected(stub):
     d, _, env = stub
-    assert run(env, "--enable-at-boot").returncode == 0
-    assert read(d, "ac-MemoryFrame-hotspot") == "yes"
+    r = run(env, "--enable-at-boot")
+    assert r.returncode != 0
+    assert "not supported" in r.stderr
+    assert "MemoryFrame-hotspot" not in read(d, "profiles")
+    assert read(d, "log") == ""                     # no nmcli call at all
     assert read(d, "active") == HOME_WIFI
+
+
+@pytest.mark.parametrize("args", [[], ["--test", "120"]])
+def test_autoconnect_always_no(stub, args):
+    d, _, env = stub
+    assert run(env, *args).returncode == 0
+    assert read(d, "ac-MemoryFrame-hotspot") == "no"
+    assert "connection.autoconnect yes" not in read(d, "log")
+
+
+def test_rerun_resets_autoconnect_yes_to_no(stub):
+    d, _, env = stub
+    # Simulate a profile left with autoconnect=yes (e.g. by the old script from #8).
+    with open(d / "profiles", "a") as f:
+        f.write("MemoryFrame-hotspot\n")
+    (d / "ac-MemoryFrame-hotspot").write_text("yes\n")
+    r = run(env)
+    assert r.returncode == 0, r.stderr
+    assert "Updating existing profile" in r.stdout
+    assert read(d, "ac-MemoryFrame-hotspot") == "no"
+    assert read(d, "profiles").splitlines().count("MemoryFrame-hotspot") == 1
+    assert "connection up" not in read(d, "log")
 
 
 def test_test_mode_schedules_revert_before_activation_and_revert_works(stub):

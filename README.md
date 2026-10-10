@@ -84,34 +84,36 @@ original files as `*.disabled-by-memoryframe.*` / `*.bak-memoryframe.*`).
 Development: on Windows `python app.py` also opens the default browser; on Linux set
 `MEMORYFRAME_OPEN_BROWSER=1` to do the same. `MEMORYFRAME_HOST` / `MEMORYFRAME_PORT` override the bind address.
 
-## Wi-Fi hotspot (Raspberry Pi)
+## Wi-Fi hotspot (Raspberry Pi) - manual only
 
-`deploy/hotspot.sh` replaces the one-off `nmcli device wifi hotspot` with a saved
-NetworkManager profile (`MemoryFrame-hotspot`, AP mode on `wlan0`). It only touches that
-profile and never modifies or deletes any other profile (home Wi-Fi, old `Hotspot`).
+`deploy/hotspot.sh` manages a saved NetworkManager profile (`MemoryFrame-hotspot`, AP mode on
+`wlan0`). **Hotspot use is manual only:** the profile always has `autoconnect=no` (re-running the
+script resets it to `no` if it was changed), so it never starts at boot or on its own. Starting at
+boot is not supported (`--enable-at-boot` is rejected). The script only touches its own profile
+and never modifies or deletes others (home Wi-Fi, old `Hotspot`).
 
 > **Warning:** on a Pi 4, NetworkManager cannot run `wlan0` as a Wi-Fi client and an access
 > point at the same time. Activating the hotspot **drops the current Wi-Fi and any remote access
-> over it** (SSH, Raspberry Pi Connect). Only activate it with someone at the device
-> (keyboard + screen, or Ethernet).
+> over it** (SSH, Raspberry Pi Connect). The first hotspot test must be done with the user
+> **physically at the Pi** (keyboard + screen).
 
 ```bash
 cp deploy/hotspot.conf.example deploy/hotspot.conf   # optional; git-ignored
 nano deploy/hotspot.conf                             # set SSID and PASSWORD
 ./deploy/hotspot.sh                  # create/update only: autoconnect=no, NOT activated (safe remotely)
-./deploy/hotspot.sh --test 120       # on site: up for 120 s, then a systemd timer switches back
-./deploy/hotspot.sh --enable-at-boot # on site, final: autoconnect=yes (priority 100) - takes wlan0 at boot
+./deploy/hotspot.sh --test 120       # at the Pi: up for 120 s, then a systemd timer switches back
 ./deploy/hotspot.sh --rollback       # down + delete the profile, let NetworkManager reconnect wlan0
 ```
 
 - Security: WPA2-PSK (AES/CCMP). Password must be 8-63 characters, 12+ recommended; the old
   default `MemoryFrame123` is refused. Never commit `deploy/hotspot.conf`.
-- Address: when active, the frame is **10.42.0.1**: open **http://10.42.0.1:5000** from a phone
-  (no internet needed). Hostname/captive-portal behaviour is designed in MF-07.
+- Address: while active, the frame is **10.42.0.1**: open **http://10.42.0.1:5000** from a phone
+  (no internet needed).
 - `--test SECONDS` (30-1800) arms the revert first (`systemd-run --on-active=SECONDS`, runs as
   root and survives the session dropping), then brings the hotspot up. The revert takes the
   hotspot down and brings back the Wi-Fi profile that was active before.
-- **Change password/SSID:** edit `deploy/hotspot.conf` and re-run the same command. Re-running
-  updates the same profile; it never creates duplicates.
+- **Change password/SSID:** edit `deploy/hotspot.conf` and re-run `./deploy/hotspot.sh`
+  (same profile, no duplicates, autoconnect stays off).
 - **Rollback:** `./deploy/hotspot.sh --rollback`. If wlan0 does not come back on its own:
   `sudo nmcli connection up <your Wi-Fi profile>`.
+- On-device runbook: `docs/runbooks/MF-04-MF-09-pi-runbook.md`.

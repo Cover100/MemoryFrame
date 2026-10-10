@@ -1,4 +1,6 @@
 """API blueprint (/api/v1). Every route requires a paired session (MF-12): 401 otherwise."""
+import threading
+
 from flask import Blueprint, abort, current_app, jsonify, request, send_file
 from werkzeug.exceptions import RequestEntityTooLarge
 
@@ -107,27 +109,40 @@ def set_hidden(media_id):
     return jsonify({"id": media_id, "hidden": data["hidden"]})
 
 
+# Deletes of the same id are serialised in-process (waitress runs one process, many threads).
+# Striped locks keep memory bounded.
+_DELETE_LOCKS = [threading.Lock() for _ in range(64)]
+
+
 @bp.route("/media/<int:media_id>", methods=["DELETE"])
 def delete_media(media_id):
-    row = _item(media_id)
+    _item(media_id)                                 # 404 for bad / unknown ids
+    with _DELETE_LOCKS[media_id % len(_DELETE_LOCKS)]:
+        return _delete_locked(media_id)
+
+
+def _delete_locked(media_id):
     data_dir = current_app.config["DATA_DIR"]
     db = get_db()
+    rows = db.execute("SELECT stored_name FROM media WHERE id = ?", (media_id,)).fetchall()
+    if not rows:                                    # another delete finished while we waited
+        abort(404)
+    stored = rows[0]["stored_name"]
     # 1) move every file into tmp/trash (atomic renames, same filesystem)
-    staged = imaging.stage_delete(data_dir, row["stored_name"], media_id)
+    staged = imaging.stage_delete(data_dir, stored, media_id)
     try:
         # 2) remove the row
         gone = db.execute("DELETE FROM media WHERE id = ?", (media_id,)).rowcount
         db.commit()
     except Exception:
         db.rollback()
-        imaging.unstage_delete(staged)           # put the files back: no row without files
+        imaging.unstage_delete(staged)           # DB step failed: row survives, so put files back
         raise
-    if gone == 0:                                # a concurrent delete of the same id won
-        imaging.unstage_delete(staged)
-        abort(404)
-    # 3) only now really delete; anything left in tmp/trash is swept at the next start
+    # 3) the row is gone (by us, or by another writer): the files must go too, never restore
     removed = imaging.purge_staged(staged)
-    clear_show_now(current_app, row["stored_name"])
+    if gone == 0:
+        abort(404)
+    clear_show_now(current_app, stored)
     bump_media_rev(current_app)
     return jsonify({"id": media_id, "deleted": True, "files_removed": removed})
 

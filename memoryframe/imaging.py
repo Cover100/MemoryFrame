@@ -224,6 +224,25 @@ def purge_staged(staged):
     return n
 
 
+def _restore_legacy(conn, data_dir, path, kind, name):
+    """Pre-id trash names ("<kind>-<uuid>.<ext>"): restore if exactly one row matches the
+    stored name, else keep and log. Never deletes. Returns 1 if restored."""
+    stem = os.path.splitext(name)[0]
+    if kind == 0:
+        rows = conn.execute("SELECT stored_name FROM media WHERE stored_name = ?", (name,)).fetchall()
+    else:
+        rows = conn.execute("SELECT stored_name FROM media WHERE stored_name LIKE ?",
+                            (stem + ".%",)).fetchall() if name.endswith(".jpg") else []
+    dest = os.path.join(data_dir, TRASH_SUBDIRS[kind], name)
+    if len(rows) != 1 or os.path.exists(dest):
+        log.warning("trash: keeping legacy %s (matching rows: %d, target exists: %s)",
+                    os.path.basename(path), len(rows), os.path.exists(dest))
+        return 0
+    os.replace(path, dest)
+    log.warning("trash: restored legacy %s", dest)
+    return 1
+
+
 def _sweep_trash(conn, data_dir):
     """Recover from a crash in the middle of a delete.
 
@@ -239,6 +258,12 @@ def _sweep_trash(conn, data_dir):
     for f in sorted(os.listdir(trash)):
         path = os.path.join(trash, f)
         m = re.fullmatch(r"([012])-(\d{1,19})-([0-9A-Za-z._-]+)", f)
+        legacy = None if m else re.fullmatch(r"([012])-([0-9a-f]{32}\.[0-9a-z]{1,5})", f)
+        if legacy and os.path.isfile(path):
+            restored_one = _restore_legacy(conn, data_dir, path, int(legacy.group(1)), legacy.group(2))
+            restored += restored_one
+            kept += 1 - restored_one
+            continue
         if not m or not os.path.isfile(path):
             log.warning("trash: keeping unrecognised %s", f)
             kept += 1

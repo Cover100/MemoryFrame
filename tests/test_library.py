@@ -294,6 +294,76 @@ def test_sweep_keeps_trash_if_target_exists(mf_app, lib):
     assert open(os.path.join(d, "originals", name), "rb").read() != b"other bytes"
 
 
+def test_concurrent_delete_both_stage_no_orphans(paired, item, mf_app, monkeypatch):
+    """Deterministic version of Tester's race: request A stages the original, request B stages the
+    derivatives and its DELETE hits 0 rows. Nothing may be restored - no orphans, empty trash."""
+    from memoryframe import api
+    d = mf_app.config["DATA_DIR"]
+    name = stored_name(mf_app, item["id"])
+    paired.get(item["thumb"], environ_base=PHONE)
+    files = _files(mf_app, name)
+    real_stage = imaging.stage_delete
+    calls = []
+
+    def split(data_dir, stored, media_id):
+        calls.append(1)
+        # the "other" request: stage the original only, then commit its DELETE
+        other = [(os.path.join(d, "tmp", "trash", f"0-{media_id}-{stored}"), files[0])]
+        os.makedirs(os.path.dirname(other[0][0]), exist_ok=True)
+        os.replace(files[0], other[0][0])
+        conn = mfdb.connect(mf_app.config["DB_PATH"])
+        conn.execute("DELETE FROM media WHERE id = ?", (media_id,))
+        conn.commit()
+        conn.close()
+        imaging.purge_staged(other)
+        return real_stage(data_dir, stored, media_id)     # this request stages the rest
+
+    monkeypatch.setattr(imaging, "stage_delete", split)
+    r = paired.delete(f"/api/v1/media/{item['id']}", environ_base=PHONE)
+    assert r.status_code == 404 and calls
+    assert not any(os.path.exists(f) for f in files)       # no orphan derivatives restored
+    assert os.listdir(os.path.join(d, "tmp", "trash")) == []
+
+
+def test_threaded_concurrent_deletes_leave_no_orphans(mf_app, lib, paired):
+    import threading
+    for n in range(10):
+        lib.add(f"p{n}.jpg", jpeg(300 + n, 200))
+    d = mf_app.config["DATA_DIR"]
+    for media_id in range(1, 11):
+        clients = []
+        for _ in range(4):                      # one client per thread, same phone session
+            c = mf_app.test_client()
+            c._cookies = dict(paired._cookies)
+            clients.append(c)
+        codes = []
+        barrier = threading.Barrier(4)
+
+        def go(c):
+            barrier.wait()
+            codes.append(c.delete(f"/api/v1/media/{media_id}", environ_base=PHONE).status_code)
+
+        ts = [threading.Thread(target=go, args=(c,)) for c in clients]
+        [t.start() for t in ts]
+        [t.join() for t in ts]
+        assert sorted(codes) == [200, 404, 404, 404]
+    for sub in ("originals", "display", "thumbs", "tmp/trash"):
+        p = os.path.join(d, sub)
+        assert [f for f in os.listdir(p) if f != "trash"] == [] if os.path.isdir(p) else True
+
+
+def test_sweep_restores_legacy_trash_names(mf_app, lib):
+    from memoryframe import create_app
+    lib.add("a.jpg", jpeg(300, 200))
+    d = mf_app.config["DATA_DIR"]
+    name = stored_name(mf_app, 1)
+    trash = os.path.join(d, "tmp", "trash")
+    os.makedirs(trash, exist_ok=True)
+    os.replace(os.path.join(d, "originals", name), os.path.join(trash, f"0-{name}"))
+    open(os.path.join(trash, "0-" + "f" * 32 + ".jpg"), "wb").write(b"x")    # no matching row
+    create_app({"TESTING": True, "DATA_DIR": d, "DB_PATH": mf_app.config["DB_PATH"]})
+    assert os.path.exists(os.path.join(d, "originals", name))
+    assert os.listdir(trash) == ["0-" + "f" * 32 + ".jpg"]                   # kept, logged
 def test_concurrent_second_delete_is_404(paired, item, mf_app, monkeypatch):
     """Both requests passed _item(); the first committed first -> the second gets 404."""
     real_stage = imaging.stage_delete

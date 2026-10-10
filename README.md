@@ -189,3 +189,10 @@ There is one owner (D6), who may pair several phones.
 - **Session:** the phone gets an HttpOnly, SameSite=Strict cookie (`mf_session`, valid 1 year). Only its SHA-256 is stored in the database.
 - **Access rules:** every `/admin/*` route redirects to `/pair` and every `/api/v1/*` route returns 401 without a session. The frame's own pairing routes (`/pairing/*`) are localhost only.
 - **Sign out all phones:** available on the site, or on the frame's overlay (long-press). It revokes every session; phones then re-pair.
+
+## Web security (MF-13)
+
+- **Host allow-list:** requests are answered only for `10.42.0.1`, `memoryframe.lan`, `memoryframe.local`, `localhost`, `127.0.0.1` and `::1`. Any other Host gets **400**, which blocks DNS rebinding. Add more with `MEMORYFRAME_EXTRA_HOSTS`, e.g. `MEMORYFRAME_EXTRA_HOSTS=192.168.50.124` to test from the home network over Pi Connect.
+- **Origin check:** a non-GET request with an `Origin`/`Referer` from another host gets **403**.
+- **CSRF:** the `mf_csrf` cookie (HttpOnly, SameSite=Strict) must be echoed in the `X-CSRF-Token` header (read it from `<meta name="csrf-token">`) or in a `csrf_token` form field. Otherwise the request gets **403**. The localhost-only kiosk routes are exempt.
+- **Headers:** `Content-Security-Policy: default-src 'self'; ... frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`. Templates contain no inline scripts or styles and no external URLs (enforced by a test).

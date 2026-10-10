@@ -113,20 +113,9 @@
 
 
 
-<script>
+<script id="mediaData" type="application/json">{{ media | tojson }}</script>
 
-
-// =================================================
-// Flask passes media library to Javascript
-// =================================================
-
-
-const mediaFiles =
-    {{ media | tojson }};
-
-
-
-</script>
+<script src="/static/media-data.js"></script>
 
 
 

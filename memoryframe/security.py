@@ -17,4 +17,5 @@ def localhost_only(view):
         if not is_local_request():
             abort(403)
         return view(*args, **kwargs)
+    wrapper.localhost_only = True      # MF-13: CSRF token not required (kiosk only; Origin still checked)
     return wrapper

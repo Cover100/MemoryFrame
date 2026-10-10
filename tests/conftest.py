@@ -2,6 +2,7 @@ import os
 import sys
 
 import pytest
+from flask.testing import FlaskClient
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -23,6 +24,21 @@ def data_dir(tmp_path):
     return d
 
 
+class CsrfClient(FlaskClient):
+    """Test client that behaves like our pages: echoes the mf_csrf cookie in
+    X-CSRF-Token on non-GET requests. Pass csrf=False to send nothing (MF-13 tests)."""
+
+    def open(self, *args, csrf=True, **kwargs):
+        method = (kwargs.get("method") or "GET").upper()
+        if csrf and method not in ("GET", "HEAD", "OPTIONS"):
+            if self.get_cookie("mf_csrf") is None:
+                super().open("/healthz", environ_base={"REMOTE_ADDR": "127.0.0.1"})
+            headers = dict(kwargs.pop("headers", None) or {})
+            headers.setdefault("X-CSRF-Token", self.get_cookie("mf_csrf").value)
+            kwargs["headers"] = headers
+        return super().open(*args, **kwargs)
+
+
 @pytest.fixture
 def mf_app(tmp_path, data_dir):
     """A fresh app with its own data dir and legacy folder per test."""
@@ -34,6 +50,7 @@ def mf_app(tmp_path, data_dir):
         "DB_PATH": str(data_dir / "memoryframe.db"),
         "LEGACY_UPLOADS": str(legacy),
     })
+    a.test_client_class = CsrfClient
     return a
 
 

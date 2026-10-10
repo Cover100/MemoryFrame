@@ -22,8 +22,9 @@ const BRIGHTNESS_DISPLAY_TIME = 1500;
 
 const MIN_BRIGHTNESS = 40;
 
-// At most one backlight write per BRIGHTNESS_WRITE_INTERVAL ms (< 10/s, with margin for timer jitter).
-const BRIGHTNESS_WRITE_INTERVAL = 110;
+// Delay before skipping a file that failed to load (keeps a folder
+// full of broken files from spinning the CPU).
+const SKIP_DELAY = 1000;
 
 
 // ======================================================
@@ -61,6 +62,13 @@ let slideTimer = null;
 let pendingPlaylist = null;
 
 let playlistUpdatePending = false;
+
+// Watchdog: skips an item that never finishes loading/playing.
+let loadWatchdog = null;
+
+// Incremented every time a new item is shown, so late callbacks
+// from a previous (e.g. broken) item are ignored.
+let showToken = 0;
 
 
 // Gesture variables
@@ -209,6 +217,15 @@ function showCurrent(){
     }
 
 
+    if(playlist.length === 0){
+
+        stopSlideshow();
+
+        return;
+
+    }
+
+
 
     if(
         currentIndex >= playlist.length
@@ -227,6 +244,11 @@ function showCurrent(){
 
     let item =
         playlist[currentIndex];
+
+
+    showToken++;
+
+    clearTimeout(loadWatchdog);
 
 
 
@@ -278,8 +300,37 @@ function showImage(item){
 
 
 
+    const token = showToken;
+
+
+    imageElement.onerror =
+        function(){
+
+            if(token !== showToken) return;
+
+            skipBroken(item, "image failed to load");
+
+        };
+
+
+    // Failsafe: if neither onload nor onerror fires in time, move on.
+    loadWatchdog =
+        setTimeout(()=>{
+
+            if(token !== showToken) return;
+
+            skipBroken(item, "image load timed out");
+
+        },
+        IMAGE_DURATION);
+
+
     imageElement.onload =
         function(){
+
+            if(token !== showToken) return;
+
+            clearTimeout(loadWatchdog);
 
 
             applyKenBurns();
@@ -344,24 +395,70 @@ function showVideo(item){
 
 
 
-    videoElement.src =
-        "/uploads/"
-        +
-        item.filename;
+    const token = showToken;
 
+
+    videoElement.onerror =
+        function(){
+
+            if(token !== showToken) return;
+
+            skipBroken(item, "video failed to load or is unsupported");
+
+        };
+
+
+    // Failsafe: a corrupt/unsupported video may never fire
+    // loadeddata or ended. Skip it within IMAGE_DURATION.
+    loadWatchdog =
+        setTimeout(()=>{
+
+            if(token !== showToken) return;
+
+            skipBroken(item, "video did not start in time");
+
+        },
+        IMAGE_DURATION);
 
 
     videoElement.onloadeddata =
         function(){
 
+            if(token !== showToken) return;
 
             videoElement.classList.add(
                 "visible"
             );
 
 
-            videoElement.play();
+            let playing = videoElement.play();
 
+            if(playing && playing.then){
+
+                playing
+                    .then(()=>{
+
+                        if(token === showToken){
+
+                            clearTimeout(loadWatchdog);
+
+                        }
+
+                    })
+                    .catch((error)=>{
+
+                        if(token !== showToken) return;
+
+                        skipBroken(item, "video play() rejected: " + error);
+
+                    });
+
+            }
+            else{
+
+                clearTimeout(loadWatchdog);
+
+            }
 
         };
 
@@ -370,11 +467,17 @@ function showVideo(item){
     videoElement.onended =
         function(){
 
+            if(token !== showToken) return;
 
             nextMedia();
 
-
         };
+
+
+    videoElement.src =
+        "/uploads/"
+        +
+        item.filename;
 
 
 }
@@ -415,12 +518,64 @@ function hideVideo(){
 
 
 // ======================================================
+// Broken media handling
+// ======================================================
+
+function skipBroken(item, reason){
+
+    clearTimeout(loadWatchdog);
+
+    clearTimeout(slideTimer);
+
+    console.warn(
+        "Skipping broken media:",
+        item.filename,
+        "-",
+        reason
+    );
+
+    slideTimer =
+        setTimeout(
+            nextMedia,
+            SKIP_DELAY
+        );
+
+}
+
+
+
+function stopSlideshow(){
+
+    isPlaying = false;
+
+    clearTimeout(slideTimer);
+
+    clearTimeout(loadWatchdog);
+
+    hideImage();
+
+    hideVideo();
+
+    console.log(
+        "No media found - waiting for files"
+    );
+
+}
+
+
+
+
+// ======================================================
 // Next media
 // ======================================================
 
 function nextMedia(){
 
     clearTimeout(slideTimer);
+
+    clearTimeout(loadWatchdog);
+
+    showToken++;
 
     hideImage();
 
@@ -485,6 +640,10 @@ function previousMedia(){
 
 
     clearTimeout(slideTimer);
+
+    clearTimeout(loadWatchdog);
+
+    showToken++;
 
 
 
@@ -606,6 +765,22 @@ async function refreshMedia(){
 
         }
 
+        // Recover from an empty (or emptied) folder without a reload.
+        if(!isPlaying){
+
+            createPlaylist(newMedia);
+
+            console.log(
+                "Media found - starting slideshow"
+            );
+
+            startSlideshow();
+
+            return;
+
+        }
+
+
         pendingPlaylist =
             shuffle(newMedia);
 
@@ -638,8 +813,16 @@ async function refreshMedia(){
 function preloadNext(){
 
 
+    if(playlist.length === 0){
+
+        return;
+
+    }
+
+
+    // Wrap around at the end of the playlist.
     let next =
-        playlist[currentIndex + 1];
+        playlist[(currentIndex + 1) % playlist.length];
 
 
 

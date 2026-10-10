@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Memory Frame kiosk
+Comment=Waits for the Memory Frame server, then opens Chromium in kiosk mode
+Exec=@APP_DIR@/deploy/kiosk.sh
+X-GNOME-Autostart-enabled=true

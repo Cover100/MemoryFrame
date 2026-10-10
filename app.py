@@ -1,9 +1,9 @@
 from flask import Flask, render_template, send_from_directory, jsonify, request
 import os
-import subprocess
 import time
 import platform
 import webbrowser
+import threading
 
 app = Flask(__name__)
 
@@ -11,7 +11,10 @@ app = Flask(__name__)
 # Configuration
 # ======================================================
 
-UPLOAD_FOLDER = "uploads"
+UPLOAD_FOLDER = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "uploads"
+)
 
 IMAGE_EXTENSIONS = {
     ".jpg",
@@ -43,45 +46,12 @@ MIN_BRIGHTNESS = 40
 # ======================================================
 
 def launch_browser():
+    """Development helper: open the default browser once the server is up."""
 
     time.sleep(3)
 
-    # Windows
-    if platform.system() == "Windows":
-        webbrowser.open("http://localhost:5000")
-        return
+    webbrowser.open("http://localhost:5000")
 
-    # Raspberry Pi / Linux
-    try:
-
-        result = subprocess.run(
-            ["pgrep", "chromium"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
-
-        if result.returncode != 0:
-
-            subprocess.Popen([
-
-                "chromium",
-
-                "--kiosk",
-
-                "--noerrdialogs",
-
-                "--disable-infobars",
-
-                "--disable-session-crashed-bubble",
-
-                "--disable-features=Translate",
-
-                "http://localhost:5000"
-
-            ])
-
-    except FileNotFoundError:
-        print("Chromium not found.")
 
 # ======================================================
 # Media Scanner
@@ -292,19 +262,42 @@ def set_brightness():
     })
 
 # ======================================================
+# Health check (used by the kiosk launcher)
+# ======================================================
+
+@app.route("/healthz")
+def healthz():
+
+    return jsonify({"status": "ok"})
+
+# ======================================================
 # Start application
 # ======================================================
 
+def main():
+
+    host = os.environ.get("MEMORYFRAME_HOST", "0.0.0.0")
+
+    port = int(os.environ.get("MEMORYFRAME_PORT", "5000"))
+
+    # On the Pi the kiosk is started by deploy/kiosk.sh after /healthz
+    # answers. For development (Windows, or MEMORYFRAME_OPEN_BROWSER=1)
+    # open a browser from here instead.
+    if (
+        platform.system() == "Windows"
+        or os.environ.get("MEMORYFRAME_OPEN_BROWSER") == "1"
+    ):
+        threading.Thread(target=launch_browser, daemon=True).start()
+
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+    from waitress import serve
+
+    print(f"Memory Frame serving on http://{host}:{port}")
+
+    serve(app, host=host, port=port, threads=4)
+
+
 if __name__ == "__main__":
 
-    launch_browser()
-
-    app.run(
-
-        host="0.0.0.0",
-
-        port=5000,
-
-        debug=False
-
-    )
+    main()

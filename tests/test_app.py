@@ -61,47 +61,62 @@ def test_uploads_path_traversal_rejected(client, uploads, tmp_path):
 # Brightness API tests (MF-03 POST contract) live in tests/test_brightness.py.
 
 
-# ---------------- launch_browser ----------------
+# ---------------- launch_browser / main / healthz (MF-04) ----------------
+# Chromium kiosk is now started by deploy/kiosk.sh after /healthz answers;
+# app.py only opens a browser for development.
 
-class _Result:
-    def __init__(self, rc):
-        self.returncode = rc
-
-
-def _patch_launch(monkeypatch, system, pgrep_rc=1, popen=None):
-    calls = {"open": [], "popen": []}
+def test_launch_browser_opens_default_browser(monkeypatch):
+    opened = []
     monkeypatch.setattr(app_module.time, "sleep", lambda s: None)
+    monkeypatch.setattr(app_module.webbrowser, "open", lambda u: opened.append(u))
+    app_module.launch_browser()
+    assert opened == ["http://localhost:5000"]
+
+
+def test_healthz(client):
+    res = client.get("/healthz")
+    assert res.status_code == 200
+    assert res.get_json() == {"status": "ok"}
+
+
+class _Thread:
+    started = []
+
+    def __init__(self, target, daemon):
+        self.target = target
+
+    def start(self):
+        _Thread.started.append(self.target)
+
+
+def _run_main(monkeypatch, system, env=None):
+    import waitress
+    served = {}
+    _Thread.started = []
     monkeypatch.setattr(app_module.platform, "system", lambda: system)
-    monkeypatch.setattr(app_module.webbrowser, "open", lambda u: calls["open"].append(u))
-    monkeypatch.setattr(app_module.subprocess, "run", lambda *a, **k: _Result(pgrep_rc))
-    monkeypatch.setattr(app_module.subprocess, "Popen",
-                        popen or (lambda args: calls["popen"].append(args)))
-    return calls
+    monkeypatch.setattr(app_module.threading, "Thread", _Thread)
+    monkeypatch.setattr(waitress, "serve", lambda app, **kw: served.update(kw))
+    monkeypatch.delenv("MEMORYFRAME_OPEN_BROWSER", raising=False)
+    for k, v in (env or {}).items():
+        monkeypatch.setenv(k, v)
+    app_module.main()
+    return served
 
 
-def test_launch_browser_windows(monkeypatch):
-    calls = _patch_launch(monkeypatch, "Windows")
-    app_module.launch_browser()
-    assert calls["open"] == ["http://localhost:5000"]
-    assert calls["popen"] == []
+def test_main_serves_with_waitress_without_browser_on_linux(monkeypatch, uploads):
+    served = _run_main(monkeypatch, "Linux")
+    assert served["host"] == "0.0.0.0" and served["port"] == 5000
+    assert _Thread.started == []
 
 
-def test_launch_browser_linux_starts_kiosk(monkeypatch):
-    calls = _patch_launch(monkeypatch, "Linux", pgrep_rc=1)
-    app_module.launch_browser()
-    assert calls["popen"][0][0] == "chromium"
-    assert "--kiosk" in calls["popen"][0]
+def test_main_opens_browser_on_windows(monkeypatch, uploads):
+    _run_main(monkeypatch, "Windows")
+    assert _Thread.started == [app_module.launch_browser]
 
 
-def test_launch_browser_linux_already_running(monkeypatch):
-    calls = _patch_launch(monkeypatch, "Linux", pgrep_rc=0)
-    app_module.launch_browser()
-    assert calls["popen"] == []
-
-
-def test_launch_browser_chromium_missing(monkeypatch, capsys):
-    def boom(args):
-        raise FileNotFoundError
-    _patch_launch(monkeypatch, "Linux", pgrep_rc=1, popen=boom)
-    app_module.launch_browser()
-    assert "Chromium not found" in capsys.readouterr().out
+def test_main_env_overrides(monkeypatch, uploads):
+    served = _run_main(monkeypatch, "Linux",
+                       {"MEMORYFRAME_PORT": "8080", "MEMORYFRAME_HOST": "127.0.0.1",
+                        "MEMORYFRAME_OPEN_BROWSER": "1"})
+    assert served["port"] == 8080 and served["host"] == "127.0.0.1"
+    assert _Thread.started == [app_module.launch_browser]

@@ -168,3 +168,84 @@ def test_expired_session_rejected(paired, mf_app):
     conn.commit()
     conn.close()
     assert paired.get("/api/v1/status", environ_base=PHONE).status_code == 401
+
+
+# ---------- Tester #22 blockers: odd inputs never 500, always count ----------
+
+BAD_INPUTS = [{"token": 123}, {"code": 123456}, {"code": "é"}, {"code": "١٢٣٤٥٦"},
+              {"token": "é"}, {"token": "токен"}, {"code": ["123456"]}, {"token": {"a": 1}},
+              {"code": None}, {"code": "12345"}, {"code": "1234567"}, {"code": "12 456"}]
+
+
+@pytest.mark.parametrize("payload", BAD_INPUTS)
+def test_odd_inputs_are_400_and_count(client, payload):
+    start(client)
+    p = client.application.extensions["mf_pairing"]
+    r = client.post("/pair", json=payload, environ_base=PHONE)
+    assert r.status_code == 400, r.data
+    assert p.wrong == 1
+
+
+@pytest.mark.parametrize("form", [{"code": "é"}, {"code": "١٢٣٤٥٦"}, {"token": "é"}])
+def test_odd_form_inputs_are_400(client, form):
+    start(client)
+    assert client.post("/pair", data=form, environ_base=PHONE).status_code == 400
+
+
+def test_five_odd_inputs_rotate(client):
+    code = start(client)["round"]["code"]
+    for i, payload in enumerate(BAD_INPUTS[:5]):
+        client.post("/pair", json=payload, environ_base={"REMOTE_ADDR": f"10.42.0.{80 + i}"})
+    p = client.application.extensions["mf_pairing"]
+    assert p.wrong == 0 and p.current() is not None
+
+
+def test_json_non_object_body(client):
+    start(client)
+    assert client.post("/pair", json=["x"], environ_base=PHONE).status_code == 400
+
+
+def test_rate_limiter_memory_bounded(monkeypatch, clock):
+    monkeypatch.setattr(auth, "MAX_TRACKED", 50)
+    p = auth.Pairing()
+    for i in range(200):
+        p.rate_limited(f"10.0.{i // 250}.{i % 250}")
+    assert len(p.attempts) <= 50
+    for _ in range(100):
+        p.rate_limited("10.42.0.9")
+    assert len(p.attempts["10.42.0.9"]) <= auth.RATE_LIMIT + 1
+    clock["now"] += 61
+    p.rate_limited("10.42.0.10")
+    assert set(p.attempts) == {"10.42.0.10"}          # idle addresses forgotten
+
+
+def test_rate_limiter_threadsafe(clock):
+    import threading
+    p = auth.Pairing()
+    results = []
+    ts = [threading.Thread(target=lambda: results.append(p.rate_limited("1.2.3.4"))) for _ in range(30)]
+    [t.start() for t in ts]
+    [t.join() for t in ts]
+    assert results.count(False) == auth.RATE_LIMIT
+
+
+def test_device_label_sanitised():
+    assert auth.device_label("Mozilla/5.0\n\x00(Linux; Android 14)\t é") == "Mozilla/5.0 (Linux; Android 14)"
+    assert len(auth.device_label("x" * 500)) == 80
+    assert auth.device_label("\u202e\u200b") == "phone" and auth.device_label(None) == "phone"
+
+
+def test_last_seen_throttled(paired, mf_app, monkeypatch):
+    from memoryframe import db as mdb
+    import time
+    t = {"now": time.time() + 1}
+    monkeypatch.setattr(mdb, "now", lambda: t["now"])
+    seen = lambda: rows(mf_app, "SELECT last_seen FROM devices")[0][0]   # noqa: E731
+    paired.get("/api/v1/status", environ_base=PHONE)
+    first = seen()
+    t["now"] += 30
+    paired.get("/api/v1/status", environ_base=PHONE)
+    assert seen() == first
+    t["now"] += 31
+    paired.get("/api/v1/status", environ_base=PHONE)
+    assert seen() == t["now"]

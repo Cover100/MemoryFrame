@@ -29,6 +29,8 @@ PAIR_TTL = 120
 MAX_WRONG = 5
 RATE_LIMIT = 10           # attempts per RATE_WINDOW per address
 RATE_WINDOW = 60
+MAX_TRACKED = 1024       # addresses the rate limiter remembers
+LAST_SEEN_EVERY = 60     # seconds between last_seen writes
 SESSION_DAYS = 365
 
 clock = time.time         # patched in tests
@@ -68,20 +70,28 @@ class Pairing:
         return {"code": self.code, "token": self.token, "expires_in": round(self.expires - clock(), 1)}
 
     def rate_limited(self, addr):
+        """Sliding window per address; locked, and memory is bounded (MAX_TRACKED addresses)."""
         now = clock()
-        q = self.attempts[addr]
-        while q and q[0] <= now - RATE_WINDOW:
-            q.popleft()
-        q.append(now)
-        return len(q) > RATE_LIMIT
+        with self.lock:
+            for a in [a for a, q in self.attempts.items() if not q or q[-1] <= now - RATE_WINDOW]:
+                del self.attempts[a]                 # forget idle addresses
+            if addr not in self.attempts and len(self.attempts) >= MAX_TRACKED:
+                return True                          # flood of addresses: refuse until they age out
+            q = self.attempts[addr]
+            while q and q[0] <= now - RATE_WINDOW:
+                q.popleft()
+            q.append(now)
+            if len(q) > RATE_LIMIT + 1:
+                q.popleft()                          # never more than RATE_LIMIT+1 timestamps
+            return len(q) > RATE_LIMIT
 
     def redeem(self, code=None, token=None):
         """True if code or token matches the live round (which is then consumed)."""
         with self.lock:
             if self.current() is None:
                 return False
-            ok = ((token and hmac.compare_digest(token, self.token))
-                  or (code and hmac.compare_digest(str(code).strip(), self.code)))
+            ok = (_valid_token(token) and hmac.compare_digest(token.encode(), self.token.encode())) or \
+                 (_valid_code(code) and hmac.compare_digest(code.strip().encode(), self.code.encode()))
             if ok:
                 self._clear()
                 return True
@@ -91,15 +101,34 @@ class Pairing:
             return False
 
 
+def _valid_code(code):
+    """Exactly 6 ASCII digits (rejects ints, non-ASCII digits such as Arabic-Indic)."""
+    if not isinstance(code, str):
+        return False
+    c = code.strip()
+    return len(c) == 6 and c.isascii() and c.isdigit()
+
+
+def _valid_token(token):
+    return isinstance(token, str) and 0 < len(token) <= 100 and token.isascii()
+
+
 def pairing(app=None):
     app = app or current_app
     return app.extensions.setdefault("mf_pairing", Pairing())
 
 
+def device_label(user_agent):
+    """Printable ASCII only, whitespace collapsed, at most 80 chars."""
+    text = "".join(ch if ch.isascii() and ch.isprintable() else " " for ch in str(user_agent or ""))
+    text = " ".join(text.split())[:80]
+    return text or "phone"
+
+
 def create_session(conn, device_name):
     now = db.now()
     cur = conn.execute("INSERT INTO devices (name, created_at, last_seen) VALUES (?, ?, ?)",
-                       (device_name[:100] or "phone", now, now))
+                       (device_label(device_name), now, now))
     token = secrets.token_urlsafe(32)
     conn.execute("INSERT INTO sessions (device_id, token_hash, created_at, expires_at) VALUES (?, ?, ?, ?)",
                  (cur.lastrowid, hash_token(token), now, now + SESSION_DAYS * 86400))
@@ -123,8 +152,12 @@ def current_device():
         "AND s.expires_at > ?", (hash_token(token), db.now())).fetchone()
     if row is None:
         return None
-    conn.execute("UPDATE devices SET last_seen = ? WHERE id = ?", (db.now(), row["device_id"]))
-    conn.commit()
+    now = db.now()
+    cur = conn.execute("UPDATE devices SET last_seen = ? WHERE id = ? AND "
+                       "(last_seen IS NULL OR last_seen < ?)",
+                       (now, row["device_id"], now - LAST_SEEN_EVERY))
+    if cur.rowcount:
+        conn.commit()
     return row["device_id"]
 
 

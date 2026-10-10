@@ -25,12 +25,17 @@ def client(uploads):
 
 @pytest.fixture
 def backlight(tmp_path, monkeypatch):
-    """Fake sysfs backlight node on a Linux host."""
+    """Fake sysfs backlight node (selected via MEMORYFRAME_BACKLIGHT)."""
     node = tmp_path / "backlight"
     node.mkdir()
     (node / "brightness").write_text("100\n")
     (node / "max_brightness").write_text("255\n")
-    monkeypatch.setattr(app_module, "BACKLIGHT_PATH", str(node / "brightness"))
-    monkeypatch.setattr(app_module, "MAX_BRIGHTNESS_PATH", str(node / "max_brightness"))
-    monkeypatch.setattr(app_module.platform, "system", lambda: "Linux")
+    monkeypatch.setenv("MEMORYFRAME_BACKLIGHT", str(node))
     return node
+
+
+@pytest.fixture
+def no_backlight(tmp_path, monkeypatch):
+    """No backlight node at all (Windows / non-Pi Linux)."""
+    monkeypatch.delenv("MEMORYFRAME_BACKLIGHT", raising=False)
+    monkeypatch.setattr(app_module, "BACKLIGHT_ROOT", str(tmp_path / "none"))

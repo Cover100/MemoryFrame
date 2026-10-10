@@ -1,4 +1,4 @@
-from flask import Flask, render_template, send_from_directory, jsonify
+from flask import Flask, render_template, send_from_directory, jsonify, request
 import os
 import time
 import platform
@@ -31,16 +31,15 @@ VIDEO_EXTENSIONS = {
 }
 
 # Raspberry Pi DSI backlight
+# The official DSI display usually exposes /sys/class/backlight/10-0045, but
+# the node name can differ, so it is detected at runtime.
+# Override with MEMORYFRAME_BACKLIGHT=/sys/class/backlight/<node>.
 
-BACKLIGHT_PATH = (
-    "/sys/class/backlight/"
-    "10-0045/brightness"
-)
+BACKLIGHT_ROOT = "/sys/class/backlight"
 
-MAX_BRIGHTNESS_PATH = (
-    "/sys/class/backlight/"
-    "10-0045/max_brightness"
-)
+PREFERRED_BACKLIGHT = "10-0045"
+
+MIN_BRIGHTNESS = 40
 
 # ======================================================
 # Launch Browser
@@ -151,124 +150,116 @@ def uploads(filename):
 # Brightness control
 # ======================================================
 
-@app.route("/brightness/<int:value>")
-def set_brightness(value):
+def find_backlight():
+    """Return the backlight sysfs directory, or None if unsupported."""
 
-    # Windows doesn't have Raspberry Pi backlight controls
-    if platform.system() == "Windows":
-        return jsonify({
-            "status": "unsupported",
-            "message": "Brightness control is only available on Raspberry Pi."
-        })
+    override = os.environ.get("MEMORYFRAME_BACKLIGHT")
 
-    try:
+    if override:
+        candidates = [override]
+    else:
+        candidates = [os.path.join(BACKLIGHT_ROOT, PREFERRED_BACKLIGHT)]
+        if os.path.isdir(BACKLIGHT_ROOT):
+            candidates += [
+                os.path.join(BACKLIGHT_ROOT, n)
+                for n in sorted(os.listdir(BACKLIGHT_ROOT))
+            ]
 
-        with open(
-            MAX_BRIGHTNESS_PATH,
-            "r"
-        ) as f:
+    for path in candidates:
+        if (
+            os.path.isfile(os.path.join(path, "brightness"))
+            and os.path.isfile(os.path.join(path, "max_brightness"))
+        ):
+            return path
 
-            maximum = int(
-                f.read()
-            )
+    return None
 
-        value = max(
-            0,
-            min(
-                value,
-                maximum
-            )
-        )
 
-        with open(
-            BACKLIGHT_PATH,
-            "w"
-        ) as f:
+def read_int(path):
 
-            f.write(
-                str(value)
-            )
+    with open(path, "r") as f:
+        return int(f.read().strip())
 
-        return jsonify({
 
-            "status":
-                "success",
+def unsupported():
 
-            "brightness":
-                value,
+    return jsonify({
+        "status": "unsupported",
+        "supported": False,
+        "message": "Brightness control is only available on a Raspberry Pi with a DSI backlight."
+    })
 
-            "maximum":
-                maximum
 
-        })
-
-    except Exception as e:
-
-        return jsonify({
-
-            "status":
-                "error",
-
-            "message":
-                str(e)
-
-        }), 500
-
-# ======================================================
-# Get brightness
-# ======================================================
-
-@app.route("/brightness")
+@app.route("/brightness", methods=["GET"])
 def get_brightness():
 
-    # Windows doesn't have Raspberry Pi backlight controls
-    if platform.system() == "Windows":
-        return jsonify({
-            "status": "unsupported",
-            "message": "Brightness control is only available on Raspberry Pi."
-        })
+    backlight = find_backlight()
+
+    if backlight is None:
+        return unsupported()
 
     try:
+        current = read_int(os.path.join(backlight, "brightness"))
+        maximum = read_int(os.path.join(backlight, "max_brightness"))
+    except (OSError, ValueError) as e:
+        app.logger.warning("Brightness read failed: %s", e)
+        return unsupported()
 
-        with open(
-            BACKLIGHT_PATH,
-            "r"
-        ) as f:
+    return jsonify({
+        "status": "success",
+        "supported": True,
+        "brightness": current,
+        "minimum": min(MIN_BRIGHTNESS, maximum),
+        "maximum": maximum
+    })
 
-            current = int(
-                f.read()
-            )
 
-        with open(
-            MAX_BRIGHTNESS_PATH,
-            "r"
-        ) as f:
+@app.route("/brightness", methods=["POST"])
+def set_brightness():
 
-            maximum = int(
-                f.read()
-            )
+    data = request.get_json(silent=True)
 
+    value = data.get("value") if isinstance(data, dict) else None
+
+    # bool is a subclass of int; reject it. value != value rejects NaN.
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or value != value
+        or value in (float("inf"), float("-inf"))
+    ):
         return jsonify({
+            "status": "error",
+            "message": "Body must be JSON like {\"value\": <number>}."
+        }), 400
 
-            "brightness":
-                current,
+    backlight = find_backlight()
 
-            "maximum":
-                maximum
+    if backlight is None:
+        return unsupported(), 409
 
-        })
+    try:
+        maximum = read_int(os.path.join(backlight, "max_brightness"))
+        minimum = min(MIN_BRIGHTNESS, maximum)
+        value = int(round(max(minimum, min(value, maximum))))
 
-    except Exception as e:
+        with open(os.path.join(backlight, "brightness"), "w") as f:
+            f.write(str(value))
 
+    except (OSError, ValueError) as e:
+        app.logger.error("Brightness write failed: %s", e)
         return jsonify({
+            "status": "error",
+            "message": "Could not write backlight brightness."
+        }), 503
 
-            "status":
-                "error",
-
-            "message":
-                str(e)
-
-        }), 500
+    return jsonify({
+        "status": "success",
+        "supported": True,
+        "brightness": value,
+        "minimum": minimum,
+        "maximum": maximum
+    })
 
 # ======================================================
 # Health check (used by the kiosk launcher)

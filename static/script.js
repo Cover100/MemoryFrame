@@ -22,6 +22,10 @@ const BRIGHTNESS_DISPLAY_TIME = 1500;
 
 const MIN_BRIGHTNESS = 40;
 
+// At most one backlight write per BRIGHTNESS_WRITE_INTERVAL ms (< 10/s, with margin for timer jitter).
+// (Restored: lost in the MF-02/MF-03 merge 54a2e5b.)
+const BRIGHTNESS_WRITE_INTERVAL = 110;
+
 // Delay before skipping a file that failed to load (keeps a folder
 // full of broken files from spinning the CPU).
 const SKIP_DELAY = 1000;

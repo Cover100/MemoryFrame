@@ -1,5 +1,6 @@
 """MF-12: pairing and session auth."""
 import hashlib
+import re
 
 import pytest
 
@@ -40,7 +41,7 @@ def test_every_admin_and_api_route_requires_session(mf_app, client):
     rules = protected_rules(mf_app)
     assert len(rules) >= 3
     for r in rules:
-        url = r.rule.replace("<path:", "<").split("<")[0] or "/"
+        url = re.sub(r"<(?:\w+:)?\w+>", "1", r.rule)      # fill converters (<int:id> -> 1)
         for m in r.methods - {"HEAD", "OPTIONS"}:
             resp = client.open(url, method=m, environ_base=PHONE)
             if r.rule.startswith("/api/v1"):

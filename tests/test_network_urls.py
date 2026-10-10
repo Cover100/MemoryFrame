@@ -15,6 +15,7 @@ def ips(monkeypatch):
     monkeypatch.setattr(frameinfo, "ip_addresses", lambda: list(state["ips"]))
     monkeypatch.setattr(frameinfo, "default_route_ip", lambda: state["route"])
     monkeypatch.setattr(frameinfo, "network", REAL_NETWORK)
+    monkeypatch.setattr(frameinfo, "own_ips", lambda max_age=0: REAL_OWN_IPS(0))   # no cache here
     return state
 
 
@@ -145,3 +146,78 @@ def test_site_url_env_override(client, monkeypatch):
                         lambda: {"mode": "lan", "lan_ip": "192.168.50.124", "ips": ["192.168.50.124"]})
     st = client.get("/pairing/state", environ_base=LOCAL).get_json()
     assert st["url"] == "http://frame.home/pair" and st["wifi_qr_svg"] is None
+
+
+# ---------- #26 review: MEMORYFRAME_SITE_URL validation, detection cache ----------
+
+@pytest.mark.parametrize("bad", [
+    "javascript:alert(1)", "data:text/html,<script>x</script>", "ftp://frame.home",
+    "JAVASCRIPT://frame.home", "http://", "http:///pair", "frame.home", "//frame.home",
+    "http://frame home", "http://frame.home\nX: y", "http://fr\x00ame.home", "http://user:pw@frame.home",
+    "http://frame.home/other/path", "http://frame.home/?q=1", "http://frame.home:99999", "http://fráme.home",
+])
+def test_bad_site_url_never_reaches_qr(client, monkeypatch, caplog, bad):
+    from memoryframe import pairing
+    payloads = []
+    real_qr = pairing._qr_svg if hasattr(pairing, "_qr_svg") else None
+    import segno
+    real_make = segno.make
+    monkeypatch.setattr(segno, "make", lambda data, **kw: payloads.append(data) or real_make(data, **kw))
+    monkeypatch.setattr(frameinfo, "_logged", set())
+    monkeypatch.setenv("MEMORYFRAME_SITE_URL", bad)
+    client.post("/pairing/start", environ_base=LOCAL)
+    st = client.get("/pairing/state", environ_base=LOCAL).get_json()
+    assert st["url"] == "http://10.42.0.1:5000/pair"                    # detected address instead
+    assert payloads and all(p.startswith(("http://10.42.0.1", "WIFI:")) for p in payloads), payloads
+    assert "MEMORYFRAME_SITE_URL" in caplog.text
+    del real_qr
+
+
+@pytest.mark.parametrize("good,expected", [
+    ("http://frame.home", "http://frame.home"), ("https://frame.home/", "https://frame.home"),
+    ("HTTP://memoryframe.local:8080", "http://memoryframe.local:8080"), ("  http://10.0.0.5  ", "http://10.0.0.5"),
+])
+def test_valid_site_urls(good, expected):
+    assert frameinfo.validate_site_url(good) == expected
+
+
+def test_site_url_host_not_allowlisted_warns(client, monkeypatch, caplog):
+    monkeypatch.setattr(frameinfo, "_logged", set())
+    monkeypatch.setenv("MEMORYFRAME_SITE_URL", "http://frame.home")
+    client.post("/pairing/start", environ_base=LOCAL)
+    st = client.get("/pairing/state", environ_base=LOCAL).get_json()
+    assert st["url"] == "http://frame.home/pair"
+    assert "not in the Host allowlist" in caplog.text
+    caplog.clear()
+    monkeypatch.setenv("MEMORYFRAME_SITE_URL", "http://memoryframe.local")
+    client.get("/pairing/state", environ_base=LOCAL)
+    assert "allowlist" not in caplog.text
+
+
+def test_network_detection_uses_cache_on_2s_polls(client, monkeypatch):
+    import subprocess
+    import time
+    calls = []
+    real_run = subprocess.run
+
+    def counting_run(cmd, *a, **kw):
+        if cmd[:2] == ["hostname", "-I"]:
+            calls.append(1)
+            return subprocess.CompletedProcess(cmd, 0, stdout="192.168.50.124\n", stderr="")
+        return real_run(cmd, *a, **kw)
+
+    monkeypatch.setattr(subprocess, "run", counting_run)
+    monkeypatch.setattr(frameinfo, "network", REAL_NETWORK)
+    monkeypatch.setattr(frameinfo, "own_ips", REAL_OWN_IPS)
+    monkeypatch.setitem(frameinfo._cache, "at", -1e9)
+    clock = [1000.0]
+    monkeypatch.setattr(time, "monotonic", lambda: clock[0])
+    client.post("/pairing/start", environ_base=LOCAL)
+    for _ in range(7):                                   # 14 s of 2 s polls (state + status)
+        client.get("/pairing/state", environ_base=LOCAL)
+        client.get("/frame/status", environ_base=LOCAL)
+        clock[0] += 2
+    assert len(calls) == 1
+    clock[0] += 15
+    client.get("/pairing/state", environ_base=LOCAL)
+    assert len(calls) == 2

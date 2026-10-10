@@ -101,7 +101,7 @@ def pair():
 def frame_status():
     name, _ = frameinfo.hotspot_conf()
     urls = frameinfo.site_urls()
-    return jsonify({"ips": frameinfo.ip_addresses(), "ssid": name, "version": frameinfo.version(),
+    return jsonify({"ips": frameinfo.own_ips(), "ssid": name, "version": frameinfo.version(),
                     "network": urls["mode"], "site": urls["primary"] + "/", "site_fallback":
                     urls["fallback"] + "/" if urls["fallback"] else None,
                     "storage": frameinfo.free_storage(current_app.config["DATA_DIR"]),

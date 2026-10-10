@@ -227,3 +227,12 @@ There is one owner (D6), who may pair several phones.
   - **Override:** `MEMORYFRAME_SITE_URL=http://frame.home` (no path) replaces the detected address. Set it on the Pi with `deploy/env-file.sh MEMORYFRAME_SITE_URL http://…` and restart the service. The `PAIR_BASE_URL` app config key still wins for tests and development.
 - **Wi-Fi QR:** shown only on the hotspot, and **on by default** (D3). Turn it off with `MEMORYFRAME_SHOW_WIFI_QR=0` or the database setting `show_wifi_qr=0` (the settings UI comes with MF-17). SSID and password come from `deploy/hotspot.conf`, or `MEMORYFRAME_SSID` / `MEMORYFRAME_WIFI_PASSWORD`.
 - **Privacy:** these screens use localhost-only routes (`/pairing/state`, `/frame/status`). The Wi-Fi password only leaves the frame as the on-screen QR.
+
+## Library management (MF-16)
+
+- **Page:** `/admin/library` (linked from `/admin/`) shows every photo as a lazily loaded **240 px thumbnail** (`thumbs/<id>.jpg`, made at upload or on first request), newest first, with these buttons:
+  - **Show now:** the frame jumps to that photo within about 2 s.
+  - **Hide / Unhide:** a hidden photo leaves the slideshow within about 2 s, even if it is on screen; it stays in the library.
+  - **Delete:** after a confirmation, removes the original, the display copy, the thumbnail and the database row.
+- **API** (session and CSRF): `GET /api/v1/media`, `GET /api/v1/media/<id>/thumb`, `PUT /api/v1/media/<id>/hidden {"hidden": bool}`, `DELETE /api/v1/media/<id>`, `POST /api/v1/media/<id>/show-now`.
+- **Frame:** it polls `GET /show-now` every 2 s. That response carries the show-now request and a library revision, so uploads, hides and deletes reach the frame fast.

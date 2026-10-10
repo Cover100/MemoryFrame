@@ -1,4 +1,5 @@
 """MF-19: information for the on-device onboarding screens and long-press menu."""
+import logging
 import os
 import shutil
 import socket
@@ -7,6 +8,7 @@ import subprocess
 from . import storage
 
 VERSION = "0.2.0"     # Sprint 2
+log = logging.getLogger(__name__)
 
 
 def hotspot_conf():
@@ -111,7 +113,7 @@ def default_route_ip():
 
 def network():
     """{"mode": "hotspot"|"lan"|"unknown", "lan_ip": ...} detected at request time."""
-    ips = ip_addresses()
+    ips = own_ips()          # cached (15 s): the frame polls every 2 s, don't fork each time
     if HOTSPOT_IP in ips:
         return {"mode": "hotspot", "lan_ip": HOTSPOT_IP, "ips": ips}
     ip = default_route_ip() or (ips[0] if ips else None)
@@ -132,10 +134,56 @@ def port_suffix():
     return "" if 80 in ports else f":{ports[0]}"
 
 
+_logged = set()
+
+
+def _log_once(key, msg, *args):
+    if key not in _logged:
+        _logged.add(key)
+        log.warning(msg, *args)
+
+
+def validate_site_url(raw):
+    """Return a clean "scheme://host[:port]" or None. http/https only, a real host, no
+    whitespace/control characters, no credentials, query or fragment."""
+    from urllib.parse import urlsplit
+    raw = (raw or "").strip()
+    if not raw or any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in raw) or not raw.isascii():
+        return None
+    try:
+        u = urlsplit(raw)
+        u.port                                   # raises ValueError on a bad port
+    except ValueError:
+        return None
+    if u.scheme.lower() not in ("http", "https") or not u.hostname or u.username or u.password \
+            or u.query or u.fragment or u.path not in ("", "/"):
+        return None
+    return f"{u.scheme.lower()}://{u.netloc}"
+
+
+def site_url_override():
+    raw = os.environ.get("MEMORYFRAME_SITE_URL", "")
+    if not raw.strip():
+        return None
+    url = validate_site_url(raw)
+    if url is None:
+        _log_once(("bad", raw), "MEMORYFRAME_SITE_URL=%r ignored: must be http(s)://host[:port]", raw)
+        return None
+    try:
+        from urllib.parse import urlsplit
+        from . import websec
+        if not websec.allowed(urlsplit(url).netloc):
+            _log_once(("host", url), "MEMORYFRAME_SITE_URL host %s is not in the Host allowlist; "
+                      "add it with MEMORYFRAME_EXTRA_HOSTS or phones will get 400", urlsplit(url).hostname)
+    except RuntimeError:                         # outside an app context
+        pass
+    return url
+
+
 def site_urls(net=None):
     """Primary and fallback base URLs for phones on the frame's current network."""
     net = net or network()
-    override = os.environ.get("MEMORYFRAME_SITE_URL", "").strip().rstrip("/")
+    override = site_url_override()
     if override:          # e.g. http://frame.home - the network is still detected for the Wi-Fi QR
         return {"mode": net["mode"], "primary": override, "fallback": None}
     sfx = port_suffix()

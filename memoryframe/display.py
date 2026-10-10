@@ -48,6 +48,30 @@ def uploads(filename):
     return send_from_directory(os.path.dirname(served), os.path.basename(served))
 
 
+@bp.route("/show-now")
+def show_now_state():
+    """MF-16: the frame polls this; a new seq means "jump to filename now"."""
+    state = current_app.extensions.get("mf_show_now", {"seq": 0, "filename": None})
+    name = state["filename"]
+    if name and get_db().execute("SELECT 1 FROM media WHERE stored_name = ? AND hidden = 0",
+                                 (name,)).fetchone() is None:
+        name = None                                  # deleted or hidden since
+    return jsonify({"seq": state["seq"], "filename": name,
+                    "rev": current_app.extensions.get("mf_media_rev", 0)})
+
+
+def clear_show_now(app, stored_name):
+    """A deleted or hidden photo must never be offered by /show-now."""
+    state = app.extensions.get("mf_show_now")
+    if state and state.get("filename") == stored_name:
+        state["filename"] = None
+
+
+def bump_media_rev(app):
+    """Library changed (upload/hide/delete): the frame refreshes on its next 2 s poll."""
+    app.extensions["mf_media_rev"] = app.extensions.get("mf_media_rev", 0) + 1
+
+
 @bp.route("/healthz")
 def healthz():
     return jsonify({"status": "ok"})

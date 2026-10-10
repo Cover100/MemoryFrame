@@ -795,6 +795,12 @@ async function refreshMedia(){
             "Media update queued"
         );
 
+        // MF-16: the photo on screen was hidden or deleted -> move on now.
+        let current = playlist[currentIndex];
+        if(current && !newFiles.includes(current.filename)){
+            nextMedia();
+        }
+
     }
     catch(error){
 
@@ -1215,6 +1221,70 @@ function showBrightness(){
 }
 
 
+
+
+
+// ======================================================
+// MF-16: "Show now" and fast library updates from the phone
+// ======================================================
+
+const CONTROL_INTERVAL = 2000;
+
+let controlSeq = null;
+
+let controlRev = null;
+
+async function jumpTo(filename){
+
+    if(playlistUpdatePending){
+        playlist = pendingPlaylist;
+        pendingPlaylist = null;
+        playlistUpdatePending = false;
+    }
+
+    let idx = playlist.findIndex(x => x.filename === filename);
+
+    if(idx < 0){
+        // Not in the playlist yet (e.g. just uploaded): fetch the list now.
+        try{
+            let fresh = await (await fetch("/media")).json();
+            let found = fresh.find(x => x.filename === filename);
+            if(!found){ return; }
+            playlist.splice(currentIndex + 1, 0, found);
+            idx = currentIndex + 1;
+        }catch(e){
+            return;
+        }
+    }
+
+    isPlaying = true;
+    currentIndex = idx - 1;   // nextMedia() advances onto it
+    nextMedia();
+
+}
+
+async function pollControl(){
+
+    try{
+        let c = await (await fetch("/show-now", {cache: "no-store"})).json();
+        if(controlRev !== null && c.rev !== controlRev){
+            refreshMedia();
+        }
+        controlRev = c.rev;
+        if(controlSeq !== null && c.seq !== controlSeq && c.filename){
+            console.log("Show now:", c.filename);
+            jumpTo(c.filename);
+        }
+        controlSeq = c.seq;
+    }catch(e){
+        // the app is restarting; try again next time
+    }
+
+}
+
+setInterval(pollControl, CONTROL_INTERVAL);
+
+pollControl();
 
 
 

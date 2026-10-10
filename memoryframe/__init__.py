@@ -28,6 +28,7 @@ def create_app(config=None):
     app.config["DISPLAY_TARGET"] = imaging.parse_target(app.config.get("DISPLAY_SIZE", imaging.DEFAULT_TARGET))
     storage.ensure_layout(app.config["DATA_DIR"])
     db.init_app(app)
+    _sweep(app)
     from . import websec
     websec.init_app(app)
 
@@ -42,3 +43,15 @@ def create_app(config=None):
     app.register_blueprint(pairing_bp)
 
     return app
+
+
+def _sweep(app):
+    """MF-16: clean up after an interrupted delete (tmp/trash, orphan derivatives)."""
+    from . import imaging
+    conn = db.connect(app.config["DB_PATH"])
+    try:
+        imaging.sweep(conn, app.config["DATA_DIR"])
+    except Exception as e:  # noqa: BLE001 - never block start-up
+        log.warning("start-up sweep failed: %s", e)
+    finally:
+        conn.close()

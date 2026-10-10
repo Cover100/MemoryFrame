@@ -1,6 +1,6 @@
 # Memory Frame: on-device runbooks (MF-04 deploy, MF-09 hotspot)
 
-Written 10 Oct 2026 by Developer for Tester. Updated 17:50 AEST: hotspot manual only, Phase C removed, uploads backup mandatory. Updated 18:00 AEST: kiosk fixes retest (1.7b). Based on the scripts as they are on GitHub:
+Written 10 Oct 2026 by Developer for Tester. Updated 17:50 AEST: hotspot manual only, Phase C removed, uploads backup mandatory. Updated 18:00 AEST: kiosk fixes retest (1.7b). Updated 18:05 AEST: grey-screen diagnostics (1.7c). Based on the scripts as they are on GitHub:
 - MF-04 scripts: `origin/main` (merged via #9). `deploy/install.sh`, `deploy/audit-autostart.sh`, `deploy/kiosk.sh`, `deploy/memoryframe.service`, `deploy/memoryframe-kiosk.desktop`, `deploy/uninstall.sh`.
 - **Hotspot use is MANUAL ONLY (user decision, 10 Oct 2026).** The profile always has autoconnect=no; nothing starts it at boot. The first hotspot test happens only with the **user physically at the Pi**.
 - **`uploads/` is ALWAYS backed up before any Pi update** (git reset, pull or install). See 1.1.
@@ -163,7 +163,7 @@ curl -s http://localhost:5000/healthz                # {"status":"ok"}
 Browser crash: `pkill -9 -f chromium`. `kiosk.sh` relaunches it within about 2 s once `/healthz` answers.
 
 ### 1.7b Kiosk fixes retest (PR #14, branch `mf-04-kiosk-fixes`): keyring dialog + grey screen
-Fixes: `--password-store=basic` (no "Unlock Keyring"); dedicated profile `~/.cache/memoryframe/chromium-profile` with crash flags reset before each launch; `--no-first-run`, `--hide-crash-restore-bubble`; log at `~/.cache/memoryframe/kiosk.log`; extra flags via `MEMORYFRAME_CHROMIUM_FLAGS`.
+Fixes: `--password-store=basic` (no "Unlock Keyring"); dedicated profile `~/.cache/memoryframe/chromium-profile` with crash flags reset before each launch; `--no-first-run`, `--hide-crash-restore-bubble`; log at `~/.cache/memoryframe/kiosk.log` (from 1.7c on: `~/.cache/memoryframe-kiosk.log`); extra flags via `MEMORYFRAME_CHROMIUM_FLAGS`.
 
 **Step 0: check the photos are still there** (the reset to the new main deletes the photos that the old main tracked):
 ```bash
@@ -196,6 +196,58 @@ Expected: no keyring dialog, the slideshow is visible within 60 s, and the log s
 **Step 3: if still grey.** Send `kiosk.log` to Developer, then try these one at a time. Edit `~/.config/autostart/memoryframe-kiosk.desktop` to `Exec=env MEMORYFRAME_CHROMIUM_FLAGS="--ozone-platform=wayland" /home/memoryframe/Documents/GitHub/MemoryFrame/deploy/kiosk.sh`, then reboot. Next try `"--ozone-platform=wayland --disable-gpu"`.
 
 **Step 4: crash recovery.** Run `pkill -9 -f chromium`. Within about 5 s the slideshow returns with no "Restore pages?" bubble, and `kiosk.log` shows `browser exited with status ..., restarting`.
+
+### 1.7c Grey screen diagnostics: console errors and what Chromium renders (PR for `mf-04-kiosk-debug`)
+Use this when the physical screen stays grey although `/healthz` and `/media` are fine. Nothing here touches the network config. DevTools listens on **127.0.0.1 only** and only while debug mode is on.
+
+**1. Back up uploads, then update to the PR branch**
+```bash
+R=/home/memoryframe/Documents/GitHub/MemoryFrame; cd "$R"
+B=~/memoryframe-uploads-backup-$(date +%Y%m%d-%H%M%S); cp -a uploads "$B" && diff -r uploads "$B" && echo "backup OK"
+git status --porcelain                  # must be empty
+git fetch origin && git checkout --detach origin/mf-04-kiosk-debug
+```
+
+**2. Turn on debug mode for the kiosk.** Edit `~/.config/autostart/memoryframe-kiosk.desktop` so that Exec is:
+```
+Exec=env MEMORYFRAME_KIOSK_DEBUG=1 /home/memoryframe/Documents/GitHub/MemoryFrame/deploy/kiosk.sh
+```
+Then reboot (or `pkill -f deploy/kiosk.sh; pkill -f chromium`, log out and back in).
+
+**3. Collect.** Wait about 30 s after the desktop appears, then (Pi Connect shell is fine):
+```bash
+tail -n 100 ~/.cache/memoryframe-kiosk.log            # launcher lines + Chromium stderr (GPU/Wayland errors show here)
+grep -E "session=|/media has|ERROR|gpu|wayland|ozone" ~/.cache/memoryframe-kiosk.log | tail -40
+ss -ltn | grep 9222                                    # must show 127.0.0.1:9222 only
+curl -s http://127.0.0.1:9222/json/version             # Chromium version
+curl -s http://127.0.0.1:9222/json | python3 -c 'import json,sys;[print(t["type"],t["url"]) for t in json.load(sys.stdin)]'
+                                                       # expect: page http://localhost:5000/
+cd "$R"
+python3 deploy/kiosk-console.py --seconds 30 --screenshot ~/kiosk.png
+```
+`kiosk-console.py` uses only the Python standard library and prints:
+- `state: {...}`: URL, `playlist` (expect 6), `isPlaying` (expect true), current `imageSrc`, `imageOpacity` (should reach 1), `naturalWidth` and `bodyBg`
+- every `console.*` message, `EXCEPTION:` lines for JS errors, and `log.error` lines for failed loads (the favicon 404 is harmless)
+- `screenshot saved`: what Chromium itself rendered
+
+**How to read the result**
+| Observation | Meaning / next step |
+|---|---|
+| `url` is `chrome-error://…` | The page failed to load: the browser started before the server, or a wrong URL. Send the log. |
+| `EXCEPTION:` lines, or `isPlaying:false` with `playlist` > 0 | JS problem: send the output to Developer. |
+| `state` looks good **and `~/kiosk.png` shows a photo**, but the screen is grey | The page is fine and Chromium is not presenting to the display (Wayland/GPU). Try step 4. |
+| `~/kiosk.png` is grey too | Rendering/decoding problem: try step 4, then send the log and png. |
+
+**4. Rendering workarounds, one at a time** (edit the same Exec line and reboot after each):
+```
+Exec=env MEMORYFRAME_KIOSK_DEBUG=1 MEMORYFRAME_CHROMIUM_FLAGS="--disable-gpu" /home/memoryframe/Documents/GitHub/MemoryFrame/deploy/kiosk.sh
+Exec=env MEMORYFRAME_KIOSK_DEBUG=1 MEMORYFRAME_CHROMIUM_FLAGS="--ozone-platform=x11" /home/memoryframe/Documents/GitHub/MemoryFrame/deploy/kiosk.sh
+```
+(`--ozone-platform=wayland` is already added automatically when `WAYLAND_DISPLAY` is set. The `x11` variant uses XWayland.) Record which one produces a visible slideshow.
+
+**5. Turn debug off afterwards.** Restore `Exec=/home/memoryframe/Documents/GitHub/MemoryFrame/deploy/kiosk.sh` (keep any working `MEMORYFRAME_CHROMIUM_FLAGS`), then reboot. `ss -ltn | grep 9222` must print nothing.
+
+Send Developer: `~/.cache/memoryframe-kiosk.log`, the `kiosk-console.py` output, `~/kiosk.png`, and the `echo $XDG_SESSION_TYPE` / `$WAYLAND_DISPLAY` values.
 
 ### 1.8 Roll back MF-04
 ```bash

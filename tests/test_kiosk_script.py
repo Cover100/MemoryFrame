@@ -46,6 +46,7 @@ def env(tmp_path):
              MEMORYFRAME_CHROMIUM_FLAGS="--disable-gpu")
     e.pop("DISPLAY", None)
     e.pop("WAYLAND_DISPLAY", None)
+    e.pop("XDG_SESSION_TYPE", None)
     return tmp_path, state, calls, e
 
 
@@ -185,3 +186,22 @@ def test_autodetect_falls_back_to_chromium(env):
     del e["MEMORYFRAME_BROWSER"]
     run_until(e, lambda: len(launches(tmp_path)) >= 1)
     assert "start: browser=chromium " in log_text(tmp_path)
+
+
+def test_wayland_detected_from_session_type(env):
+    """labwc on Pi OS: XDG_SESSION_TYPE=wayland but no WAYLAND_DISPLAY."""
+    tmp_path, _, _, e = env
+    e["XDG_SESSION_TYPE"] = "wayland"
+    run_until(e, lambda: len(launches(tmp_path)) >= 1)
+    args = launches(tmp_path)[0]
+    assert "--ozone-platform=wayland" in args
+    assert "--ozone-platform-hint=auto" not in args
+
+
+def test_log_records_full_launch_command(env):
+    tmp_path, _, _, e = env
+    run_until(e, lambda: "launch:" in log_text(tmp_path))
+    line = next(l for l in log_text(tmp_path).splitlines() if "launch:" in l)
+    for flag in ("--password-store=basic", "--no-first-run", "--ozone-platform-hint=auto",
+                 "--disable-gpu", "http://localhost:5000"):
+        assert flag in line, flag

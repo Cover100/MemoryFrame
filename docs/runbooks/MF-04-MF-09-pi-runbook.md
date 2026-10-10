@@ -243,7 +243,7 @@ python3 deploy/kiosk-console.py --seconds 30 --screenshot ~/kiosk.png
 Exec=env MEMORYFRAME_KIOSK_DEBUG=1 MEMORYFRAME_CHROMIUM_FLAGS="--disable-gpu" /home/memoryframe/Documents/GitHub/MemoryFrame/deploy/kiosk.sh
 Exec=env MEMORYFRAME_KIOSK_DEBUG=1 MEMORYFRAME_CHROMIUM_FLAGS="--ozone-platform=x11" /home/memoryframe/Documents/GitHub/MemoryFrame/deploy/kiosk.sh
 ```
-(`--ozone-platform=wayland` is already added automatically when `WAYLAND_DISPLAY` is set. The `x11` variant uses XWayland.) Record which one produces a visible slideshow.
+(`--ozone-platform=wayland` is added automatically when `WAYLAND_DISPLAY` is set or `XDG_SESSION_TYPE=wayland`; check the `launch:` line in the log for the exact flags. The `x11` variant uses XWayland.) Record which one produces a visible slideshow.
 
 **5. Turn debug off afterwards.** Restore `Exec=/home/memoryframe/Documents/GitHub/MemoryFrame/deploy/kiosk.sh` (keep any working `MEMORYFRAME_CHROMIUM_FLAGS`), then reboot. `ss -ltn | grep 9222` must print nothing.
 

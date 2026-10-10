@@ -435,3 +435,26 @@ cd "$R"; git checkout --detach <previous commit>     # note it before step 2: gi
 #   sudo rm -rf /var/lib/memoryframe      (only after confirming uploads/ and the off-device copy are intact)
 ```
 
+
+## 4. MF-10 deploy: port 80, memoryframe.lan/.local, power save (Tester)
+
+Prerequisite: MF-11 is deployed. Back up `uploads/` and `/var/lib/memoryframe` first, as always.
+
+1. Update the code: `cd /home/memoryframe/Documents/GitHub/MemoryFrame && git status --short` must be empty. Then `git fetch origin && git reset --hard origin/main`.
+2. Re-run `deploy/install.sh` (it re-renders the unit with port 80 and the capability). Then:
+   - `systemctl show memoryframe -p AmbientCapabilities` → `cap_net_bind_service`
+   - `ss -ltnp | grep -E ':(80|5000) '` → both ports, owned by python as memoryframe
+   - `curl -fsS http://localhost/healthz` and `curl -fsS http://localhost:5000/healthz`
+3. Run `sudo deploy/network-setup.sh`. It does not touch the active Wi-Fi connection; Pi Connect stays up.
+   - `hostname` → `memoryframe`; `systemctl is-active avahi-daemon` → active
+   - From a laptop or phone on the home Wi-Fi: `http://memoryframe.local/` loads.
+   - `iw wlan0 get power_save` → `Power save: off` (after `sudo systemctl reload NetworkManager`, or a reboot)
+4. **Hotspot checks (only with the user physically at the Pi, MF-09 rules)**: `sudo deploy/hotspot.sh --test 300`, then from the phone joined to the AP:
+   - `http://10.42.0.1/`, `http://memoryframe.lan/`, `http://memoryframe.local/` (Android 12+), and the NFC tag
+   - no captive-portal sheet appears
+   - `nslookup example.com 10.42.0.1` → NXDOMAIN in < 1 s
+
+   The Pi switches back to home Wi-Fi automatically when the timer ends.
+5. Reboot, then repeat steps 2 and 3. Repeat step 4 only if the user is present.
+
+Rollback: `sudo deploy/network-setup.sh --remove`, set `Environment=MEMORYFRAME_PORTS=5000` (or check out the previous commit) and re-run `install.sh`.

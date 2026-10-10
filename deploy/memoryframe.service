@@ -1,0 +1,19 @@
+# Memory Frame web app (waitress). Installed by deploy/install.sh, which
+# replaces @USER@ and @APP_DIR@.
+[Unit]
+Description=Memory Frame web app
+After=network.target
+# Restart forever, even after repeated crashes.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=@USER@
+WorkingDirectory=@APP_DIR@
+Environment=PYTHONUNBUFFERED=1
+ExecStart=@APP_DIR@/.venv/bin/python @APP_DIR@/app.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

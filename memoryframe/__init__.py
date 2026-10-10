@@ -24,6 +24,8 @@ def create_app(config=None):
     if config:
         app.config.update(config)
 
+    from . import imaging
+    app.config["DISPLAY_TARGET"] = imaging.parse_target(app.config.get("DISPLAY_SIZE", imaging.DEFAULT_TARGET))
     storage.ensure_layout(app.config["DATA_DIR"])
     db.init_app(app)
     from . import websec

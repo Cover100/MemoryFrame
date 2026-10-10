@@ -2,6 +2,7 @@
 
   migrate [--no-backup]   back up and import the legacy uploads/ folder (one-time)
   status                  show data dir, database and media counts
+  display-copies [--force] create missing display copies (MF-15 backfill)
 """
 import argparse
 import sys
@@ -17,6 +18,8 @@ def main(argv=None):
     m.add_argument("--no-backup", action="store_true",
                    help="skip the tar backup (not recommended)")
     sub.add_parser("status", help="show data dir and counts")
+    d = sub.add_parser("display-copies", help="create missing display copies")
+    d.add_argument("--force", action="store_true", help="re-create all copies (e.g. new size)")
     args = ap.parse_args(argv)
     config = storage.default_config()
 
@@ -29,6 +32,17 @@ def main(argv=None):
         return 0
 
     storage.ensure_layout(config["DATA_DIR"])
+    if args.cmd == "display-copies":
+        from . import imaging
+        db.init_db(config["DB_PATH"])
+        conn = db.connect(config["DB_PATH"])
+        try:
+            made, failed = imaging.backfill(conn, config["DATA_DIR"],
+                                            imaging.parse_target(config["DISPLAY_SIZE"]), args.force)
+        finally:
+            conn.close()
+        print(f"display copies: {made} made, {failed} failed")
+        return 1 if failed else 0
     db.init_db(config["DB_PATH"])
     conn = db.connect(config["DB_PATH"])
     try:

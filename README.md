@@ -157,6 +157,29 @@ nano deploy/hotspot.conf                             # set SSID and PASSWORD
   `sudo nmcli connection up <your Wi-Fi profile>`.
 - On-device runbook: `docs/runbooks/MF-04-MF-09-pi-runbook.md`.
 
+## Frame address: port 80, memoryframe.lan / .local (MF-10)
+
+- The service listens on **port 80 and 5000** (`MEMORYFRAME_PORTS=80,5000` in `deploy/memoryframe.service`). It still runs as the normal user; only `CAP_NET_BIND_SERVICE` is granted. `MEMORYFRAME_PORT` (single port) still works for development.
+- `sudo deploy/network-setup.sh` (idempotent; `--remove` undoes its files) sets:
+  - the hostname `memoryframe` and avahi, so `http://memoryframe.local/` works on the home network and on Android 12+.
+  - a NetworkManager `dnsmasq-shared.d` drop-in for the hotspot: `memoryframe.lan` → `10.42.0.1`, and every other name gets an **immediate NXDOMAIN**. There is no upstream DNS and no captive-portal redirect.
+  - Wi-Fi power save off (`wifi.powersave = 2`) and the Wi-Fi country (`AU` by default).
+- The script never brings a connection up or down. It only reloads NetworkManager's config, so it is safe to run over Pi Connect. The hotspot is still manual only (MF-09).
+
+## Display copies (MF-15)
+
+The slideshow never loads the original files. For every image, a JPEG **display copy** is written to `<data dir>/display/<id>.jpg` with these rules:
+- **Covers** the target size: both sides are at least the target and the aspect ratio is kept, so the CSS `object-fit: cover` crop stays sharp. Copies are never upscaled.
+- EXIF orientation is applied, and all metadata is stripped, including GPS.
+- Each copy is **at most 300 KB**.
+
+Originals in `originals/` are only read, never changed. Animated GIFs are served as originals.
+
+- **Target size:** `MEMORYFRAME_DISPLAY_SIZE`, default **`800x600`**. The other candidate is `1000x750`; the choice is still open (U3). After changing it, run `python -m memoryframe display-copies --force`.
+- **New photos:** the copy is made when the photo is added, or on its first request.
+- **Existing photos:** `python -m memoryframe display-copies` creates the missing copies (`install.sh` runs it).
+- **HEIC/HEIF** from phones is accepted through `pillow-heif` (wheels exist for Pi aarch64 / Python 3.13). The original `.heic` is kept, and the display gets a JPEG copy.
+
 ## Pairing a phone (MF-12)
 
 There is one owner (D6), who may pair several phones.

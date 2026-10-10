@@ -1,0 +1,124 @@
+"""Display copies (MF-15).
+
+For each image in originals/ a JPEG display copy is written to display/<stem>.jpg:
+  - EXIF orientation applied, then all metadata (EXIF/GPS/XMP) dropped;
+  - scaled so it still COVERS the target (both sides >= target, aspect kept,
+    no crop) - the slideshow uses CSS object-fit: cover, so a "fit inside" copy
+    would be upscaled and soft. Images already smaller are never upscaled;
+  - under MAX_BYTES (JPEG quality steps down; as a last resort the image shrinks).
+Originals are only ever read. Animated GIFs keep being served as originals.
+HEIC/HEIF (Android/iPhone) is read through pillow-heif when it is installed.
+"""
+import logging
+import os
+import threading
+
+log = logging.getLogger("memoryframe.imaging")
+
+DEFAULT_TARGET = "800x600"     # U3 open: 800x600 (default) or 1000x750
+MAX_BYTES = 300 * 1024
+QUALITIES = (85, 80, 75, 70, 65, 60, 55, 50)
+
+try:
+    from PIL import Image, ImageOps
+except ImportError:            # pragma: no cover - Pillow is in requirements.txt
+    Image = None
+
+try:
+    import pillow_heif
+    pillow_heif.register_heif_opener()
+    HEIF = True
+except ImportError:            # pragma: no cover
+    HEIF = False
+
+_lock = threading.Lock()
+
+
+def parse_target(value):
+    try:
+        w, h = (int(x) for x in str(value).lower().split("x"))
+        if w > 0 and h > 0:
+            return w, h
+    except ValueError:
+        pass
+    raise ValueError(f"display size must look like 800x600, got {value!r}")
+
+
+def display_name(stored_name):
+    return os.path.splitext(stored_name)[0] + ".jpg"
+
+
+def needs_copy(stored_name):
+    """GIFs stay originals (animation); everything else displayable gets a copy."""
+    return os.path.splitext(stored_name)[1].lower() != ".gif"
+
+
+def cover_size(size, target):
+    w, h = size
+    tw, th = target
+    scale = max(tw / w, th / h)
+    if scale >= 1:
+        return w, h
+    return max(tw, round(w * scale)), max(th, round(h * scale))
+
+
+def make_display_copy(src, dst, target, max_bytes=MAX_BYTES):
+    """Write the display copy atomically. Returns (width, height, bytes)."""
+    if Image is None:
+        raise RuntimeError("Pillow is not installed")
+    with Image.open(src) as im:
+        im = ImageOps.exif_transpose(im)
+        if im.mode not in ("RGB", "L"):
+            bg = Image.new("RGB", im.size, (0, 0, 0))
+            rgba = im.convert("RGBA")
+            bg.paste(rgba, mask=rgba.getchannel("A"))
+            im = bg
+        size = cover_size(im.size, target)
+        if size != im.size:
+            im = im.resize(size, Image.LANCZOS)
+        tmp = dst + ".tmp"
+        while True:
+            for q in QUALITIES:
+                im.save(tmp, "JPEG", quality=q, optimize=True, progressive=True)  # no exif= -> stripped
+                if os.path.getsize(tmp) <= max_bytes:
+                    os.replace(tmp, dst)
+                    return im.size + (os.path.getsize(dst),)
+            # Pathological noise: shrink 10 % and retry (may drop below cover; still bounded).
+            im = im.resize((max(1, int(im.width * 0.9)), max(1, int(im.height * 0.9))), Image.LANCZOS)
+
+
+def ensure_display_copy(data_dir, stored_name, target):
+    """Path of the file the display should show (copy if possible, else the original)."""
+    original = os.path.join(data_dir, "originals", stored_name)
+    if not needs_copy(stored_name):
+        return original
+    dst = os.path.join(data_dir, "display", display_name(stored_name))
+    if os.path.exists(dst):
+        return dst
+    with _lock:
+        if not os.path.exists(dst):
+            try:
+                make_display_copy(original, dst, target)
+            except Exception as e:  # noqa: BLE001 - never break the slideshow
+                log.warning("display copy failed for %s: %s", stored_name, e)
+                return original
+    return dst
+
+
+def backfill(conn, data_dir, target, force=False):
+    """Create missing display copies for every image. Returns (made, failed)."""
+    made = failed = 0
+    rows = conn.execute("SELECT stored_name FROM media WHERE kind = 'image' ORDER BY id").fetchall()
+    for (name,) in rows:
+        if not needs_copy(name):
+            continue
+        dst = os.path.join(data_dir, "display", display_name(name))
+        if force and os.path.exists(dst):
+            os.remove(dst)
+        if os.path.exists(dst):
+            continue
+        if ensure_display_copy(data_dir, name, target) == dst:
+            made += 1
+        else:
+            failed += 1
+    return made, failed

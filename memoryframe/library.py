@@ -4,7 +4,7 @@ import os
 import shutil
 import uuid
 
-from . import db, storage
+from . import db, imaging, storage
 
 
 class CopyVerificationError(Exception):
@@ -19,7 +19,7 @@ def sha256_file(path):
     return h.hexdigest()
 
 
-def add_file(conn, data_dir, src, original_name, source):
+def add_file(conn, data_dir, src, original_name, source, display_target=None):
     """Copy src into originals/ under a server-generated name and record it.
 
     Returns the stored name, or None if the type is unsupported or an identical
@@ -43,4 +43,6 @@ def add_file(conn, data_dir, src, original_name, source):
         " VALUES (?, ?, ?, ?, ?, ?, ?)",
         (stored, original_name, kind, digest, os.path.getsize(src), source, db.now()))
     conn.commit()
+    if kind == "image" and display_target:
+        imaging.ensure_display_copy(data_dir, stored, display_target)
     return stored

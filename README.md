@@ -200,7 +200,15 @@ There is one owner (D6), who may pair several phones.
 
 ## On-device onboarding and menu (MF-19)
 
-- **No phone paired:** the frame shows **1. Join Wi-Fi** (a standard `WIFI:` QR the Android camera understands), then **2. Open site** (the pairing QR), plus the 6-digit code. The SSID and password come from `deploy/hotspot.conf`, or `MEMORYFRAME_SSID` / `MEMORYFRAME_WIFI_PASSWORD`. The Wi-Fi QR is **on by default** (D3). Turn it off with `MEMORYFRAME_SHOW_WIFI_QR=0`, or the database setting `show_wifi_qr=0` (the settings UI comes with MF-17).
-- **Paired but no photos:** a "No photos yet" screen with the site address.
-- **Still long-press of 3 s or more:** a menu with IP, Wi-Fi name, free storage, phones paired and version, plus **Pair new device**, **Sign out all phones** and **Close**. Text is at least 24 px at 800x480.
-- **Privacy:** all of this uses localhost-only routes (`/pairing/state`, `/frame/status`). The Wi-Fi password never leaves the frame except as the on-screen QR.
+- **No photos and no phone paired:** full onboarding. On the hotspot it shows **1. Join Wi-Fi** (a standard `WIFI:` QR), then **2. Open site** (the pairing QR) and the 6-digit code.
+- **Photos but no phone paired:** the slideshow runs. Only a small "Hold 3 s for menu to pair a phone" hint shows in the corner.
+- **Paired but no photos:** a "No photos yet" screen.
+- **Still long-press of 3 s or more:** a menu with IP, Wi-Fi, site address, free storage, phones paired and version, plus **Pair new device** (always available), **Sign out all phones** and **Close**. Text is at least 24 px at 800x480.
+- **Addresses follow the current network** (checked on every request):
+  - **Hotspot** (the frame holds 10.42.0.1): `http://10.42.0.1/pair`, or `memoryframe.lan`.
+  - **Home Wi-Fi:** `http://memoryframe.local/pair`, plus the frame's own IP as a fallback (e.g. `http://192.168.50.124/pair`).
+  - `:5000` is added unless the app actually serves port 80 (`MEMORYFRAME_PORTS`).
+  - The Host check accepts the frame's own current IP addresses automatically.
+  - `PAIR_BASE_URL` (app config) overrides everything.
+- **Wi-Fi QR:** shown only on the hotspot, and **on by default** (D3). Turn it off with `MEMORYFRAME_SHOW_WIFI_QR=0` or the database setting `show_wifi_qr=0` (the settings UI comes with MF-17). SSID and password come from `deploy/hotspot.conf`, or `MEMORYFRAME_SSID` / `MEMORYFRAME_WIFI_PASSWORD`.
+- **Privacy:** these screens use localhost-only routes (`/pairing/state`, `/frame/status`). The Wi-Fi password only leaves the frame as the on-screen QR.

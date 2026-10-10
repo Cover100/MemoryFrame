@@ -70,7 +70,7 @@ def test_code_pairs_and_lands_on_admin(client, mf_app):
 
 def test_qr_token_pairs(client):
     st = start(client)
-    assert "<svg" in st["round"]["qr_svg"] and st["url"] == "http://10.42.0.1/pair"
+    assert "<svg" in st["round"]["qr_svg"] and st["url"] == "http://10.42.0.1:5000/pair"   # port 80 not served in tests
     token = client.application.extensions["mf_pairing"].token
     page = client.get(f"/pair?t={token}", environ_base=PHONE)
     assert page.status_code == 200 and token.encode() in page.data      # GET does not pair

@@ -1,6 +1,9 @@
 // MF-12 + MF-19: on-device onboarding and long-press menu.
-// - No phone paired: Wi-Fi join QR (D3, if enabled) -> site QR + 6-digit code.
+// - No photos and no phone paired: full onboarding (Wi-Fi join QR on the hotspot -> site QR + code).
+// - Photos but no phone paired: the slideshow runs; only a small "Hold 3 s for menu" hint.
 // - Paired but no photos: "No photos yet" screen.
+// - Pairing is always available from the long-press menu ("Pair new device").
+// The site URL/QR follow the frame's current network (hotspot 10.42.0.1 or home Wi-Fi .local + IP).
 // - Still long-press >= 3 s: menu (IP, SSID, free storage, version, pair new device, sign out all).
 // Only localhost routes are used (/pairing/*, /frame/status).
 (function(){
@@ -34,6 +37,7 @@
     function render(st){
         paired = st.paired;
         $("pairUrl").textContent = st.url;
+        $("pairUrlAlt").textContent = st.url_fallback ? "or " + st.url_fallback : "";
         $("emptyUrl").textContent = st.site_url;
         $("pairSsid").textContent = st.ssid || "";
         const wifi = !!st.wifi_qr_svg;
@@ -44,13 +48,14 @@
             $("pairCode").textContent = st.round.code.slice(0, 3) + " " + st.round.code.slice(3);
             $("pairQr").innerHTML = st.round.qr_svg;
         }
-        $("pairClose").hidden = paired === 0;
+        $("pairClose").hidden = paired === 0 && st.media === 0;
     }
 
     async function tick(){
         try{
             let st = await getJSON("/pairing/state");
-            const pairing = st.paired === 0 || onDemand;
+            const firstRun = st.paired === 0 && st.media === 0;
+            const pairing = firstRun || onDemand;
             if(pairing && !st.round){
                 st = (await startRound()) || st;      // first round, expired or used
             }
@@ -58,9 +63,10 @@
                 onDemand = false;                    // the new phone just paired
             }
             render(st);
-            const showPair = st.paired === 0 || onDemand;
+            const showPair = (st.paired === 0 && st.media === 0) || onDemand;
             pairOverlay.classList.toggle("visible", showPair);
-            emptyOverlay.classList.toggle("visible", !showPair && st.media === 0);
+            emptyOverlay.classList.toggle("visible", !showPair && st.paired > 0 && st.media === 0);
+            $("pairHint").classList.toggle("visible", !showPair && st.paired === 0 && st.media > 0);
         }catch(e){
             console.warn("pairing state unavailable", e);
         }
@@ -73,7 +79,10 @@
         try{
             const s = await getJSON("/frame/status");
             $("menuIp").textContent = s.ips.length ? s.ips.join(", ") : "not connected";
-            $("menuSsid").textContent = s.ssid || "unknown";
+            $("menuSsid").textContent = s.network === "hotspot" ? (s.ssid || "hotspot") + " (hotspot)"
+                                                                : "home Wi-Fi";
+            $("menuSite").textContent = s.site.replace("http://", "") +
+                (s.site_fallback ? "  or  " + s.site_fallback.replace("http://", "") : "");
             $("menuFree").textContent = gb(s.storage.free) + " of " + gb(s.storage.total);
             $("menuPaired").textContent = String(s.paired);
             $("menuVersion").textContent = s.version;

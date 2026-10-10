@@ -595,8 +595,14 @@ video {
 .emptyText{font-size:30px;text-align:center;max-width:720px;line-height:1.4}
 .emptyTitle{font-size:48px;font-weight:700;margin-bottom:16px}
 #menuBox{max-width:760px}
-.menuTitle{font-size:34px;font-weight:700;margin-bottom:10px}
-#menuInfo{font-size:28px;border-collapse:collapse}
-#menuInfo th{text-align:left;font-weight:400;opacity:.8;padding:4px 24px 4px 0}
+.menuTitle{font-size:28px;font-weight:700;margin-bottom:4px}
+#menuInfo{font-size:24px;border-collapse:collapse;line-height:1.25}
+#menuInfo td{overflow-wrap:anywhere}
+#menuInfo th{text-align:left;font-weight:400;opacity:.8;padding:2px 20px 2px 0;white-space:nowrap}
 #menuInfo td{font-weight:600}
-.menuButtons{margin-top:14px}
+.menuButtons{margin-top:8px;display:flex;gap:8px}
+.menuButtons button{margin:0!important;padding:8px 14px!important}
+#pairUrlAlt{display:block;font-size:20px;opacity:.85}
+#pairHint{position:fixed;right:12px;bottom:10px;z-index:40;display:none;padding:6px 12px;border-radius:8px;
+  background:rgba(0,0,0,.45);color:rgba(255,255,255,.85);font:18px system-ui,sans-serif;pointer-events:none}
+#pairHint.visible{display:block}

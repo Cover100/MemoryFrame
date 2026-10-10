@@ -32,9 +32,10 @@ def free_port():
 
 
 @pytest.fixture
-def server(mf_app, lib, backlight):
-    lib.add("a.png", PNG)
-    lib.add("b.png", PNG + b"\0")   # distinct checksum (duplicates are skipped)
+def server(request, mf_app, lib, backlight):
+    if request.node.get_closest_marker("no_media") is None:
+        lib.add("a.png", PNG)
+        lib.add("b.png", PNG + b"\0")   # distinct checksum (duplicates are skipped)
     port = free_port()
     srv = make_server("127.0.0.1", port, mf_app, threaded=True)
     t = threading.Thread(target=srv.serve_forever, daemon=True)
@@ -147,69 +148,126 @@ def visible(page, el_id):
     return evaluate(page, f"getComputedStyle(document.getElementById('{el_id}')).display !== 'none'")
 
 
-def test_pairing_overlay_shown_until_paired_then_long_press(page, server, mf_app, monkeypatch):
-    import json
+@pytest.fixture
+def net(monkeypatch):
+    """Mock the frame's network detection (what nmcli/ip would report on the Pi)."""
+    from memoryframe import frameinfo
+    state = {"mode": "hotspot", "lan_ip": "10.42.0.1", "ips": ["10.42.0.1"]}
+    monkeypatch.setattr(frameinfo, "network", lambda: dict(state))
     monkeypatch.setenv("MEMORYFRAME_SSID", "Frame-WiFi")
     monkeypatch.setenv("MEMORYFRAME_WIFI_PASSWORD", "correct horse;battery")
+    monkeypatch.setenv("MEMORYFRAME_PORTS", "80,5000")
+    return state
+
+
+def text(page, el_id):
+    return evaluate(page, f"document.getElementById('{el_id}').textContent")
+
+
+def hold(page, seconds):
+    page.call("Input.dispatchMouseEvent", {"type": "mousePressed", "x": 400, "y": 240,
+                                           "button": "left", "clickCount": 1})
+    page.pump(seconds)
+    page.call("Input.dispatchMouseEvent", {"type": "mouseReleased", "x": 400, "y": 240,
+                                           "button": "left", "clickCount": 1})
+
+
+def menu_info(page):
+    import json
+    return json.loads(evaluate(page, """JSON.stringify((()=>{const b=document.getElementById('menuBox').getBoundingClientRect();
+      const f=[...document.querySelectorAll('#menuBox th,#menuBox td,#menuBox button')].map(e=>parseFloat(getComputedStyle(e).fontSize));
+      const t=id=>document.getElementById(id).textContent;
+      return {box:[b.left,b.top,b.right,b.bottom], minFont:Math.min(...f), ssid:t('menuSsid'), site:t('menuSite'),
+              paired:t('menuPaired'), free:t('menuFree'), version:t('menuVersion'), ip:t('menuIp'),
+              buttons:[...document.querySelectorAll('#menuBox button')].map(b=>b.textContent)};})())"""))
+
+
+@pytest.mark.no_media
+def test_state_a_no_photos_no_phone_full_onboarding_on_hotspot(page, server, mf_app, net):
     page.pump(2.5)
     o = overlay(page)
     assert o["visible"] and o["qr"]
     code = mf_app.extensions["mf_pairing"].code
-    assert o["code"].replace(" ", "") == code
-    assert o["font"] >= 72
-    left, top, right, bottom = o["box"]
+    assert o["code"].replace(" ", "") == code and o["font"] >= 72
     assert (o["vw"], o["vh"]) == (800, 480)
+    left, top, right, bottom = o["box"]
     assert left >= 0 and top >= 0 and right <= o["vw"] and bottom <= o["vh"], o   # fits 800x480
-    # MF-19: Wi-Fi join QR first, then the site QR
+    # Wi-Fi join QR first, then the site QR for the hotspot address (port 80 is served)
     assert visible(page, "wifiStep") and evaluate(page, "!!document.querySelector('#wifiQr svg')")
-    assert evaluate(page, "document.getElementById('siteTitle').textContent") == "2. Open site"
+    assert text(page, "siteTitle") == "2. Open site"
+    assert text(page, "pairUrl") == "http://10.42.0.1/pair"
+    assert text(page, "pairUrlAlt") == "or http://memoryframe.lan/pair"
+    assert not visible(page, "pairHint")
 
     phone_pair(server, code)
     page.pump(2.5)
     assert not overlay(page)["visible"]
-    assert not visible(page, "wifiStep") or not overlay(page)["visible"]
-
-    # still >= 3 s long-press opens the MF-19 menu (2 s is not enough)
-    page.call("Input.dispatchMouseEvent", {"type": "mousePressed", "x": 400, "y": 240,
-                                           "button": "left", "clickCount": 1})
-    page.pump(2.0)
-    assert not visible(page, "menuOverlay")
-    page.pump(1.5)
-    page.call("Input.dispatchMouseEvent", {"type": "mouseReleased", "x": 400, "y": 240,
-                                           "button": "left", "clickCount": 1})
-    page.pump(1.0)
-    assert visible(page, "menuOverlay")
-    menu = json.loads(evaluate(page, """JSON.stringify((()=>{const b=document.getElementById('menuBox').getBoundingClientRect();
-      const f=[...document.querySelectorAll('#menuBox th,#menuBox td,#menuBox button')].map(e=>parseFloat(getComputedStyle(e).fontSize));
-      const t=id=>document.getElementById(id).textContent;
-      return {box:[b.left,b.top,b.right,b.bottom], minFont:Math.min(...f), ssid:t('menuSsid'), paired:t('menuPaired'),
-              free:t('menuFree'), version:t('menuVersion'), ip:t('menuIp'),
-              buttons:[...document.querySelectorAll('#menuBox button')].map(b=>b.textContent)};})())"""))
-    assert menu["box"][2] <= 800 and menu["box"][3] <= 480 and menu["box"][0] >= 0 and menu["box"][1] >= 0, menu
-    assert menu["minFont"] >= 24, menu                      # legible from 1 m on 800x480
-    assert menu["ssid"] == "Frame-WiFi" and menu["paired"] == "1" and "GB" in menu["free"]
-    assert menu["version"].startswith("0.2.0") and menu["ip"] != "-"
-    assert {"Pair new device", "Sign out all phones", "Close"} <= set(menu["buttons"])
-
-    # "Pair new device" -> pairing overlay with a fresh code (no Wi-Fi QR: a phone is paired)
-    evaluate(page, "document.getElementById('menuPair').click()")
-    page.pump(1.0)
-    o = overlay(page)
-    assert o["visible"] and not visible(page, "menuOverlay") and not visible(page, "wifiStep")
-    assert o["code"].replace(" ", "") == mf_app.extensions["mf_pairing"].code
-
-    # "Sign out all phones" from the menu -> back to first-run onboarding
-    evaluate(page, "document.getElementById('pairClose').click()")
-    evaluate(page, "memoryFramePairing.openMenu()")
-    page.pump(0.5)
-    evaluate(page, "document.getElementById('menuSignOut').click()")
-    page.pump(2.5)
-    assert overlay(page)["visible"] and visible(page, "wifiStep")
+    assert visible(page, "emptyOverlay")                   # paired, still no photos -> state C
     assert page.exceptions() == [], fmt(page.exceptions())
     assert csp_violations(page) == []
 
 
-def test_empty_library_screen(page, server, mf_app):
+def test_state_b_photos_no_phone_slideshow_runs_on_home_wifi(page, server, mf_app, net, monkeypatch):
+    net.update(mode="lan", lan_ip="192.168.50.124", ips=["192.168.50.124"])
+    monkeypatch.setenv("MEMORYFRAME_PORTS", "5000")        # port 80 not served -> :5000 in URLs
+    page.pump(2.5)
+    # The slideshow is not blocked: no overlay, a photo on screen, only the small hint.
+    assert not overlay(page)["visible"] and not visible(page, "emptyOverlay")
+    assert evaluate(page, "document.getElementById('image').getAttribute('src')||''").startswith("/uploads/")
+    assert visible(page, "pairHint") and "Hold 3 s" in text(page, "pairHint")
+    hint = evaluate(page, "JSON.stringify(document.getElementById('pairHint').getBoundingClientRect())")
+    import json
+    h = json.loads(hint)
+    assert h["width"] * h["height"] < 800 * 480 * 0.05          # unobtrusive: < 5 % of the screen
+    assert mf_app.extensions.get("mf_pairing") is None or mf_app.extensions["mf_pairing"].current() is None
+
+    # long-press menu -> site for the current network, then "Pair new device"
+    hold(page, 2.0)
+    page.pump(0.3)
+    assert not visible(page, "menuOverlay")                  # 2 s is not enough
+    hold(page, 3.5)
+    page.pump(1.0)
+    assert visible(page, "menuOverlay")
+    m = menu_info(page)
+    assert m["box"][2] <= 800 and m["box"][3] <= 480 and m["box"][0] >= 0 and m["box"][1] >= 0, m
+    assert m["minFont"] >= 24, m
+    assert m["ssid"] == "home Wi-Fi" and m["paired"] == "0" and "GB" in m["free"]
+    assert m["site"] == "memoryframe.local:5000/  or  192.168.50.124:5000/"
+    assert m["version"].startswith("0.2.0") and m["ip"] != "-"
+    assert {"Pair new device", "Sign out all phones", "Close"} <= set(m["buttons"])
+    evaluate(page, "document.getElementById('menuPair').click()")
+    page.pump(1.0)
+    o = overlay(page)
+    assert o["visible"] and not visible(page, "menuOverlay")
+    assert not visible(page, "wifiStep")                    # no hotspot -> no Wi-Fi QR
+    assert text(page, "pairUrl") == "http://memoryframe.local:5000/pair"
+    assert text(page, "pairUrlAlt") == "or http://192.168.50.124:5000/pair"
+    assert o["code"].replace(" ", "") == mf_app.extensions["mf_pairing"].code
+    # Close returns to the slideshow
+    evaluate(page, "document.getElementById('pairClose').click()")
+    page.pump(1.0)
+    assert not overlay(page)["visible"] and visible(page, "pairHint")
+    assert page.exceptions() == [], fmt(page.exceptions())
+    assert csp_violations(page) == []
+
+
+def test_menu_pair_and_sign_out_with_phone(page, server, mf_app, net):
+    from memoryframe import auth, db as mfdb
+    conn = mfdb.connect(mf_app.config["DB_PATH"])
+    auth.create_session(conn, "phone")
+    conn.close()
+    page.pump(2.5)
+    assert not overlay(page)["visible"] and not visible(page, "pairHint")
+    evaluate(page, "memoryFramePairing.openMenu()")
+    page.pump(0.5)
+    assert menu_info(page)["ssid"] == "Frame-WiFi (hotspot)"
+    evaluate(page, "document.getElementById('menuSignOut').click()")
+    page.pump(2.5)
+    assert not overlay(page)["visible"] and visible(page, "pairHint")   # photos exist -> hint only
+    assert page.exceptions() == [], fmt(page.exceptions())
+
+
+def test_state_c_empty_library_screen(page, server, mf_app, net):
     from memoryframe import auth, db as mfdb
     conn = mfdb.connect(mf_app.config["DB_PATH"])
     auth.create_session(conn, "phone")
@@ -217,6 +275,6 @@ def test_empty_library_screen(page, server, mf_app):
     conn.commit()
     conn.close()
     page.pump(3)
-    assert visible(page, "emptyOverlay") and not overlay(page)["visible"]
-    assert "10.42.0.1" in evaluate(page, "document.getElementById('emptyOverlay').textContent")
+    assert visible(page, "emptyOverlay") and not overlay(page)["visible"] and not visible(page, "pairHint")
+    assert "10.42.0.1" in text(page, "emptyOverlay")
     assert page.exceptions() == [], fmt(page.exceptions())

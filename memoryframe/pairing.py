@@ -29,14 +29,19 @@ def qr_svg(data):
 
 def _state():
     rnd = auth.pairing().current()
-    base = current_app.config.get("PAIR_BASE_URL", "http://10.42.0.1")
+    urls = frameinfo.site_urls()
+    base = current_app.config.get("PAIR_BASE_URL") or urls["primary"]
+    fallback = None if current_app.config.get("PAIR_BASE_URL") else urls["fallback"]
     conn = get_db()
     name, password = frameinfo.hotspot_conf()
     out = {"paired": auth.paired_count(conn), "ssid": name, "url": base + "/pair", "round": None,
+           "network": urls["mode"], "url_fallback": fallback + "/pair" if fallback else None,
            "site_url": base + "/", "media": conn.execute("SELECT COUNT(*) FROM media WHERE hidden = 0").fetchone()[0],
            "wifi_qr_svg": None}
-    # MF-19 / D3: Wi-Fi join QR (shown before the site QR), only while no phone is paired.
-    if out["paired"] == 0 and name and password and frameinfo.show_wifi_qr(conn):
+    # MF-19 / D3: Wi-Fi join QR (shown before the site QR), only while no phone is paired and
+    # only when the frame's hotspot is the active network (on home Wi-Fi it would not exist).
+    if (out["paired"] == 0 and urls["mode"] == "hotspot" and name and password
+            and frameinfo.show_wifi_qr(conn)):
         out["wifi_qr_svg"] = qr_svg(frameinfo.wifi_qr_payload(name, password))
     if rnd:
         link = f"{base}/pair?t={rnd['token']}"
@@ -95,6 +100,9 @@ def pair():
 @localhost_only
 def frame_status():
     name, _ = frameinfo.hotspot_conf()
+    urls = frameinfo.site_urls()
     return jsonify({"ips": frameinfo.ip_addresses(), "ssid": name, "version": frameinfo.version(),
+                    "network": urls["mode"], "site": urls["primary"] + "/", "site_fallback":
+                    urls["fallback"] + "/" if urls["fallback"] else None,
                     "storage": frameinfo.free_storage(current_app.config["DATA_DIR"]),
                     "paired": auth.paired_count(get_db())})

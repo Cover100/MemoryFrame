@@ -77,3 +77,67 @@ def version():
 def free_storage(data_dir):
     du = shutil.disk_usage(data_dir)
     return {"free": du.free, "total": du.total}
+
+
+# ---------------- network-aware addresses (Tester bug at cb270ce) ----------------
+
+HOTSPOT_IP = "10.42.0.1"
+_cache = {"at": 0.0, "ips": []}
+CACHE_SECONDS = 15
+
+
+def own_ips(max_age=CACHE_SECONDS):
+    """This machine's IPv4 addresses, cached briefly (used per request by the Host check)."""
+    import time
+    now = time.monotonic()
+    if now - _cache["at"] > max_age:
+        _cache["ips"] = ip_addresses()
+        _cache["at"] = now
+    return _cache["ips"]
+
+
+def default_route_ip():
+    """Source address the kernel would use for the default route (no packet is sent)."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("192.0.2.1", 9))          # TEST-NET-1, never actually contacted
+        ip = s.getsockname()[0]
+        return None if ip.startswith("127.") or ip == "0.0.0.0" else ip
+    except OSError:
+        return None
+    finally:
+        s.close()
+
+
+def network():
+    """{"mode": "hotspot"|"lan"|"unknown", "lan_ip": ...} detected at request time."""
+    ips = ip_addresses()
+    if HOTSPOT_IP in ips:
+        return {"mode": "hotspot", "lan_ip": HOTSPOT_IP, "ips": ips}
+    ip = default_route_ip() or (ips[0] if ips else None)
+    return {"mode": "lan" if ip else "unknown", "lan_ip": ip, "ips": ips}
+
+
+def served_ports():
+    raw = os.environ.get("MEMORYFRAME_PORTS") or os.environ.get("MEMORYFRAME_PORT") or "5000"
+    ports = []
+    for p in raw.replace(" ", "").split(","):
+        if p.isdigit():
+            ports.append(int(p))
+    return ports or [5000]
+
+
+def port_suffix():
+    ports = served_ports()
+    return "" if 80 in ports else f":{ports[0]}"
+
+
+def site_urls(net=None):
+    """Primary and fallback base URLs for phones on the frame's current network."""
+    net = net or network()
+    sfx = port_suffix()
+    if net["mode"] == "hotspot":
+        return {"mode": "hotspot", "primary": f"http://{HOTSPOT_IP}{sfx}", "fallback": f"http://memoryframe.lan{sfx}"}
+    primary = f"http://memoryframe.local{sfx}"
+    fallback = f"http://{net['lan_ip']}{sfx}" if net.get("lan_ip") else None
+    return {"mode": net["mode"], "primary": primary, "fallback": fallback}

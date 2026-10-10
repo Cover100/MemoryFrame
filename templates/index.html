@@ -97,7 +97,7 @@
             <div class="step">
                 <div class="stepTitle" id="siteTitle">Pair your phone</div>
                 <div id="pairQr" class="qr"></div>
-                <div class="stepText">or open <span id="pairUrl"></span></div>
+                <div class="stepText">or open <span id="pairUrl"></span><span id="pairUrlAlt"></span></div>
             </div>
             <div class="step" id="codeStep">
                 <div class="stepText">Code</div>
@@ -106,6 +106,9 @@
             </div>
         </div>
     </div>
+
+    <!-- Photos but no phone paired: the slideshow runs; only this small hint -->
+    <div id="pairHint">Hold 3 s for menu to pair a phone</div>
 
     <!-- MF-19: empty library -->
     <div id="emptyOverlay" class="overlay">
@@ -122,6 +125,7 @@
             <table id="menuInfo">
                 <tr><th>IP</th><td id="menuIp">-</td></tr>
                 <tr><th>Wi-Fi</th><td id="menuSsid">-</td></tr>
+                <tr><th>Site</th><td id="menuSite">-</td></tr>
                 <tr><th>Free storage</th><td id="menuFree">-</td></tr>
                 <tr><th>Phones paired</th><td id="menuPaired">-</td></tr>
                 <tr><th>Version</th><td id="menuVersion">-</td></tr>

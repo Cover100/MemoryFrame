@@ -221,7 +221,7 @@ Also note: netplan-generated profiles on trixie are backed by `/etc/netplan/*.ya
 - `--enable-at-boot` is **rejected** (exit 2, "not supported: the hotspot is manual only"). Every run sets `connection.autoconnect no`, including when an existing profile is updated, so a profile left with autoconnect=yes by the old script is reset to `no`. `autoconnect-priority` is -10.
 - `./deploy/hotspot.sh --rollback`: `nmcli connection down MemoryFrame-hotspot` (if present), `nmcli connection delete MemoryFrame-hotspot`, then `nmcli device connect wlan0` (NM picks its best autoconnect profile, i.e. the home Wi-Fi). It no longer touches `Hotspot` or any other profile.
 - Password rules: 8–63 chars, `MemoryFrame123` (any case) refused, warning under 12. SSID 1–32 chars.
-- Tested against stateful `nmcli` and `systemd-run` stubs (`tests/test_hotspot_script.py`, 18 tests, all passing, including: autoconnect always no, `--enable-at-boot` rejected, re-run resets autoconnect=yes to no):
+- Tested against stateful `nmcli` and `systemd-run` stubs (`tests/test_hotspot_script.py`, 17 tests, all passing, including: autoconnect always no, `--enable-at-boot` rejected, re-run resets autoconnect=yes to no):
   - the default run never runs `connection up`
   - re-running is idempotent
   - netplan and `Hotspot` never appear in any nmcli call

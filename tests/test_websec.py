@@ -68,7 +68,7 @@ def test_allowed_hosts(client, host):
 
 
 @pytest.mark.parametrize("host", ["evil.example", "attacker.memoryframe.lan.evil.example", "10.42.0.1.nip.io",
-                                  "192.168.50.124", "memoryframe"])
+                                  "192.168.50.124", "memoryframe.evil", "lan.", "."])
 def test_dns_rebinding_hosts_rejected(client, host):
     assert client.get("/healthz", headers={"Host": host}).status_code == 400
     assert client.get("/media", headers={"Host": host}).status_code == 400
@@ -112,3 +112,35 @@ def test_extra_hosts_env(monkeypatch, tmp_path):
     assert c.get("/healthz", headers={"Host": "192.168.50.124:5000"}).status_code == 200
     assert c.get("/healthz", headers={"Host": "pi.home"}).status_code == 200
     assert c.get("/healthz", headers={"Host": "evil.example"}).status_code == 400
+
+
+
+# ---------- Tester #23 blockers ----------
+
+@pytest.mark.parametrize("bad", ["é", "токен", "\u00ff" * 40])
+def test_non_ascii_csrf_token_is_403(paired, bad):
+    r = paired.post("/admin/sign-out-all", environ_base=PHONE, csrf=False,
+                    headers={"X-CSRF-Token": bad.encode("utf-8").decode("latin-1")})
+    assert r.status_code == 403
+    r = paired.post("/admin/sign-out-all", environ_base=PHONE, csrf=False, data={"csrf_token": bad})
+    assert r.status_code == 403
+
+
+def test_non_ascii_csrf_cookie_is_403(client):
+    client.set_cookie("mf_csrf", "\u00e9t\u00e9")
+    r = client.post("/pair", data={"code": "123456", "csrf_token": "\u00e9t\u00e9"},
+                    environ_base=PHONE, csrf=False)
+    assert r.status_code == 403
+
+
+@pytest.mark.parametrize("host", ["memoryframe", "memoryframe.lan.", "memoryframe.local.:80",
+                                  "10.42.0.1.", "localhost.:5000", "MEMORYFRAME"])
+def test_trailing_dot_and_bare_name_allowed(client, host):
+    assert client.get("/healthz", headers={"Host": host}).status_code == 200
+
+
+def test_extra_hosts_trailing_dot(monkeypatch, tmp_path):
+    from memoryframe import create_app
+    monkeypatch.setenv("MEMORYFRAME_EXTRA_HOSTS", "pi.home.")
+    a = create_app({"TESTING": True, "DATA_DIR": str(tmp_path / "d"), "DB_PATH": str(tmp_path / "d.db")})
+    assert a.test_client().get("/healthz", headers={"Host": "pi.home."}).status_code == 200

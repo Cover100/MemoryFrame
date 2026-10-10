@@ -19,6 +19,11 @@ Environment=MEMORYFRAME_PORTS=80,5000
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 NoNewPrivileges=true
+# MF-13: optional settings, e.g. MEMORYFRAME_EXTRA_HOSTS=192.168.50.124 to open the site
+# from the home network. Written by: deploy/install.sh --extra-hosts LIST
+# (or deploy/env-file.sh). The leading "-" means the file may be absent.
+EnvironmentFile=-/etc/default/memoryframe
+# Environment=MEMORYFRAME_EXTRA_HOSTS=192.168.50.124
 ExecStart=@APP_DIR@/.venv/bin/python @APP_DIR@/app.py
 Restart=always
 RestartSec=2

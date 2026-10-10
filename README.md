@@ -192,7 +192,8 @@ There is one owner (D6), who may pair several phones.
 
 ## Web security (MF-13)
 
-- **Host allow-list:** requests are answered only for `10.42.0.1`, `memoryframe.lan`, `memoryframe.local`, `localhost`, `127.0.0.1` and `::1`. Any other Host gets **400**, which blocks DNS rebinding. Add more with `MEMORYFRAME_EXTRA_HOSTS`, e.g. `MEMORYFRAME_EXTRA_HOSTS=192.168.50.124` to test from the home network over Pi Connect.
+- **Host allow-list:** requests are answered only for `10.42.0.1`, `memoryframe`, `memoryframe.lan`, `memoryframe.local`, `localhost`, `127.0.0.1` and `::1`. A trailing dot (e.g. `memoryframe.lan.`) is accepted, and any other Host gets **400**, which blocks DNS rebinding.
+- **`MEMORYFRAME_EXTRA_HOSTS`:** a comma list of extra names or IPs, e.g. the home-network IP for testing over Pi Connect. On the Pi, set it with `./deploy/install.sh --extra-hosts 192.168.50.124`, or `deploy/env-file.sh MEMORYFRAME_EXTRA_HOSTS 192.168.50.124` followed by `sudo systemctl restart memoryframe`. Either writes `/etc/default/memoryframe`, which the service reads via `EnvironmentFile=`. Pass `""` to remove it. Values are limited to `A-Z a-z 0-9 . : , _ -`.
 - **Origin check:** a non-GET request with an `Origin`/`Referer` from another host gets **403**.
 - **CSRF:** the `mf_csrf` cookie (HttpOnly, SameSite=Strict) must be echoed in the `X-CSRF-Token` header (read it from `<meta name="csrf-token">`) or in a `csrf_token` form field. Otherwise the request gets **403**. The localhost-only kiosk routes are exempt.
 - **Headers:** `Content-Security-Policy: default-src 'self'; ... frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`. Templates contain no inline scripts or styles and no external URLs (enforced by a test).

@@ -11,6 +11,8 @@ Type=simple
 User=@USER@
 WorkingDirectory=@APP_DIR@
 Environment=PYTHONUNBUFFERED=1
+Environment=MEMORYFRAME_DATA_DIR=/var/lib/memoryframe
+Environment=MEMORYFRAME_LEGACY_UPLOADS=@APP_DIR@/uploads
 ExecStart=@APP_DIR@/.venv/bin/python @APP_DIR@/app.py
 Restart=always
 RestartSec=2

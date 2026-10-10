@@ -18,6 +18,20 @@ echo "== Python environment"
 "$APP_DIR/.venv/bin/pip" install -r "$APP_DIR/requirements.txt"
 mkdir -p "$APP_DIR/uploads"
 
+echo "== Data directory and one-time photo migration (MF-11)"
+DATA_DIR=/var/lib/memoryframe
+sudo install -d -o "$APP_USER" -g "$(id -gn)" -m 750 "$DATA_DIR"
+# Stop the running app first so the migration has the database to itself.
+sudo systemctl stop memoryframe.service 2>/dev/null || true
+# Backs up uploads/ to $DATA_DIR/backups/legacy-uploads-<time>.tar (verified),
+# then COPIES the photos into $DATA_DIR/originals. uploads/ is never changed.
+# Does nothing if the import was already done. Aborts (exit 1) if space is short.
+MEMORYFRAME_DATA_DIR="$DATA_DIR" MEMORYFRAME_LEGACY_UPLOADS="$APP_DIR/uploads" \
+    "$APP_DIR/.venv/bin/python" -m memoryframe migrate \
+    || echo "WARNING: migration failed (see above). Nothing was changed; the service is restarted anyway. Fix and re-run install.sh."
+MEMORYFRAME_DATA_DIR="$DATA_DIR" MEMORYFRAME_LEGACY_UPLOADS="$APP_DIR/uploads" \
+    "$APP_DIR/.venv/bin/python" -m memoryframe status
+
 echo "== Audit and disable existing autostart entries"
 "$APP_DIR/deploy/audit-autostart.sh" --disable
 

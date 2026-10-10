@@ -1,6 +1,6 @@
 import builtins
 import pytest
-import app as app_module
+import memoryframe.brightness as brightness_module
 
 
 def test_get_unsupported_is_not_500(client, no_backlight):
@@ -24,7 +24,7 @@ def test_autodetect_other_node(client, tmp_path, monkeypatch):
     node.mkdir()
     (node / "brightness").write_text("7")
     (node / "max_brightness").write_text("31")
-    monkeypatch.setattr(app_module, "BACKLIGHT_ROOT", str(tmp_path))
+    monkeypatch.setattr(brightness_module, "BACKLIGHT_ROOT", str(tmp_path))
     r = client.get("/brightness").get_json()
     assert r["supported"] and r["maximum"] == 31 and r["minimum"] == 31
 

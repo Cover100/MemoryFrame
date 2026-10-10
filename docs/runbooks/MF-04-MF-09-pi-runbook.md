@@ -376,3 +376,62 @@ Clean up the helper worktree when PR #12 is merged: `cd "$R" && git worktree rem
 - Phase B: phone joined (y/n), page loaded (y/n), revert happened at T+180 s (y/n), Pi Connect back (y/n)
 - after a reboot: `nmcli -f connection.autoconnect connection show MemoryFrame-hotspot` is `no` and wlan0 is on the home Wi-Fi
 - the rollback result
+
+---
+
+## 3. MF-11 deploy: new storage + one-time photo migration (PR for `mf-11-restructure`)
+Remote via Pi Connect is fine; no network changes. **The user approved backing up the existing photos before the migration.** There are two backups: one off-SD-card copy made by you (step 1), and the migration's own verified tar (step 3).
+
+**1. Back up the photos (always, before any Pi update)**
+```bash
+R=/home/memoryframe/Documents/GitHub/MemoryFrame; cd "$R"
+B=~/memoryframe-uploads-backup-$(date +%Y%m%d-%H%M%S); cp -a uploads "$B" && diff -r uploads "$B" && echo "backup OK"
+ls uploads | wc -l; du -sh uploads
+df -h / /var/lib                     # need free space of at least 2 x uploads size + 50 MB
+```
+Then copy the photos **off the Pi** as well (the SD card is a single point of failure). Use Pi Connect file transfer, or from a laptop on the same network: `scp -r memoryframe@<pi>:~/memoryframe-uploads-backup-<stamp> .`. Record where the off-device copy is.
+
+**2. Update the code**
+```bash
+git status --porcelain               # must be empty
+git fetch origin && git checkout --detach origin/mf-11-restructure   # after merge: git checkout main && git reset --hard origin/main
+```
+
+**3. Install, which runs the migration** (the script stops the service, migrates, then restarts it)
+```bash
+./deploy/audit-autostart.sh          # report only first (see 1.4)
+./deploy/install.sh
+```
+What's new in `install.sh` for MF-11:
+- `sudo install -d -o memoryframe -g memoryframe -m 750 /var/lib/memoryframe`
+- `systemctl stop memoryframe`
+- `MEMORYFRAME_DATA_DIR=/var/lib/memoryframe MEMORYFRAME_LEGACY_UPLOADS=$R/uploads .venv/bin/python -m memoryframe migrate`
+  - writes `/var/lib/memoryframe/backups/legacy-uploads-<time>.tar` plus `.sha256.json` and verifies them
+  - copies every photo to `/var/lib/memoryframe/originals/<random>.jpg` (checksum-verified)
+  - leaves `uploads/` untouched
+  - if space is short, it prints an ERROR and changes nothing; install continues and restarts the service
+- `... -m memoryframe status`
+- The service now has `Environment=MEMORYFRAME_DATA_DIR=/var/lib/memoryframe` and `MEMORYFRAME_LEGACY_UPLOADS=$R/uploads`.
+
+**4. Verify**
+```bash
+cd "$R"; .venv/bin/python -m memoryframe status       # media: 6, legacy import: <time>, backup: /var/lib/memoryframe/backups/...tar
+ls /var/lib/memoryframe/originals | wc -l             # 6
+tar tf /var/lib/memoryframe/backups/legacy-uploads-*.tar   # uploads/<6 files> + MANIFEST.sha256.json
+diff <(cd uploads && sha256sum * | awk '{print $1}' | sort) <(cd /var/lib/memoryframe/originals && sha256sum * | awk '{print $1}' | sort) && echo "originals identical"
+curl -s http://localhost:5000/media | python3 -m json.tool | head   # 6 entries, filenames are random hex names
+curl -s -o /dev/null -w "%{http_code}\n" -X POST -H 'Content-Type: application/json' -d '{"value":120}' http://localhost:5000/brightness   # 200 (from the Pi itself)
+# From a laptop/phone on the same network: same POST to http://192.168.50.124:5000/brightness -> 403
+.venv/bin/python -m memoryframe migrate               # second run: "already done; nothing to do"
+sudo systemctl restart memoryframe && sleep 3 && curl -s http://localhost:5000/media | grep -c filename   # still 6, no re-import
+```
+Screen: the slideshow shows the same 6 photos (filenames in the console are now random names). Brightness drag still works.
+
+**5. Roll back**
+```bash
+cd "$R"; git checkout --detach <previous commit>     # note it before step 2: git rev-parse HEAD
+./deploy/install.sh                                   # old version still serves uploads/ directly
+# The data dir can stay (unused by the old version) or be removed after checking the backup:
+#   sudo rm -rf /var/lib/memoryframe      (only after confirming uploads/ and the off-device copy are intact)
+```
+

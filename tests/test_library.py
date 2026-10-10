@@ -118,3 +118,95 @@ def test_rev_bumps_on_hide_and_delete(paired, item, client):
     assert client.get("/show-now").get_json()["rev"] == rev + 1
     paired.delete(f"/api/v1/media/{item['id']}", environ_base=PHONE)
     assert client.get("/show-now").get_json()["rev"] == rev + 2
+
+
+# ---------- Tester #27 blockers ----------
+
+@pytest.mark.parametrize("mid", ["99999999999999999999999", str(2**63), str(2**64), "0"])
+def test_huge_ids_are_404(paired, mid):
+    assert paired.delete(f"/api/v1/media/{mid}", environ_base=PHONE).status_code == 404
+    assert paired.get(f"/api/v1/media/{mid}/thumb", environ_base=PHONE).status_code == 404
+    assert paired.put(f"/api/v1/media/{mid}/hidden", json={"hidden": True}, environ_base=PHONE).status_code == 404
+    assert paired.post(f"/api/v1/media/{mid}/show-now", environ_base=PHONE).status_code == 404
+
+
+def test_max_sqlite_id_is_plain_404(paired):
+    assert paired.delete(f"/api/v1/media/{2**63 - 1}", environ_base=PHONE).status_code == 404
+
+
+def test_show_now_cleared_on_delete(paired, item, client):
+    paired.post(f"/api/v1/media/{item['id']}/show-now", environ_base=PHONE)
+    paired.delete(f"/api/v1/media/{item['id']}", environ_base=PHONE)
+    assert client.get("/show-now").get_json()["filename"] is None
+
+
+def test_show_now_cleared_on_hide(paired, item, client):
+    paired.post(f"/api/v1/media/{item['id']}/show-now", environ_base=PHONE)
+    paired.put(f"/api/v1/media/{item['id']}/hidden", json={"hidden": True}, environ_base=PHONE)
+    assert client.get("/show-now").get_json()["filename"] is None
+
+
+def test_show_now_never_returns_missing_file_even_if_state_stale(paired, item, client, mf_app):
+    mf_app.extensions["mf_show_now"] = {"seq": 9, "filename": "gone.jpg", "at": 0}
+    assert client.get("/show-now").get_json() == {"seq": 9, "filename": None, "rev": 1}
+
+
+def test_delete_db_failure_keeps_files_and_row(paired, item, mf_app, monkeypatch):
+    import sqlite3
+    d = mf_app.config["DATA_DIR"]
+    name = stored_name(mf_app, item["id"])
+    paired.get(item["thumb"], environ_base=PHONE)
+    files = [os.path.join(d, "originals", name), os.path.join(d, "display", imaging.display_name(name)),
+             imaging.thumb_path(d, name)]
+
+    real_connect = mfdb.connect
+
+    class FailingDelete:
+        def __init__(self, conn):
+            self._c = conn
+
+        def execute(self, sql, *a):
+            if sql.startswith("DELETE FROM media"):
+                raise sqlite3.OperationalError("database is locked")
+            return self._c.execute(sql, *a)
+
+        def __getattr__(self, k):
+            return getattr(self._c, k)
+
+    monkeypatch.setattr(mfdb, "connect", lambda p: FailingDelete(real_connect(p)))
+    mf_app.config["PROPAGATE_EXCEPTIONS"] = False
+    r = paired.delete(f"/api/v1/media/{item['id']}", environ_base=PHONE)
+    assert r.status_code == 500
+    monkeypatch.setattr(mfdb, "connect", real_connect)
+    assert all(os.path.exists(f) for f in files)                 # restored from the trash
+    assert stored_name(mf_app, item["id"]) == name               # row kept
+    assert os.listdir(os.path.join(d, "tmp", "trash")) == []
+
+
+def test_file_purge_failure_is_swept_at_start(paired, item, mf_app, monkeypatch):
+    from memoryframe import create_app
+    d = mf_app.config["DATA_DIR"]
+    real_remove = os.remove
+    monkeypatch.setattr(imaging.os, "remove", lambda p: (_ for _ in ()).throw(PermissionError(p)))
+    r = paired.delete(f"/api/v1/media/{item['id']}", environ_base=PHONE)
+    assert r.status_code == 200 and r.get_json()["files_removed"] == 0
+    monkeypatch.setattr(imaging.os, "remove", real_remove)
+    trash = os.path.join(d, "tmp", "trash")
+    assert len(os.listdir(trash)) >= 2                    # left over, row already gone
+    create_app({"TESTING": True, "DATA_DIR": d, "DB_PATH": mf_app.config["DB_PATH"]})
+    assert os.listdir(trash) == []
+    assert os.listdir(os.path.join(d, "originals")) == []
+
+
+def test_sweep_removes_orphan_derivatives_keeps_originals(mf_app, lib):
+    from memoryframe import create_app
+    d = mf_app.config["DATA_DIR"]
+    lib.add("keep.jpg", jpeg(400, 300))
+    for sub in ("display", "thumbs", "originals"):
+        with open(os.path.join(d, sub, "deadbeef.jpg"), "wb") as f:
+            f.write(b"x")
+    create_app({"TESTING": True, "DATA_DIR": d, "DB_PATH": mf_app.config["DB_PATH"]})
+    assert not os.path.exists(os.path.join(d, "display", "deadbeef.jpg"))
+    assert not os.path.exists(os.path.join(d, "thumbs", "deadbeef.jpg"))
+    assert os.path.exists(os.path.join(d, "originals", "deadbeef.jpg"))   # never delete user data blindly
+    assert len(os.listdir(os.path.join(d, "originals"))) == 2

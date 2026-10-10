@@ -176,3 +176,74 @@ def remove_all(data_dir, stored_name):
         except FileNotFoundError:
             pass
     return removed
+
+
+def _derived_paths(data_dir, stored_name):
+    return [os.path.join(data_dir, "originals", stored_name),
+            os.path.join(data_dir, "display", display_name(stored_name)),
+            thumb_path(data_dir, stored_name)]
+
+
+def stage_delete(data_dir, stored_name):
+    """Move the original and derivatives into tmp/trash. Returns [(staged, original_path)]."""
+    trash = os.path.join(data_dir, "tmp", "trash")
+    os.makedirs(trash, exist_ok=True)
+    staged = []
+    try:
+        for i, p in enumerate(_derived_paths(data_dir, stored_name)):
+            if os.path.exists(p):
+                dst = os.path.join(trash, f"{i}-{os.path.basename(p)}")
+                os.replace(p, dst)
+                staged.append((dst, p))
+    except OSError:
+        unstage_delete(staged)
+        raise
+    return staged
+
+
+def unstage_delete(staged):
+    for dst, original in staged:
+        try:
+            os.replace(dst, original)
+        except OSError as e:
+            log.error("could not restore %s from %s: %s", original, dst, e)
+
+
+def purge_staged(staged):
+    n = 0
+    for dst, _ in staged:
+        try:
+            os.remove(dst)
+            n += 1
+        except OSError as e:
+            log.warning("left %s in the trash (swept at next start): %s", dst, e)
+    return n
+
+
+def sweep(conn, data_dir):
+    """Startup cleanup: empty tmp/trash, and remove display copies/thumbnails whose photo
+    is no longer in the database. Originals are never deleted by the sweep (only logged)."""
+    known = {os.path.splitext(r[0])[0] for r in conn.execute("SELECT stored_name FROM media")}
+    swept = 0
+    trash = os.path.join(data_dir, "tmp", "trash")
+    if os.path.isdir(trash):
+        for f in os.listdir(trash):
+            try:
+                os.remove(os.path.join(trash, f))
+                swept += 1
+            except OSError:
+                pass
+    for sub in ("display", "thumbs"):
+        d = os.path.join(data_dir, sub)
+        for f in os.listdir(d) if os.path.isdir(d) else []:
+            if f.endswith(".jpg") and os.path.splitext(f)[0] not in known:
+                try:
+                    os.remove(os.path.join(d, f))
+                    swept += 1
+                except OSError:
+                    pass
+    orphans = [f for f in os.listdir(os.path.join(data_dir, "originals"))
+               if os.path.splitext(f)[0] not in known] if os.path.isdir(os.path.join(data_dir, "originals")) else []
+    if orphans:
+        log.warning("%d original(s) not in the database were kept: %s", len(orphans), orphans[:5])
+    return swept

@@ -52,8 +52,19 @@ def uploads(filename):
 def show_now_state():
     """MF-16: the frame polls this; a new seq means "jump to filename now"."""
     state = current_app.extensions.get("mf_show_now", {"seq": 0, "filename": None})
-    return jsonify({"seq": state["seq"], "filename": state["filename"],
+    name = state["filename"]
+    if name and get_db().execute("SELECT 1 FROM media WHERE stored_name = ? AND hidden = 0",
+                                 (name,)).fetchone() is None:
+        name = None                                  # deleted or hidden since
+    return jsonify({"seq": state["seq"], "filename": name,
                     "rev": current_app.extensions.get("mf_media_rev", 0)})
+
+
+def clear_show_now(app, stored_name):
+    """A deleted or hidden photo must never be offered by /show-now."""
+    state = app.extensions.get("mf_show_now")
+    if state and state.get("filename") == stored_name:
+        state["filename"] = None
 
 
 def bump_media_rev(app):

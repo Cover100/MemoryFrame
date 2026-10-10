@@ -24,13 +24,26 @@ def client(uploads):
 
 
 @pytest.fixture
-def backlight(tmp_path, monkeypatch):
-    """Fake sysfs backlight node on a Linux host."""
-    node = tmp_path / "backlight"
-    node.mkdir()
-    (node / "brightness").write_text("100\n")
-    (node / "max_brightness").write_text("255\n")
-    monkeypatch.setattr(app_module, "BACKLIGHT_PATH", str(node / "brightness"))
-    monkeypatch.setattr(app_module, "MAX_BRIGHTNESS_PATH", str(node / "max_brightness"))
-    monkeypatch.setattr(app_module.platform, "system", lambda: "Linux")
-    return node
+def no_backlight(tmp_path, monkeypatch):
+    """No MEMORYFRAME_BACKLIGHT and an empty/absent BACKLIGHT_ROOT."""
+    monkeypatch.delenv("MEMORYFRAME_BACKLIGHT", raising=False)
+    monkeypatch.setattr(app_module, "BACKLIGHT_ROOT", str(tmp_path / "no-sysfs"))
+
+
+@pytest.fixture
+def make_backlight(tmp_path, monkeypatch):
+    """Create a fake sysfs backlight dir and point MEMORYFRAME_BACKLIGHT at it."""
+    def _make(current="100\n", maximum="255\n", name="10-0045"):
+        node = tmp_path / name
+        node.mkdir()
+        (node / "brightness").write_text(current)
+        if maximum is not None:
+            (node / "max_brightness").write_text(maximum)
+        monkeypatch.setenv("MEMORYFRAME_BACKLIGHT", str(node))
+        return node
+    return _make
+
+
+@pytest.fixture
+def backlight(make_backlight):
+    return make_backlight()

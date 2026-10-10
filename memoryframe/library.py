@@ -46,15 +46,26 @@ def add_file(conn, data_dir, src, original_name, source, display_target=None):
     if sha256_file(tmp) != digest:
         os.remove(tmp)
         raise CopyVerificationError(f"copy verification failed for {original_name}")
-    os.replace(tmp, os.path.join(data_dir, "originals", stored))
-    conn.execute(
-        "INSERT INTO media (stored_name, original_name, kind, sha256, size_bytes, source, created_at)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (stored, original_name, kind, digest, os.path.getsize(src), source, db.now()))
-    conn.commit()
+    original = os.path.join(data_dir, "originals", stored)
+    os.replace(tmp, original)
+    try:
+        conn.execute(
+            "INSERT INTO media (stored_name, original_name, kind, sha256, size_bytes, source, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (stored, original_name, kind, digest, os.path.getsize(src), source, db.now()))
+        conn.commit()
+    except BaseException:
+        # no row -> no files: remove the original (and any derivative) we just placed
+        try:
+            conn.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+        imaging.remove_all(data_dir, stored)
+        raise
     if kind == "image" and display_target:
         try:
             imaging.ensure_display_copy(data_dir, stored, display_target)
-        except OSError as e:                  # photo is saved; display copy is rebuilt later
-            log.warning("display copy for %s failed: %s", stored, e)
+            imaging.ensure_thumb(data_dir, stored)
+        except OSError as e:                  # photo is saved; derivatives are rebuilt later
+            log.warning("display copy/thumbnail for %s failed: %s", stored, e)
     return stored

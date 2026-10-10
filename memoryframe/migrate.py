@@ -18,7 +18,7 @@ import shutil
 import tarfile
 import time
 
-from . import db, library, storage
+from . import db, library, storage, imaging
 from .library import sha256_file
 
 SPACE_MARGIN = 50 * 1024 * 1024   # keep at least 50 MB free after migrating
@@ -92,8 +92,13 @@ def migrate_legacy(config, backup=True, log=print):
             backup_path, _ = backup_legacy(files, os.path.join(data_dir, "backups"))
             log(f"Backup written and verified: {backup_path}")
 
-        imported = skipped = 0
+        imported = skipped = too_large = 0
+        cap = config.get("MAX_IMAGE_PIXELS") or 64_000_000
         for src in files:
+            if storage.media_kind(src) == "image" and imaging.over_pixel_cap(src, cap):
+                log(f"Skipped {os.path.basename(src)}: over {cap // 1_000_000} megapixels.")
+                too_large += 1
+                continue
             try:
                 stored = library.add_file(conn, data_dir, src, os.path.basename(src), "legacy")
             except library.CopyVerificationError as e:
@@ -107,8 +112,9 @@ def migrate_legacy(config, backup=True, log=print):
         if backup_path:
             db.set_setting(conn, "legacy_import_backup", backup_path)
         conn.commit()
-        log(f"Imported {imported}, skipped {skipped} duplicate(s). "
+        log(f"Imported {imported}, skipped {skipped} duplicate(s), {too_large} too large. "
             f"Legacy folder left untouched.")
-        return {"imported": imported, "skipped": skipped, "backup": backup_path, "already_done": False}
+        return {"imported": imported, "skipped": skipped, "backup": backup_path, "already_done": False,
+                "too_large": too_large}
     finally:
         conn.close()

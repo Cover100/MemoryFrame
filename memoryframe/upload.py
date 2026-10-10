@@ -5,8 +5,10 @@ or Content-Type. Stored names are server-generated (library.add_file); the
 client's file name is only kept, sanitised, as a display label.
 """
 import errno
+import logging
 import os
 import re
+import sqlite3
 import unicodedata
 import shutil
 import uuid
@@ -15,10 +17,13 @@ from werkzeug.utils import secure_filename
 
 from . import imaging, library
 
+log = logging.getLogger(__name__)
+
 FORMAT_EXT = {"JPEG": ".jpg", "MPO": ".jpg", "PNG": ".png", "WEBP": ".webp", "GIF": ".gif",
               "HEIF": ".heic", "AVIF": ".heic"}
 MAX_PIXELS = 64_000_000          # ~64 MP: decoding more risks running the Pi out of memory
-TOO_BIG = "This photo is too large for the frame (over 64 megapixels). Please send a smaller copy."
+TOO_BIG = "This photo is too large for the frame (over {mp} megapixels). Please send a smaller copy."
+SAVE_FAILED = "The frame couldn't save this photo. Please try again; if it keeps happening, restart the frame."
 FULL = "The frame is almost full. Delete some photos and try again."
 VIDEO_EXT = {".mp4", ".mov", ".webm", ".mkv", ".avi", ".3gp", ".m4v"}
 VIDEO_MAGIC = (b"ftypmp4", b"ftypisom", b"ftypqt", b"ftyp3gp", b"ftypM4V", b"ftypmp42", b"ftypavc1")
@@ -58,12 +63,12 @@ def sniff_image(path, max_pixels=MAX_PIXELS):
             fmt = im.format
             w, h = im.size
             if w * h > max_pixels:
-                raise UploadError(415, TOO_BIG)
+                raise UploadError(415, TOO_BIG.format(mp=max_pixels // 1_000_000))
             im.verify()
     except UploadError:
         raise
     except Image.DecompressionBombError:
-        raise UploadError(415, TOO_BIG)
+        raise UploadError(415, TOO_BIG.format(mp=max_pixels // 1_000_000))
     except Exception:  # noqa: BLE001 - anything Pillow cannot decode is not an image
         return None
     return FORMAT_EXT.get(fmt)
@@ -73,7 +78,7 @@ def label(client_name, ext):
     """Display label from the client's name. Unicode letters/digits are kept (NFC); path
     parts, control and punctuation characters are dropped; falls back to "photo"."""
     name = unicodedata.normalize("NFC", str(client_name or "")).replace("\\", "/").split("/")[-1]
-    base = os.path.splitext(name)[0]
+    base = re.sub(r"\.[A-Za-z0-9]{1,5}$", "", name)       # drop the extension (also for "....jpg")
     base = "".join(c if (c.isalnum() or c in "-_ .") else "_" for c in base)
     base = re.sub(r"[\s_]+", "_", base).strip("._- ")[:80].strip("._- ")
     return (base or "photo") + ext
@@ -105,7 +110,13 @@ def save_upload(conn, data_dir, filestorage, min_free, display_target, max_pixel
     except OSError as e:
         if _is_enospc(e):                     # disk filled up while writing
             raise UploadError(507, FULL) from e
-        raise
+        log.error("upload failed: %s", e)
+        raise UploadError(500, SAVE_FAILED) from e
+    except sqlite3.Error as e:
+        if getattr(e, "sqlite_errorcode", None) == 13 or "full" in str(e).lower():   # SQLITE_FULL
+            raise UploadError(507, FULL) from e
+        log.error("upload DB insert failed: %s", e)
+        raise UploadError(500, SAVE_FAILED) from e
     finally:
         try:
             os.remove(tmp)

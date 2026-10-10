@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<title>Library - Memory Frame</title>
+<link rel="stylesheet" href="/static/pair.css">
+<link rel="stylesheet" href="/static/library.css">
+</head>
+<body>
+<p><a href="/admin/">&larr; Memory Frame</a> · <a href="/admin/upload">Upload</a></p>
+<h1>Library</h1>
+<p id="count" aria-live="polite">Loading...</p>
+<ul id="grid"></ul>
+<script src="/static/library.js"></script>
+</body>
+</html>

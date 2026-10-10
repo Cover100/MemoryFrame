@@ -189,3 +189,83 @@ def test_unicode_labels(name, expected):
 def test_unicode_name_upload_label(mf_app, paired):
     r = post(paired, jpeg(), name="Été à Paris.jpg")
     assert r.status_code == 201 and r.get_json()["name"] == "Été_à_Paris.jpg"
+
+
+# ---------- #28 review: DB insert failures, other OSErrors, nits ----------
+
+def _no_files(app):
+    d = app.config["DATA_DIR"]
+    return all([f for f in os.listdir(os.path.join(d, s)) if f != "trash"] == []
+               for s in ("originals", "display", "thumbs", "tmp") if os.path.isdir(os.path.join(d, s)))
+
+
+class _FailingInsert:
+    def __init__(self, conn, exc):
+        self._c, self._exc = conn, exc
+
+    def execute(self, sql, *a):
+        if sql.lstrip().startswith("INSERT INTO media"):
+            raise self._exc
+        return self._c.execute(sql, *a)
+
+    def __getattr__(self, k):
+        return getattr(self._c, k)
+
+
+@pytest.mark.parametrize("exc,status", [
+    (__import__("sqlite3").OperationalError("database or disk is full"), 507),
+    (__import__("sqlite3").OperationalError("disk I/O error"), 500),
+])
+def test_db_insert_failure_cleans_up_and_returns_json(mf_app, paired, monkeypatch, exc, status):
+    from memoryframe import api
+    real = api.get_db
+    monkeypatch.setattr(api, "get_db", lambda: _FailingInsert(real(), exc))
+    r = post(paired, jpeg())
+    assert r.status_code == status and r.is_json and r.get_json()["error"]
+    assert media_rows(mf_app) == [] and _no_files(mf_app)
+
+
+def test_eio_returns_json_not_html(mf_app, paired, monkeypatch):
+    import errno
+    from werkzeug.datastructures import FileStorage
+
+    def eio(self, dst, *a):
+        raise OSError(errno.EIO, "Input/output error")
+
+    monkeypatch.setattr(FileStorage, "save", eio)
+    r = post(paired, jpeg())
+    assert r.status_code == 500 and r.is_json and "couldn't save" in r.get_json()["error"]
+    assert _no_files(mf_app)
+
+
+@pytest.mark.parametrize("name", [".....jpg", "....", ".jpg", "..", "._.jpg"])
+def test_dot_only_names_fall_back_to_photo(name):
+    assert upload.label(name, ".jpg") == "photo.jpg"
+
+
+@pytest.mark.parametrize("raw", ["abc", "0", "-3", "1.5", " "])
+def test_bad_max_megapixels_env_falls_back(monkeypatch, caplog, raw):
+    from memoryframe import storage
+    monkeypatch.setenv("MEMORYFRAME_MAX_MEGAPIXELS", raw)
+    assert storage.default_config()["MAX_IMAGE_PIXELS"] == 64_000_000
+    if raw.strip():
+        assert "MEMORYFRAME_MAX_MEGAPIXELS" in caplog.text
+
+
+def test_max_megapixels_env_applies(monkeypatch):
+    from memoryframe import storage
+    monkeypatch.setenv("MEMORYFRAME_MAX_MEGAPIXELS", "12")
+    assert storage.default_config()["MAX_IMAGE_PIXELS"] == 12_000_000
+
+
+def test_legacy_import_enforces_pixel_cap(mf_app):
+    from memoryframe.migrate import migrate_legacy
+    legacy = mf_app.config["LEGACY_UPLOADS"]
+    open(os.path.join(legacy, "big.jpg"), "wb").write(jpeg(1600, 1200))
+    open(os.path.join(legacy, "small.jpg"), "wb").write(jpeg(400, 300))
+    mf_app.config["MAX_IMAGE_PIXELS"] = 1_000_000
+    msgs = []
+    res = migrate_legacy(mf_app.config, log=msgs.append)
+    assert res["imported"] == 1 and res["too_large"] == 1
+    assert [r["original_name"] for r in media_rows(mf_app)] == ["small.jpg"]
+    assert any("big.jpg" in m and "megapixels" in m for m in msgs)

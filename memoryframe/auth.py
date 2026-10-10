@@ -137,6 +137,8 @@ def create_session(conn, device_name):
 
 
 def set_session_cookie(resp, token):
+    # No Secure flag: the frame is plain HTTP on its own hotspot (HTTPS is out of scope),
+    # and a Secure cookie would never be sent back.
     resp.set_cookie(COOKIE, token, max_age=SESSION_DAYS * 86400, httponly=True,
                     samesite="Strict", path="/")
     return resp

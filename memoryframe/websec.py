@@ -57,6 +57,8 @@ def check_request():
     if request.method in SAFE:
         return None
     origin = request.headers.get("Origin") or request.headers.get("Referer")
+    # "Origin: null" (sandboxed/opaque origins) is not trusted either: CSRF still applies, and
+    # localhost-only routes are protected by remote_addr + the Host check above (no rebinding).
     if origin and origin != "null" and not allowed(urlsplit(origin).netloc):
         abort(403, "Cross-origin request refused")
     if request.endpoint is None or _view_is_localhost_only():

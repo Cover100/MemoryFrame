@@ -198,9 +198,24 @@ There is one owner (D6), who may pair several phones.
 - **CSRF:** the `mf_csrf` cookie (HttpOnly, SameSite=Strict) must be echoed in the `X-CSRF-Token` header (read it from `<meta name="csrf-token">`) or in a `csrf_token` form field. Otherwise the request gets **403**. The localhost-only kiosk routes are exempt.
 - **Headers:** `Content-Security-Policy: default-src 'self'; ... frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`. Templates contain no inline scripts or styles and no external URLs (enforced by a test).
 
+## Uploading photos from the phone (MF-14)
+
+- **Page:** after pairing, open `/admin/upload` (linked from `/admin/`). Pick any number of photos; they upload **one request per file**, each with its own progress bar and result. The page also shows free space and roughly how many more photos fit.
+- **API:** `POST /api/v1/media` (multipart, field `file`) needs a session and a CSRF token. It returns:
+  - **201** added
+  - **200** already on the frame (same SHA-256)
+  - **400** no file
+  - **413** too large (`MEMORYFRAME_MAX_UPLOAD_MB`, default 50)
+  - **415** not a photo, or a video ("videos are coming later", D5)
+  - **507** less than `MEMORYFRAME_MIN_FREE_MB` (default 500) free
+- **Validation:** files are checked by **content**: Pillow must decode them as JPEG, PNG, WebP, GIF or HEIC. The stored extension comes from the content, and stored names are server-generated. The client's file name is only kept, sanitised, as a label.
+- **Storage:** the original is stored byte-identical in `originals/`, and the display copy (MF-15) is made right away.
+- **Frame refresh:** the frame now polls `/media` every 10 s, so new photos show up without a reload. `GET /api/v1/storage` returns the disk numbers.
+
 ## On-device onboarding and menu (MF-19)
 
 - **No photos and no phone paired:** full onboarding. On the hotspot it shows **1. Join Wi-Fi** (a standard `WIFI:` QR), then **2. Open site** (the pairing QR) and the 6-digit code.
+- **Close:** every overlay has a Close button. It dismisses the onboarding and empty-library screens for the browser session, in every state including no photos, and a reboot or kiosk restart brings them back. While dismissed, only the small corner hint shows, and pairing stays in the long-press menu.
 - **Photos but no phone paired:** the slideshow runs. Only a small "Hold 3 s for menu to pair a phone" hint shows in the corner.
 - **Paired but no photos:** a "No photos yet" screen.
 - **Still long-press of 3 s or more:** a menu with IP, Wi-Fi, site address, free storage, phones paired and version, plus **Pair new device** (always available), **Sign out all phones** and **Close**. Text is at least 24 px at 800x480.
@@ -209,6 +224,6 @@ There is one owner (D6), who may pair several phones.
   - **Home Wi-Fi:** `http://memoryframe.local/pair`, plus the frame's own IP as a fallback (e.g. `http://192.168.50.124/pair`).
   - `:5000` is added unless the app actually serves port 80 (`MEMORYFRAME_PORTS`).
   - The Host check accepts the frame's own current IP addresses automatically.
-  - `PAIR_BASE_URL` (app config) overrides everything.
+  - **Override:** `MEMORYFRAME_SITE_URL=http://frame.home` (no path) replaces the detected address. Set it on the Pi with `deploy/env-file.sh MEMORYFRAME_SITE_URL http://…` and restart the service. The `PAIR_BASE_URL` app config key still wins for tests and development.
 - **Wi-Fi QR:** shown only on the hotspot, and **on by default** (D3). Turn it off with `MEMORYFRAME_SHOW_WIFI_QR=0` or the database setting `show_wifi_qr=0` (the settings UI comes with MF-17). SSID and password come from `deploy/hotspot.conf`, or `MEMORYFRAME_SSID` / `MEMORYFRAME_WIFI_PASSWORD`.
 - **Privacy:** these screens use localhost-only routes (`/pairing/state`, `/frame/status`). The Wi-Fi password only leaves the frame as the on-screen QR.

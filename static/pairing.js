@@ -15,6 +15,16 @@
     const pairOverlay = $("pairOverlay"), emptyOverlay = $("emptyOverlay"), menuOverlay = $("menuOverlay");
 
     let onDemand = false;     // "Pair new device" chosen in the menu
+    // Close dismisses the onboarding / empty-library screens for this browser session
+    // (kiosk restarts and reboots start a new session). Pairing stays in the long-press menu.
+    let dismissed = sessionStorage.getItem("mfOverlayDismissed") === "1";
+
+    function dismiss(){
+        dismissed = true;
+        onDemand = false;
+        sessionStorage.setItem("mfOverlayDismissed", "1");
+        tick();
+    }
     let paired = 0;
     let starting = false;
     let holdTimer = null;
@@ -48,13 +58,13 @@
             $("pairCode").textContent = st.round.code.slice(0, 3) + " " + st.round.code.slice(3);
             $("pairQr").innerHTML = st.round.qr_svg;
         }
-        $("pairClose").hidden = paired === 0 && st.media === 0;
+        $("pairClose").hidden = false;              // always dismissable
     }
 
     async function tick(){
         try{
             let st = await getJSON("/pairing/state");
-            const firstRun = st.paired === 0 && st.media === 0;
+            const firstRun = st.paired === 0 && st.media === 0 && !dismissed;
             const pairing = firstRun || onDemand;
             if(pairing && !st.round){
                 st = (await startRound()) || st;      // first round, expired or used
@@ -63,10 +73,12 @@
                 onDemand = false;                    // the new phone just paired
             }
             render(st);
-            const showPair = (st.paired === 0 && st.media === 0) || onDemand;
+            const showPair = firstRun || onDemand;
+            const showEmpty = !showPair && !dismissed && st.paired > 0 && st.media === 0;
             pairOverlay.classList.toggle("visible", showPair);
-            emptyOverlay.classList.toggle("visible", !showPair && st.paired > 0 && st.media === 0);
-            $("pairHint").classList.toggle("visible", !showPair && st.paired === 0 && st.media > 0);
+            emptyOverlay.classList.toggle("visible", showEmpty);
+            // Small corner hint whenever pairing is possible but nothing covers the screen.
+            $("pairHint").classList.toggle("visible", !showPair && !showEmpty && st.paired === 0);
         }catch(e){
             console.warn("pairing state unavailable", e);
         }
@@ -104,7 +116,8 @@
         closeMenu();
         tick();
     });
-    button("pairClose", ()=>{ onDemand = false; tick(); });
+    button("pairClose", dismiss);
+    button("emptyClose", dismiss);
 
     document.addEventListener("pointerdown", (e)=>{
         sx = e.clientX; sy = e.clientY;

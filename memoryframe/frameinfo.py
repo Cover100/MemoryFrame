@@ -135,6 +135,9 @@ def port_suffix():
 def site_urls(net=None):
     """Primary and fallback base URLs for phones on the frame's current network."""
     net = net or network()
+    override = os.environ.get("MEMORYFRAME_SITE_URL", "").strip().rstrip("/")
+    if override:          # e.g. http://frame.home - the network is still detected for the Wi-Fi QR
+        return {"mode": net["mode"], "primary": override, "fallback": None}
     sfx = port_suffix()
     if net["mode"] == "hotspot":
         return {"mode": "hotspot", "primary": f"http://{HOTSPOT_IP}{sfx}", "fallback": f"http://memoryframe.lan{sfx}"}

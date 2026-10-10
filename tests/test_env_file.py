@@ -48,3 +48,14 @@ def test_unit_reads_environment_file():
 def test_install_accepts_flag():
     text = (ROOT_DIR / "deploy" / "install.sh").read_text()
     assert "--extra-hosts" in text and "env-file.sh\" MEMORYFRAME_EXTRA_HOSTS" in text
+
+
+@pytest.mark.parametrize("good", ["http://memoryframe.local", "http://192.168.50.124:5000", "https://frame.home"])
+def test_site_url_accepted(tmp_path, good):
+    assert run(tmp_path, "MEMORYFRAME_SITE_URL", good).returncode == 0
+    assert f"MEMORYFRAME_SITE_URL={good}\n" in content(tmp_path)
+
+
+@pytest.mark.parametrize("bad", ["memoryframe.local", "http://x/pair", "javascript:alert(1)", "http://a b", "ftp://x"])
+def test_site_url_rejected(tmp_path, bad):
+    assert run(tmp_path, "MEMORYFRAME_SITE_URL", bad).returncode == 2

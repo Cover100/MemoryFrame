@@ -130,3 +130,18 @@ def test_own_ips_cached(monkeypatch):
     assert REAL_OWN_IPS() == ["192.168.50.124"]
     assert REAL_OWN_IPS() == ["192.168.50.124"]
     assert len(calls) == 1
+
+
+def test_site_url_env_override(client, monkeypatch):
+    monkeypatch.setenv("MEMORYFRAME_SITE_URL", "http://frame.home/")
+    monkeypatch.setenv("MEMORYFRAME_SSID", "Frame")
+    monkeypatch.setenv("MEMORYFRAME_WIFI_PASSWORD", "secret-pass-123")
+    client.post("/pairing/start", environ_base=LOCAL)
+    st = client.get("/pairing/state", environ_base=LOCAL).get_json()
+    assert st["url"] == "http://frame.home/pair" and st["url_fallback"] is None
+    assert st["site_url"] == "http://frame.home/"
+    assert st["network"] == "hotspot" and st["wifi_qr_svg"]        # still on the hotspot -> Wi-Fi QR
+    monkeypatch.setattr(frameinfo, "network",
+                        lambda: {"mode": "lan", "lan_ip": "192.168.50.124", "ips": ["192.168.50.124"]})
+    st = client.get("/pairing/state", environ_base=LOCAL).get_json()
+    assert st["url"] == "http://frame.home/pair" and st["wifi_qr_svg"] is None

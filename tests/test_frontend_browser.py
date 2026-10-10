@@ -278,3 +278,86 @@ def test_state_c_empty_library_screen(page, server, mf_app, net):
     assert visible(page, "emptyOverlay") and not overlay(page)["visible"] and not visible(page, "pairHint")
     assert "10.42.0.1" in text(page, "emptyOverlay")
     assert page.exceptions() == [], fmt(page.exceptions())
+
+
+# ---------------- MF-14 upload page ----------------
+
+def test_upload_page_uploads_files_with_progress(page, server, mf_app, tmp_path):
+    import json
+    from urllib.parse import urlsplit
+    from PIL import Image
+    from memoryframe import auth, db as mfdb
+    conn = mfdb.connect(mf_app.config["DB_PATH"])
+    token = auth.create_session(conn, "test phone")
+    conn.close()
+    host = urlsplit(server).hostname
+    page.call("Network.enable")
+    page.call("Network.setCookie", {"name": "mf_session", "value": token, "domain": host, "path": "/",
+                                    "httpOnly": True, "sameSite": "Strict"})
+    page.call("Page.navigate", {"url": server + "admin/upload"})
+    page.pump(2)
+    files = []
+    for i in range(3):
+        p = tmp_path / f"up{i}.jpg"
+        Image.new("RGB", (1200, 900), (i * 70, 100, 50)).save(p, quality=90)
+        files.append(str(p))
+    bad = tmp_path / "notes.jpg"
+    bad.write_text("not a photo")
+    files.append(str(bad))
+    doc = page.call("DOM.getDocument")["result"]["root"]["nodeId"]
+    node = page.call("DOM.querySelector", {"nodeId": doc, "selector": "#files"})["result"]["nodeId"]
+    page.call("DOM.setFileInputFiles", {"nodeId": node, "files": files})
+    page.pump(4)
+    rows = json.loads(evaluate(page, "JSON.stringify([...document.querySelectorAll('#list li')].map("
+                                     "l=>[l.className,l.querySelector('progress').value,l.querySelector('.msg').textContent]))"))
+    assert [r[0] for r in rows] == ["ok", "ok", "ok", "bad"], rows
+    assert all(r[1] == 100 for r in rows)
+    assert "not a photo" in rows[3][2]
+    assert "4 of 4 done" in evaluate(page, "document.getElementById('summary').textContent")
+    assert "Free space" in evaluate(page, "document.getElementById('storage').textContent")
+    conn = mfdb.connect(mf_app.config["DB_PATH"])
+    assert conn.execute("SELECT COUNT(*) FROM media WHERE original_name LIKE 'up_.jpg'").fetchone()[0] == 3
+    conn.close()
+    assert page.exceptions() == [], fmt(page.exceptions())
+    assert csp_violations(page) == []
+
+
+
+# ---------------- Close keeps overlays dismissed for the session ----------------
+
+@pytest.mark.no_media
+def test_close_dismisses_onboarding_for_the_session(page, server, mf_app, net):
+    page.pump(2.5)
+    assert overlay(page)["visible"] and visible(page, "pairClose")
+    evaluate(page, "document.getElementById('pairClose').click()")
+    page.pump(5)                                    # > 2 polls: must not come back
+    assert not overlay(page)["visible"] and not visible(page, "emptyOverlay")
+    assert visible(page, "pairHint")
+    page.call("Page.reload")                        # same browser session -> still dismissed
+    page.pump(3)
+    assert not overlay(page)["visible"] and visible(page, "pairHint")
+    # pairing is still available from the menu
+    evaluate(page, "memoryFramePairing.openMenu()")
+    page.pump(0.5)
+    evaluate(page, "document.getElementById('menuPair').click()")
+    page.pump(1.0)
+    assert overlay(page)["visible"]
+    evaluate(page, "document.getElementById('pairClose').click()")
+    page.pump(3)
+    assert not overlay(page)["visible"]
+    assert page.exceptions() == [], fmt(page.exceptions())
+
+
+def test_close_dismisses_empty_library_screen(page, server, mf_app, net):
+    from memoryframe import auth, db as mfdb
+    conn = mfdb.connect(mf_app.config["DB_PATH"])
+    auth.create_session(conn, "phone")
+    conn.execute("UPDATE media SET hidden = 1")
+    conn.commit()
+    conn.close()
+    page.pump(3)
+    assert visible(page, "emptyOverlay")
+    evaluate(page, "document.getElementById('emptyClose').click()")
+    page.pump(5)
+    assert not visible(page, "emptyOverlay") and not overlay(page)["visible"]
+    assert page.exceptions() == [], fmt(page.exceptions())

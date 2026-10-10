@@ -58,6 +58,9 @@ def page(server):
         cdp.call("Runtime.enable")
         cdp.call("Log.enable")
         cdp.call("Page.enable")
+        # The frame's screen is exactly 800x480; don't depend on how this Chrome sizes its window.
+        cdp.call("Emulation.setDeviceMetricsOverride",
+                 {"width": 800, "height": 480, "deviceScaleFactor": 1, "mobile": False})
         cdp.call("Page.navigate", {"url": server})
         yield cdp
     finally:
@@ -148,6 +151,7 @@ def test_pairing_overlay_shown_until_paired_then_long_press(page, server, mf_app
     assert o["code"].replace(" ", "") == code
     assert o["font"] >= 72
     left, top, right, bottom = o["box"]
+    assert (o["vw"], o["vh"]) == (800, 480)
     assert left >= 0 and top >= 0 and right <= o["vw"] and bottom <= o["vh"], o   # fits 800x480
 
     phone_pair(server, code)

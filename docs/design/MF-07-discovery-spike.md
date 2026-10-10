@@ -1,6 +1,6 @@
 # MF-07 Discovery Spike: Hotspot, Phone Management Site, NFC, Access Control
 
-- Ticket: MF-07 (Sprint 1) · Owner: Analyst · Status: Draft for review · Rev 2 (10 Oct 2026): updated with user decisions D1–D5 (section 6)
+- Ticket: MF-07 (Sprint 1) · Owner: Analyst · Status: Draft for review · Rev 2 (10 Oct 2026): updated with user decisions D1–D5 (section 6) · Rev 3: D6–D8
 - Target: Raspberry Pi 4 Model B, Raspberry Pi OS 64-bit (Bookworm, NetworkManager), 5" DSI IPS 800x480
 - Baseline: `app.py` (Flask, port 5000, unauthenticated routes `/`, `/media`, `/uploads/<f>`, `GET /brightness[/<int>]`), kiosk slideshow in `templates/index.html` + `static/script.js`. No phone-side UI exists.
 - Builds on: MF-03 (brightness POST), MF-04 (systemd + WSGI), MF-09 (persistent NM hotspot profile).
@@ -10,7 +10,8 @@
 2. **Name resolution:** fixed IP `10.42.0.1`, mDNS `memoryframe.local` (avahi), plus a dnsmasq drop-in resolving `frame.home`/`memoryframe.lan` to 10.42.0.1. **No captive-portal hijacking in v1**; instead tell the OS "no internet" cleanly and deep-link via QR/NFC. Captive portal is an optional later ticket.
 3. **Phone site:** same Flask app, split into `/admin/*` (phone UI, auth) and display routes (localhost-only writes). Server-rendered Jinja + a little vanilla JS (no build step, no Node on the Pi), Pillow for 800x480 optimisation, SQLite for metadata/sessions, waitress behind systemd (MF-04).
 4. **Access control:** WPA2 password is layer 1; layer 2 is device pairing: on-screen 6-digit PIN / QR with one-time token shown on the 800x480 display -> long-lived signed session cookie per phone, revocable. CSRF tokens, rate limiting, `SameSite=Strict`, admin-only state changes via POST.
-5. **NFC:** Passive NTAG215 sticker: Android-only target (D2) makes tap-to-join viable: Wi-Fi record + URL record `http://10.42.0.1/admin/pair`. No reader hardware needed for v1. A PN532 reader (I2C) is only needed for "tap a tag to trigger an album" features — defer.
+5. **NFC (D7):** the user already has an NFC tag that opens the phone site; its role is the **site URL record**. Wi-Fi join is via the on-screen Wi-Fi QR (primary) or an optional Wi-Fi record added to a tag. No reader hardware; album cards / PN532 moved to backlog (BL-N1).
+6. **Single owner (D6)** and **hardware RTC assumed (D8)**.
 
 ---
 
@@ -24,12 +25,12 @@
 ### 1.2 Options
 | Option | How | Pros | Cons |
 |---|---|---|---|
-| A. AP-only (recommended v1) | Saved NM profile, autoconnect, priority high | Simple, deterministic, what MF-09 delivers | Frame has no internet (no NTP time -> clock overlay #14 drifts; no updates) |
+| A. AP-only (recommended v1) | Saved NM profile, autoconnect, priority high | Simple, deterministic, what MF-09 delivers | Frame has no internet (no NTP: time from hardware RTC, D8; no OTA updates) |
 | ~~B. Client preferred, AP fallback~~ (rejected, D1) | Saved home-Wi-Fi profiles; watchdog (systemd timer, ~30s after boot) brings up AP if no client connection | Internet when at home, still reachable when away | Phone must find frame on home LAN (mDNS); switching modes drops connections; more logic to test |
 | ~~C. Concurrent AP + client~~ (rejected, D1) | `iw dev wlan0 interface add uap0 type __ap` or second USB adapter | Both at once | Single-radio: same channel forced, flaky; dongle: extra hardware/driver risk |
 | D. hostapd + dnsmasq (classic) | Disable NM on wlan0 | Fine control, captive tricks easy | Fights Bookworm defaults; two network stacks; not recommended |
 
-**Decision (D1):** Option A only, permanently. Consequences: no internet ever -> time comes only from the Pi clock, and the Pi 4 has no RTC (options: set time from the phone browser on pairing/visit via `/api/v1/time`, or a DS3231 RTC HAT; see backlog #14), no OS updates over the air (updates via SD/USB or temporary ethernet), and no LAN exposure.
+**Decision (D1):** Option A only, permanently. Consequences: no internet ever -> time comes from the user's hardware RTC (D8, assumed fitted and configured; no software time-sync work), no OS updates over the air (updates via SD/USB or temporary ethernet), and no LAN exposure.
 
 Reference profile (MF-09 script already scoped):
 ```
@@ -90,7 +91,7 @@ Libraries: `waitress`, `Pillow` (+`pillow-heif` for iPhone HEIC), `Flask-WTF` (C
 4. **Item detail** — preview, hide/show from slideshow, rotate, delete (confirm), show next on frame.
 5. **Display settings** `/admin/settings` — slide duration, transition (fade/Ken Burns), shuffle, brightness slider (uses MF-03 POST), schedule (night off / dim), clock overlay toggle (#14).
 6. **Network** `/admin/network` — change SSID/password (warn: will disconnect), show IP/hostname.
-7. **Devices** `/admin/devices` — list paired phones (name, last seen), revoke; "pair new device" button (puts code on screen).
+7. **Devices** (section on System page, D6) — the single owner's paired phones (name, last seen), "sign out all phones", and "pair another phone" (puts code on screen). No per-user roles.
 8. **System** `/admin/system` — storage, version, restart app, reboot/shutdown, download log bundle.
 
 ### 2.4 API (v1, JSON; all require session + CSRF header `X-CSRF-Token` for non-GET)
@@ -106,7 +107,7 @@ Libraries: `waitress`, `Pillow` (+`pillow-heif` for iPhone HEIC), `Flask-WTF` (C
 | POST | /api/v1/display/show/{id} | jump slideshow to item |
 | GET/PUT | /api/v1/settings | display settings (validated schema) |
 | GET/POST | /api/v1/brightness | (MF-03) |
-| GET | /api/v1/devices · DELETE /api/v1/devices/{id} | manage paired phones |
+| GET | /api/v1/devices · POST /api/v1/devices/revoke-all | list owner's phones; sign out all (D6) |
 | PUT | /api/v1/network/ap | change SSID/PSK (applies after response, 5s delay) |
 | GET | /api/v1/system | storage, version, uptime |
 | POST | /api/v1/system/{restart,reboot,shutdown} | power actions |
@@ -136,40 +137,34 @@ Display side: `GET /media` (existing, now returns optimised `display/` URLs), `G
 | # | Use case | Needs reader? | Value |
 |---|---|---|---|
 | N1 | Tap phone on sticker -> join Wi-Fi + open site | No (passive tag) | High, cheap |
-| N2 | Tap "album card" on frame to switch album/playlist | Yes | Nice-to-have |
-| N3 | Tap phone to pair (NFC as proof of presence) | Yes, card emulation | Low; QR/PIN covers it |
+| N2 | ~~Tap "album card" to switch album~~ | Yes | Moved to backlog BL-N1 (D7) |
+| N3 | ~~Tap phone to pair~~ | Yes, card emulation | Dropped; QR/PIN covers it |
 
-### 3.2 Tags (N1)
-- **NTAG215** (504 B user memory; NTAG213 144 B may be too small for Wi-Fi + URL). Sticker on the back/bezel; on-metal variant if the case is metal.
+**Decision (D7):** the user already has an NFC tag that opens the phone site. Its role is the **site URL record** (`http://10.42.0.1/` -> redirects to `/admin/pair` when not signed in). Wi-Fi join: the **on-screen Wi-Fi QR** is primary (D3); a Wi-Fi (WSC) record on the tag is optional.
+
+### 3.2 Tags (N1) — user's existing tag
+- Existing tag: verify its URL is `http://10.42.0.1/` (or `memoryframe.lan`) and rewrite if not. If adding a Wi-Fi record, check capacity: **NTAG215** (504 B) fits both; NTAG213 (144 B) may be too small. Sticker on the back/bezel; on-metal variant if the case is metal.
 - NDEF content: record 1 URI `http://10.42.0.1/admin/pair` (no secret token — a static tag can't hold a one-time token); record 2 Wi-Fi WSC record (`application/vnd.wfa.wsc`) with SSID/PSK.
-- Platform (D2, Android only): Android 10+ handles the Wi-Fi (WSC) record natively and prompts to join, so one tap = join. Android then dispatches the URI record; behaviour with both records varies by vendor, so recommended approach: **Wi-Fi record first, URI record second**, and verify on the user's phone; fallback is two tags (or tap twice) if the URI does not open. iOS is out of scope.
+- Platform (D2, Android only): URL-only tag opens the site in Chrome when the phone is on the frame's Wi-Fi. Optional Wi-Fi record: Android 10+ prompts to join; combined Wi-Fi + URL behaviour varies by vendor, so if used, test on the user's phone, and keep QR as the reliable path.
 - Writing tags: NFC Tools app on the user's phone (no hardware needed); doc a step. Lock the tag (read-only) after writing **or** don't include PSK if tag could be read by strangers (the tag is a password leak to anyone who taps it — acceptable for home use, document it).
-- If the PSK changes, the tag must be rewritten (or N2 reader writes it).
+- If the PSK changes, a tag carrying a Wi-Fi record must be rewritten (a URL-only tag is unaffected).
 
-### 3.3 Reader hardware (N2, deferred)
-| Reader | Interface | Libraries | Notes |
-|---|---|---|---|
-| **PN532 breakout** (Elechouse/Adafruit) | I2C / SPI / UART | `adafruit-circuitpython-pn532` (Blinka), `nfcpy` (UART) | Recommended; cheap, well documented on Pi; I2C needs `dtparam=i2c_arm=on` — check DSI display doesn't conflict (DSI uses its own I2C, fine) |
-| ACR122U | USB (PC/SC) | `pyscard` + `pcscd`, `nfcpy` | Plug-and-play but bulky, beeps, ACR122U known flaky with nfcpy |
-| RC522 | SPI | `mfrc522`, `pi-rc522` | Very cheap; MIFARE Classic only reliable, poor NTAG/NDEF support |
-| PN7150 | I2C | NXP libnfc-nci | Can do card emulation (N3); heavier integration |
-A reader-based feature would run as a small systemd service posting to the local API (localhost-only token).
-
-**Recommendation:** Sprint 2 = N1 only (tag + documentation + display copy). Reader work only if the user wants album cards.
+### 3.3 Reader hardware
+Not needed (D7). Album cards with a reader (PN532 over I2C recommended if ever revived) are backlog item BL-N1.
 
 ---
 
 ## 4. Access control & security
 
 ### 4.1 Threat model (home device)
-- Neighbours/guests in Wi-Fi range; anyone who joined the AP (password shared with family); physical access to frame (trusted by design); no internet or home-LAN exposure (hotspot-only, D1). App auth is still required because the Wi-Fi password is shared and shown as QR (D3).
+- Single owner manages the frame (D6). Threats: neighbours/guests in Wi-Fi range; anyone who joined the AP (password shown as QR, so visitors can join); physical access to frame (trusted by design); no internet or home-LAN exposure (hotspot-only, D1). App auth is still required because the Wi-Fi password is shared and shown as QR (D3).
 
 ### 4.2 Layers
 1. **Network:** WPA2-PSK ≥ 12 chars generated randomly at install (MF-09), shown on frame's Wi-Fi QR. Optional "hide SSID" adds nothing; skip.
 2. **Device pairing (recommended)**:
    - Frame shows 6-digit code + QR token (valid 2 min, single use, 5 failed attempts -> code rotates, global rate limit 10/min).
    - On success: server creates `device` row (id, name, created, last_seen, hashed session secret), sets cookie `mf_session` = random 256-bit token (stored hashed), `HttpOnly; SameSite=Strict; Path=/; Max-Age=1y` (no `Secure` since HTTP — see 4.4).
-   - Revoke via Devices page; "revoke all" from on-device long-press menu (physical recovery).
+   - Single owner (D6): all paired phones belong to the owner, same full rights; no user accounts, roles or per-device permissions. Revocation is simple: "sign out all phones" (from the site or the on-device long-press menu), then re-pair.
    - Alternative considered: shared admin PIN/password — simpler but must be typed, guessable, can't revoke one phone. Option: support an admin PIN as fallback for pairing when screen is unavailable (no, keep scope small; recovery file on boot partition instead).
 3. **Request protection:** CSRF token (synchronizer, per-session) on all non-GET; check `Origin`/`Host` header against allow-list (`10.42.0.1`, `memoryframe.lan`, `memoryframe.local`) to block DNS rebinding; no state-changing GETs (remove `GET /brightness/<int>`); security headers (CSP `default-src 'self'`, `X-Content-Type-Options`, `frame-ancestors 'none'`).
 4. **Display/admin split:** display routes read-only; any write routes for kiosk (e.g. brightness via touch) accept only `remote_addr == 127.0.0.1`.
@@ -192,7 +187,7 @@ A reader-based feature would run as a small systemd service posting to the local
 | SD fills up (originals kept, D4) | Uploads fail / OS instability | ≥ 64 GB card, 1 GB reserve -> 507, usage + remaining estimate in UI |
 | SD card wear / power loss during write | Corrupt library | Write to tmp + atomic rename, SQLite WAL, optional backup export |
 | Static NFC tag leaks PSK | Neighbour can join | Document; optional URL-only tag |
-| No internet -> clock drift, no updates (D1) | Wrong clock overlay, unpatched OS | Time sync from phone on visit or RTC HAT; offline update procedure |
+| No internet -> no OS updates (D1) | Unpatched OS | Offline update procedure; time from hardware RTC (D8, assumption: RTC fitted and set) |
 | Pi 4 CPU for image processing | Slow uploads | Single worker queue, Pillow `draft()` for JPEG downscale; ~1-2 s/12 MP photo expected (verify) |
 
 ## 6. Questions and decisions
@@ -203,9 +198,9 @@ A reader-based feature would run as a small systemd service posting to the local
 | Q-H | Show Wi-Fi password as QR on frame? | **Resolved — D3:** Yes, OK (on by default). |
 | Q-D | Keep originals or only optimised copies? | **Resolved — D4:** Keep originals plus 800x480 display renditions (and thumbs). Storage sizing in 2.5. |
 | Q-E | Video support? | **Resolved — D5:** Nice-to-have, seamless integration later -> backlog BL-V1, not Sprint 2. |
-| Q-C | How many people manage the frame? | Open (design supports many paired phones either way) |
-| Q-F | NFC sticker and/or album cards? | Open (MF-20 optional) |
-| Q-G | Clock overlay time source (no internet, no RTC)? | Open — more important after D1: phone-provided time vs DS3231 RTC HAT |
+| Q-C | How many people manage the frame? | **Resolved — D6:** a single person. Single owner, pairing for their phone(s), simple "sign out all" revocation. |
+| Q-F | NFC sticker and/or album cards? | **Resolved — D7:** user already has a tag that opens the site (URL record). Wi-Fi join via on-screen QR, optional Wi-Fi record. Album cards/PN532 -> backlog BL-N1. |
+| Q-G | Clock time source? | **Resolved — D8:** handled by user's hardware RTC (assumed). No time-sync work. |
 
 ## 7. Proposed Sprint 2 tickets
 Sizes S/M/L as in Sprint 1. IDs continue after MF-09.
@@ -235,7 +230,7 @@ Sizes S/M/L as in Sprint 1. IDs continue after MF-09.
   - 5 wrong codes rotate the code; > 10 attempts/min returns 429.
   - Every `/admin/*` and `/api/v1/*` route (except pair) returns 302/401 without a valid session (test enumerates routes).
   - Cookie is HttpOnly, SameSite=Strict; tokens stored hashed in DB.
-  - Revoking a device in Devices page logs that phone out on next request.
+  - "Sign out all phones" (site or on-device long-press menu) invalidates every session; each phone gets 401 on its next request and can re-pair (D6). No multi-user/role features exist.
 
 ### MF-13 CSRF, Host/Origin checks and security headers
 - Depends: MF-11 · Size: S
@@ -276,10 +271,10 @@ Sizes S/M/L as in Sprint 1. IDs continue after MF-09.
   - Slide duration, transition, shuffle and brightness can be changed from the phone and apply on the frame within 5 s without reload; values persist across reboot.
   - Invalid values (e.g. duration 0 or text) return 400 and do not change settings (tests).
 
-### MF-18 Devices & network settings (change SSID/password safely)
+### MF-18 Paired phones & network settings (change SSID/password safely)
 - Depends: MF-12, MF-09 · Size: M
 - AC:
-  - Devices page lists paired phones with last-seen; revoke works (see MF-12).
+  - System page lists the owner's paired phones with last-seen and offers "sign out all phones" (see MF-12).
   - Changing SSID/password from the phone applies after a warning; if no paired device reconnects within 2 min the previous profile is restored automatically.
   - Creating `/boot/firmware/memoryframe-reset` and rebooting restores the default AP profile and revokes all sessions; documented in README.
   - App performs network changes via a restricted sudoers/polkit rule only (reviewed); app user has no general sudo.
@@ -291,12 +286,12 @@ Sizes S/M/L as in Sprint 1. IDs continue after MF-09.
   - Long-press menu shows IP, SSID, free storage, version and "pair new device"; all text legible at 800x480 from 1 m.
   - Wi-Fi QR is shown by default (D3); it can be disabled in settings.
 
-### MF-20 NFC sticker (passive NTAG215): Android tap-to-join + open site
-- Depends: MF-10 · Size: S · Optional (Q-F still open)
+### MF-20 Configure user's existing NFC tag to open the site
+- Depends: MF-10 · Size: S
 - AC:
-  - README section documents writing an NTAG215 with URI record first and optional Wi-Fi record, using a free phone app, and the PSK-leak caveat.
-  - Tapping the tag with the user's Android 10+ phone (not yet on the AP) prompts to join the frame's Wi-Fi; after joining, the site opens from the tag (same tap or a second tap), hardware verified.
-  - Tag record order and any vendor quirks found are documented.
+  - The URL on the user's existing tag is checked and, if needed, rewritten to the canonical site URL (`http://10.42.0.1/`); README documents how (free Android app) and the record content.
+  - With the user's Android phone already on the frame's Wi-Fi, tapping the tag opens the site; not signed in -> pairing page, signed in -> library (hardware verified).
+  - Optional: if a Wi-Fi record is added, tapping prompts to join and the PSK-leak caveat and "rewrite after password change" step are documented; otherwise README states Wi-Fi join is via the on-screen QR.
 
 ### MF-21 ~~Spike: client Wi-Fi with AP fallback~~ — WON'T DO
 - Dropped per D1 (frame is hotspot-only permanently). ID retained to avoid renumbering.
@@ -305,7 +300,7 @@ Sizes S/M/L as in Sprint 1. IDs continue after MF-09.
 - Owner: Tester · Depends: MF-10…MF-19 · Size: M
 - AC:
   - pytest covers auth, CSRF, upload validation, settings validation; coverage of new modules ≥ 80%; CI green.
-  - Hardware checklist executed on Pi 4B + 800x480 DSI with the user's Android phone(s): join, pair, upload 20 photos, settings, revoke, network reset; results recorded.
+  - Hardware checklist executed on Pi 4B + 800x480 DSI with the user's Android phone(s): join, pair, upload 20 photos, settings, NFC tag tap, sign out all, network reset; results recorded.
 
 ### Suggested sequencing
 MF-10, MF-11 -> MF-12, MF-13, MF-15 -> MF-14, MF-17, MF-19 -> MF-16, MF-18 -> MF-20, MF-22.
@@ -314,3 +309,6 @@ MF-10, MF-11 -> MF-12, MF-13, MF-15 -> MF-14, MF-17, MF-19 -> MF-16, MF-18 -> MF
 ### BL-V1 Seamless video integration (D5)
 - Description: Upload, validate (ffprobe), optionally transcode (ffmpeg, H.264 ≤ 1080p) and play video in the slideshow seamlessly alongside photos (poster frame thumbnail, mute default, max length setting, skip on error).
 - Draft AC: Android-recorded MP4 (≤ configured length) uploads, appears in library with thumbnail, plays to end then advances without gap > 1 s; unsupported codec is transcoded or rejected with a message; storage accounting includes video.
+
+### BL-N1 NFC album cards (D7, backlog)
+- Description: A reader (PN532 over I2C recommended) on the frame; tapping a programmed card switches album/playlist. Not planned; revisit if the user asks.

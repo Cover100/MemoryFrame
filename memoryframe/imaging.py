@@ -15,7 +15,7 @@ import threading
 
 log = logging.getLogger("memoryframe.imaging")
 
-DEFAULT_TARGET = "800x600"     # U3 open: 800x600 (default) or 1000x750
+DEFAULT_TARGET = "1000x750"    # U3 decided: size B (1000x750)
 MAX_BYTES = 300 * 1024
 QUALITIES = (85, 80, 75, 70, 65, 60, 55, 50)
 
@@ -34,14 +34,27 @@ except ImportError:            # pragma: no cover
 _lock = threading.Lock()
 
 
+MIN_SIDE, MAX_SIDE = 320, 4000
+
+
 def parse_target(value):
+    """'WxH' -> (w, h); each side must be 320-4000. Raises ValueError otherwise."""
     try:
-        w, h = (int(x) for x in str(value).lower().split("x"))
-        if w > 0 and h > 0:
+        w, h = (int(x) for x in str(value).strip().lower().split("x"))
+        if MIN_SIDE <= w <= MAX_SIDE and MIN_SIDE <= h <= MAX_SIDE:
             return w, h
     except ValueError:
         pass
-    raise ValueError(f"display size must look like 800x600, got {value!r}")
+    raise ValueError(f"display size must look like 1000x750 (each side {MIN_SIDE}-{MAX_SIDE}), got {value!r}")
+
+
+def target_or_default(value):
+    """parse_target, but an invalid/out-of-range value falls back to the default and is logged."""
+    try:
+        return parse_target(value)
+    except ValueError as e:
+        log.warning("%s; using %s", e, DEFAULT_TARGET)
+        return parse_target(DEFAULT_TARGET)
 
 
 def display_name(stored_name):
@@ -73,9 +86,14 @@ def make_display_copy(src, dst, target, max_bytes=MAX_BYTES):
             rgba = im.convert("RGBA")
             bg.paste(rgba, mask=rgba.getchannel("A"))
             im = bg
-        size = cover_size(im.size, target)
-        if size != im.size:
-            im = im.resize(size, Image.LANCZOS)
+        # Crop first, in original pixels, where the framing rules say (MF-26 / Designer):
+        # the visible 5:3 window, expanded to the target aspect. Then scale down only.
+        from . import framing
+        box = framing.crop_box(im.size, target)
+        if box != (0, 0) + im.size:
+            im = im.crop(box)
+        if im.width > target[0] or im.height > target[1]:
+            im = im.resize(target, Image.LANCZOS)
         tmp = dst + ".tmp"
         while True:
             for q in QUALITIES:

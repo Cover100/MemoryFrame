@@ -38,7 +38,7 @@ def main(argv=None):
         conn = db.connect(config["DB_PATH"])
         try:
             made, failed = imaging.backfill(conn, config["DATA_DIR"],
-                                            imaging.parse_target(config["DISPLAY_SIZE"]), args.force)
+                                            imaging.target_or_default(config["DISPLAY_SIZE"]), args.force)
         finally:
             conn.close()
         print(f"display copies: {made} made, {failed} failed")

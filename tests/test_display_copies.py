@@ -72,7 +72,12 @@ def test_exif_orientation_applied_and_gps_stripped(mf_app, lib, client):
     lib.add("gps.jpg", jpeg(1600, 1200, exif=gps_exif()))
     r = client.get(f"/uploads/{stored(mf_app, 'gps.jpg')}")
     im = Image.open(io.BytesIO(r.data))
-    assert im.size == (800, 1067) or im.size[0] < im.size[1]   # rotated to portrait
+    assert im.size == (1000, 750)                     # portrait after rotation, cover-cropped
+    # source stripes run vertically; after the 90-degree EXIF rotation they must run horizontally
+    rgb = im.convert("RGB")
+    row = {rgb.getpixel((x, 300))[0] // 16 for x in range(50, 750, 50)}
+    col = {rgb.getpixel((400, y))[0] // 16 for y in range(20, 580, 20)}
+    assert len(row) <= 2 < len(col)
     ex = im.getexif()
     assert 0x8825 not in ex and not ex.get_ifd(0x8825)
 
@@ -116,7 +121,7 @@ def test_heic_accepted_and_converted(mf_app, lib, client):
     lib.add("phone.heic", b.getvalue())
     r = client.get(f"/uploads/{stored(mf_app, 'phone.heic')}")
     im = Image.open(io.BytesIO(r.data))
-    assert im.format == "JPEG" and im.size == (800, 600)
+    assert im.format == "JPEG" and im.size == (1000, 750)
 
 
 def test_backfill_cli(mf_app, lib, monkeypatch, capsys):
@@ -149,3 +154,78 @@ def test_backfill_counts_failures(mf_app, lib):
         assert imaging.backfill(conn, mf_app.config["DATA_DIR"], (800, 600)) == (0, 1)
     finally:
         conn.close()
+
+
+
+# ---------- portrait copies are capped to what cover-crop shows (1000x750) ----------
+
+@pytest.mark.parametrize("w,h", [(3000, 4000), (1080, 2312), (1000, 5000), (600, 3000), (4000, 3000), (8000, 1000)])
+def test_display_copy_never_exceeds_target(tmp_path, w, h):
+    src, dst = tmp_path / "s.jpg", tmp_path / "d.jpg"
+    src.write_bytes(jpeg(w, h))
+    cw, ch, n = imaging.make_display_copy(str(src), str(dst), (1000, 750))
+    im = Image.open(dst)
+    assert (cw, ch) == im.size and n == os.path.getsize(dst) <= imaging.MAX_BYTES
+    assert cw <= 1000 and ch <= 750, im.size
+    if w >= 1000 and h >= 750:
+        assert im.size == (1000, 750)                       # still fills the screen
+    assert (w, h) != (3000, 4000) or im.size == (1000, 750)  # was 1000x1333
+    assert (w, h) != (1080, 2312) or im.size == (1000, 750)  # was 1000x2141
+
+
+def test_noisy_very_tall_portrait_under_300kb(tmp_path):
+    src, dst = tmp_path / "s.jpg", tmp_path / "d.jpg"
+    src.write_bytes(jpeg(1000, 5000, noise=True))
+    w, h, n = imaging.make_display_copy(str(src), str(dst), (1000, 750))
+    assert n <= imaging.MAX_BYTES and w <= 1000 and h <= 750
+
+
+def test_default_display_size_is_1000x750(mf_app, monkeypatch):
+    from memoryframe import storage
+    monkeypatch.delenv("MEMORYFRAME_DISPLAY_SIZE", raising=False)
+    assert storage.default_config()["DISPLAY_SIZE"] == "1000x750"
+    assert imaging.DEFAULT_TARGET == "1000x750"
+    assert mf_app.config["DISPLAY_TARGET"] == (1000, 750)
+
+
+@pytest.mark.parametrize("w,h", [(4000, 3000), (3000, 4000), (1080, 2312)])
+def test_noisy_photos_under_300kb_at_1000x750(tmp_path, w, h):
+    src, dst = tmp_path / "s.jpg", tmp_path / "d.jpg"
+    src.write_bytes(jpeg(w, h, noise=True))
+    cw, ch, n = imaging.make_display_copy(str(src), str(dst), (1000, 750))
+    assert n <= imaging.MAX_BYTES <= 300 * 1024 and cw <= 1000 and ch <= 750
+
+
+
+@pytest.mark.parametrize("value,expected", [("1000x750", (1000, 750)), ("320x320", (320, 320)),
+                                            ("4000x4000", (4000, 4000)), (" 800X600 ", (800, 600))])
+def test_parse_target_bounds_ok(value, expected):
+    assert imaging.parse_target(value) == expected
+
+
+@pytest.mark.parametrize("value", ["10x10", "319x750", "1000x319", "4001x750", "99999x99999", "0x0", "abc", ""])
+def test_parse_target_out_of_range_falls_back(value, caplog):
+    with pytest.raises(ValueError):
+        imaging.parse_target(value)
+    assert imaging.target_or_default(value) == (1000, 750)
+    assert "using 1000x750" in caplog.text
+
+
+def test_app_falls_back_on_bad_display_size(tmp_path, monkeypatch, caplog):
+    from memoryframe import create_app
+    monkeypatch.setenv("MEMORYFRAME_DISPLAY_SIZE", "99999x99999")
+    monkeypatch.setenv("MEMORYFRAME_DATA_DIR", str(tmp_path / "data"))
+    app = create_app({"TESTING": True})
+    assert app.config["DISPLAY_TARGET"] == (1000, 750) and "99999x99999" in caplog.text
+
+
+def test_force_regeneration_leaves_originals_unchanged(mf_app, lib, monkeypatch):
+    import hashlib
+    lib.add("a.jpg", jpeg(3000, 4000))
+    lib.add("b.jpg", jpeg(1600, 1200, exif=gps_exif()))
+    odir = os.path.join(mf_app.config["DATA_DIR"], "originals")
+    before = {f: hashlib.sha256(open(os.path.join(odir, f), "rb").read()).hexdigest() for f in os.listdir(odir)}
+    monkeypatch.setenv("MEMORYFRAME_DATA_DIR", mf_app.config["DATA_DIR"])
+    assert cli.main(["display-copies", "--force"]) in (0, None)
+    after = {f: hashlib.sha256(open(os.path.join(odir, f), "rb").read()).hexdigest() for f in os.listdir(odir)}
+    assert before == after and len(after) == 2

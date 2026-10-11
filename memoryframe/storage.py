@@ -74,13 +74,13 @@ def default_config():
         "DB_PATH": os.path.join(data_dir, "memoryframe.db"),
         "LEGACY_UPLOADS": os.environ.get(
             "MEMORYFRAME_LEGACY_UPLOADS", os.path.join(REPO_DIR, "uploads")),
-        # MF-15: display copies cover this size (U3 open: 800x600 default, or 1000x750).
+        # MF-15: display copies cover this size (U3 decided: 1000x750).
         # MF-14 upload limits
         "MAX_CONTENT_LENGTH": int(os.environ.get("MEMORYFRAME_MAX_UPLOAD_MB", "50")) * 1024 * 1024,
         "MAX_IMAGE_PIXELS": _env_int("MEMORYFRAME_MAX_MEGAPIXELS", 64) * 1_000_000,
         "MIN_FREE_BYTES": int(os.environ.get("MEMORYFRAME_MIN_FREE_MB", "500")) * 1024 * 1024,
         "AVG_PHOTO_BYTES": 5 * 1024 * 1024 + 300 * 1024,   # ~5 MB original + display copy
-        "DISPLAY_SIZE": os.environ.get("MEMORYFRAME_DISPLAY_SIZE", "800x600"),
+        "DISPLAY_SIZE": os.environ.get("MEMORYFRAME_DISPLAY_SIZE", "1000x750"),
     }
 
 

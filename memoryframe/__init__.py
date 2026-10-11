@@ -25,7 +25,7 @@ def create_app(config=None):
         app.config.update(config)
 
     from . import imaging
-    app.config["DISPLAY_TARGET"] = imaging.parse_target(app.config.get("DISPLAY_SIZE", imaging.DEFAULT_TARGET))
+    app.config["DISPLAY_TARGET"] = imaging.target_or_default(app.config.get("DISPLAY_SIZE", imaging.DEFAULT_TARGET))
     storage.ensure_layout(app.config["DATA_DIR"])
     db.init_app(app)
     _sweep(app)

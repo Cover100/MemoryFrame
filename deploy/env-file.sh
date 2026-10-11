@@ -2,6 +2,7 @@
 # Set or clear one KEY=VALUE in the service's EnvironmentFile (/etc/default/memoryframe).
 #   deploy/env-file.sh MEMORYFRAME_EXTRA_HOSTS 192.168.50.124,pi.home   # set/replace
 #   deploy/env-file.sh MEMORYFRAME_MAX_MEGAPIXELS 48                     # pixel cap for uploads/import
+#   deploy/env-file.sh MEMORYFRAME_DISPLAY_SIZE 1000x750                 # display copy size (WxH)
 #   deploy/env-file.sh MEMORYFRAME_EXTRA_HOSTS ""                         # remove the line
 #   deploy/env-file.sh MEMORYFRAME_SITE_URL http://memoryframe.local      # pairing/site URL override
 # Other lines are kept. ROOT and SUDO are overridable for tests.
@@ -19,6 +20,12 @@ case "$key" in
         [[ "$value" =~ ^(https?://[A-Za-z0-9.:_-]+)?$ ]] || { echo "Invalid site URL: $value" >&2; exit 2; } ;;
     MEMORYFRAME_MAX_MEGAPIXELS)
         [[ -z "$value" || "$value" =~ ^[1-9][0-9]{0,3}$ ]] || { echo "Invalid megapixels (1-9999): $value" >&2; exit 2; } ;;
+    MEMORYFRAME_DISPLAY_SIZE)
+        if [ -n "$value" ]; then
+            [[ "$value" =~ ^([1-9][0-9]{2,3})x([1-9][0-9]{2,3})$ ]] \
+                && (( BASH_REMATCH[1] >= 320 && BASH_REMATCH[1] <= 4000 && BASH_REMATCH[2] >= 320 && BASH_REMATCH[2] <= 4000 )) \
+                || { echo "Invalid display size (WxH, each side 320-4000, e.g. 1000x750): $value" >&2; exit 2; }
+        fi ;;
     *) echo "Unsupported key: $key" >&2; exit 2 ;;
 esac
 

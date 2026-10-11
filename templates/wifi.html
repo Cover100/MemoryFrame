@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<title>Frame Wi-Fi</title>
+<link rel="stylesheet" href="/static/pair.css">
+<link rel="stylesheet" href="/static/wifi.css">
+</head>
+<body>
+{% if step == "waiting" %}
+<h1>Rejoin the new Wi-Fi</h1>
+<ol class="steps">
+  <li>Open your phone's Wi-Fi settings and join "{{ name }}" with your new password (or scan the QR on the frame).</li>
+  <li>Come back here and open http://10.42.0.1/</li>
+</ol>
+<p class="grey">If you don't confirm within 5 minutes, the old Wi-Fi comes back.</p>
+{% else %}
+<h1>Frame Wi-Fi</h1>
+{% if unavailable %}
+<p id="unavailable">{{ error or "Wi-Fi can't be changed right now." }}</p>
+{% else %}
+<form method="post" action="/admin/wifi" id="wifiForm" novalidate>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <p>Current Wi-Fi: <span id="currentName">{{ current }}</span></p>
+  <div id="formStep">
+    <label for="ssid">New name</label>
+    <input class="field" id="ssid" name="ssid" value="{{ name }}" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <label for="password">New password</label>
+    <div class="pw">
+      <input class="field" id="password" name="password" type="password" value="" autocomplete="new-password" autocapitalize="off" spellcheck="false">
+      <button type="button" id="showPw" class="small">Show</button>
+    </div>
+    <p class="err" id="error" role="alert"{% if not error %} hidden{% endif %}>{{ error or "" }}</p>
+    <button type="submit" id="changeBtn">Change Wi-Fi</button>
+  </div>
+  <div id="confirmStep" hidden>
+    <h2>Change Wi-Fi?</h2>
+    <p>All phones will disconnect. Rejoin with the new password within 5 minutes or the old Wi-Fi comes back.</p>
+    <p>New Wi-Fi: <span id="confirmName"></span></p>
+    <div class="row">
+      <button type="button" id="cancelBtn" class="secondary">Cancel</button>
+      <button type="button" id="confirmBtn">Change Wi-Fi</button>
+    </div>
+  </div>
+</form>
+<script src="/static/wifi.js"></script>
+{% endif %}
+{% endif %}
+<p><a href="/admin/">Back</a></p>
+</body>
+</html>

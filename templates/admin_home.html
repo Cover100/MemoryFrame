@@ -9,13 +9,23 @@
 </head>
 <body>
 <h1>Memory Frame</h1>
+{% if wifi_notice %}<p class="notice" role="status">{{ wifi_notice }}</p>{% endif %}
+{% if just_paired %}
+<div id="pairedBanner" class="success-banner" role="status">
+  <p class="success-title">✓ You're paired!</p>
+  <p>This phone can now send photos to Memory Frame.</p>
+  <p><a class="big primary" href="/admin/upload">Upload photos</a></p>
+</div>
+{% endif %}
 <p>This phone is paired.</p>
 <p><a class="big" href="/admin/upload">Upload photos</a></p>
 <p><a class="big" href="/admin/library">Library</a></p>
+<p><a class="big" href="/admin/wifi">Frame Wi-Fi</a></p>
 <p><a class="big" href="/admin/settings">Settings</a></p>
-<form method="post" action="/admin/sign-out-all">
+<form method="post" action="/admin/sign-out-all" id="signOutForm">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <button type="submit">Sign out all phones</button>
 </form>
+<script src="/static/admin.js"></script>
 </body>
 </html>

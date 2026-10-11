@@ -306,7 +306,8 @@ def netmode_state():
     (safety: nothing assumes product mode unless the boot service applied it). Never contains secrets."""
     import json
     path = os.environ.get("MEMORYFRAME_NETMODE_STATE") or NETMODE_STATE
-    out = {"mode": "dev", "dev_fallback": False, "hotspot_error": False, "boot_id": ""}
+    out = {"mode": "dev", "dev_fallback": False, "hotspot_error": False, "boot_id": "", "reset": False,
+           "hotspot_uuid": "", "wifi_profiles": False, "commit_recovered": False}
     try:
         with open(path) as f:
             raw = json.load(f)
@@ -318,6 +319,11 @@ def netmode_state():
         out["mode"] = "product"
     out["dev_fallback"] = raw.get("dev_fallback") is True
     out["hotspot_error"] = raw.get("hotspot_error") is True and out["mode"] == "product"
+    out["reset"] = raw.get("reset") is True
+    uid = raw.get("hotspot_uuid")
+    out["hotspot_uuid"] = uid[:64] if isinstance(uid, str) else ""
+    out["wifi_profiles"] = raw.get("wifi_profiles") is True
+    out["commit_recovered"] = raw.get("commit_recovered") is True
     bid = raw.get("boot_id")
     out["boot_id"] = bid[:64] if isinstance(bid, str) else ""
     return out

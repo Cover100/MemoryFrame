@@ -13,7 +13,10 @@
 #   netmode.sh wifi-rollback   # old hotspot back up, pending profile deleted
 #
 # Boot-partition files (editable from any PC, drive "bootfs"):
-#   memoryframe-mode.txt      one word: product | dev   (missing/other -> product)
+#   memoryframe-mode.txt      one word: product | dev. Missing/empty/other -> developer default:
+#                             the boot service changes NOTHING (home Wi-Fi stays). Only an explicit
+#                             `sudo netmode.sh product` (or memoryframe-reset) writes product.
+#                             install.sh never writes this file.
 #   memoryframe-dev-wifi.txt  optional, only  ssid=<name>: which EXISTING NetworkManager
 #                             profile to use in dev mode (default: the most recently used one). Never a password: dev Wi-Fi
 #                             credentials live only in that root-only NM profile. Any other
@@ -26,7 +29,9 @@
 #   product: every Wi-Fi client profile gets autoconnect=no; the hotspot profile is brought up.
 #            If that fails, the failure is recorded for the frame's error screen. Never reboots.
 #   dev:     hotspot down, the dev profile up (waits up to MEMORYFRAME_DEV_WAIT s). If it
-#            doesn't connect: back to product mode (the frame shows "Developer Wi-Fi not found").
+#            doesn't connect: the hotspot is started for this boot only (the frame shows "Developer
+#            Wi-Fi not found"); client autoconnect and the mode file are left alone, so the next
+#            boot tries the home Wi-Fi again.
 #   Idempotent: the same mode twice changes nothing; profiles are never created or duplicated
 #   (except the hotspot profile on memoryframe-reset, via deploy/hotspot.sh).
 #   Refused (exit 3) while another mode switch runs or an MF-18 Wi-Fi change is pending.
@@ -76,10 +81,12 @@ requested_mode() {
         done < "$MODE_FILE"
     fi
     line="$(printf '%s' "$line" | tr '[:upper:]' '[:lower:]')"
+    # SAFETY (Delivery Lead/Tester): only an explicit "product" arms product mode. Missing, empty
+    # or unknown -> "none": developer default, the network is left exactly as it is.
     case "$line" in
         product|dev) echo "$line" ;;
-        "") echo product ;;
-        *) log "memoryframe-mode.txt: unknown mode, using product"; echo product ;;
+        "") echo none ;;
+        *) log "memoryframe-mode.txt: unknown mode, treating as developer default (network unchanged)"; echo none ;;
     esac
 }
 
@@ -152,8 +159,10 @@ write_state() {   # mode requested dev_fallback hotspot_error
     mv "$STATE.tmp" "$STATE"
 }
 
-apply_product() {   # requested dev_fallback
-    clients_autoconnect_off
+apply_product() {   # requested dev_fallback [keep-clients]
+    # keep-clients (dev fallback): client profiles keep autoconnect, so the home Wi-Fi is retried
+    # at the next boot; only an explicit product mode turns their autoconnect off.
+    if [ "${3:-}" != keep-clients ]; then clients_autoconnect_off; fi
     if [ "$(active)" = "$HOTSPOT_CON" ]; then
         log "product: hotspot already active"
         write_state product "$1" "$2" false
@@ -197,10 +206,9 @@ apply_dev() {
     ssid="$(dev_ssid)"
     if ! p="$(dev_profile "$ssid")"; then
         log "dev: no matching NetworkManager Wi-Fi profile${ssid:+ for the configured ssid}; starting the hotspot"
-        apply_product dev true || true
+        apply_product dev true keep-clients || true
         return 1
     fi
-    clients_autoconnect_off
     if [ "$(active)" = "$p" ]; then
         log "dev: already on $p"
         write_state dev dev false false
@@ -212,12 +220,20 @@ apply_dev() {
         write_state dev dev false false
         return 0
     fi
-    log "dev: developer Wi-Fi did not connect; starting the hotspot"
-    apply_product dev true || true
+    log "dev: developer Wi-Fi did not connect; starting the hotspot (mode file unchanged; retried next boot)"
+    apply_product dev true keep-clients || true
     return 1
 }
 
-apply() { if [ "$1" = dev ]; then apply_dev; else apply_product product false; fi; }
+apply() {
+    case "$1" in
+        dev) apply_dev ;;
+        product) apply_product product false ;;
+        *)  # unarmed: developer default, nothing touched (current behaviour before MF-36)
+            log "no product mode armed (memoryframe-mode.txt missing/empty): developer default, network left as is"
+            write_state dev none false false ;;
+    esac
+}
 
 take_lock() {   # [nopending]
     mkdir -p "$STATE_DIR"
@@ -233,8 +249,12 @@ take_lock() {   # [nopending]
 status() {
     local mode="unknown"
     [ -f "$STATE" ] && mode="$(sed -n 's/.*"mode": "\([a-z]*\)".*/\1/p' "$STATE")"
-    echo "requested: $(requested_mode)"
-    echo "mode: ${mode:-unknown}"
+    case "$(requested_mode)" in
+        product) echo "armed for next boot: product (memoryframe-mode.txt = product; the hotspot replaces home Wi-Fi)" ;;
+        dev)     echo "armed for next boot: dev (memoryframe-mode.txt = dev)" ;;
+        *)       echo "armed for next boot: dev (no mode file: developer default, network left as is)" ;;
+    esac
+    echo "current mode: ${mode:-unknown}"
     echo "active: $(active)"
     if [ -f "$STATE" ] && grep -q '"dev_fallback": true' "$STATE"; then echo "note: developer Wi-Fi not found, hotspot started"; fi
     if [ -f "$STATE" ] && grep -q '"hotspot_error": true' "$STATE"; then echo "error: hotspot did not start"; fi

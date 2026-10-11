@@ -1,5 +1,11 @@
 # MF-36 runbook: product mode, developer mode, recovery
 
+> **Safety rule.** Product mode is armed ONLY by an explicit `sudo deploy/netmode.sh product` (or the
+> `memoryframe-reset` recovery file). `install.sh`, upgrades, `git pull` + re-install and reboots never
+> write the mode file and never switch to the hotspot. With no mode file the frame stays on home
+> Wi-Fi. Switching to product cuts off Pi Connect: only with the user present and the way back tested.
+> `deploy/netmode.sh status` shows `armed for next boot: …` and `current mode: …`.
+
 Product mode is the default. At boot `memoryframe-netmode.service` runs `deploy/netmode.sh boot`:
 the hotspot (`MemoryFrame-hotspot`, SSID `MemoryFrame-AP`) comes up and every Wi-Fi client profile
 gets `autoconnect=no`. Phones reach `http://10.42.0.1/`.
@@ -10,7 +16,7 @@ There is **no** network-mode control in the frame menu or on the phone.
 
 | File | Content | Effect at next boot |
 |---|---|---|
-| `memoryframe-mode.txt` | `product` or `dev` (one word) | missing / anything else = product |
+| `memoryframe-mode.txt` | `product` or `dev` (one word) | missing / empty / anything else = developer default: the boot service changes nothing (home Wi-Fi stays) |
 | `memoryframe-dev-wifi.txt` | optional, only `ssid=<name>` | which **existing** NetworkManager profile dev mode uses (default: the most recently used client profile) |
 | `memoryframe-reset` | empty | recreate the default hotspot profile (`deploy/hotspot.sh`), force product; the file is deleted |
 
@@ -42,7 +48,7 @@ Switches are refused (exit 3) while another switch runs or an MF-18 Wi-Fi change
 
 ## Rollback / no lock-out
 
-From any PC, without network: open "bootfs", delete `memoryframe-mode.txt` (or write `product`),
+From any PC, without network: open "bootfs", write `product` in `memoryframe-mode.txt` (deleting the file means developer default),
 optionally create `memoryframe-reset`, boot. The hotspot is back after one boot.
 To remove MF-36 completely: `sudo systemctl disable memoryframe-netmode.service` (the hotspot then
 no longer starts at boot; NetworkManager behaves as before MF-36, but client profiles keep

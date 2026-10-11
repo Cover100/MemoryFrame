@@ -18,6 +18,9 @@
     const pairOverlay = $("pairOverlay"), emptyOverlay = $("emptyOverlay"), menuOverlay = $("menuOverlay");
 
     let onDemand = false;     // "Pair new device" chosen in the menu
+    let onDemandRound = false;  // its one code has been started (no auto-renew)
+    const SUCCESS_MS = 3000;
+    let successUntil = 0;
     // Close dismisses the onboarding / empty-library screens for this browser session
     // (kiosk restarts and reboots start a new session). Pairing stays in the menu.
     let dismissed = sessionStorage.getItem("mfOverlayDismissed") === "1";
@@ -165,17 +168,32 @@
             renderNetmode(st.netmode);
             renderWifi(st.wifi_change);
             const firstRun = st.paired === 0 && st.media === 0 && !dismissed;
-            const pairing = firstRun || onDemand;
-            if(pairing && !st.round){
-                st = (await startRound()) || st;      // first round, expired or used
+            const wasPairing = pairOverlay.classList.contains("visible") && Date.now() >= successUntil;
+            if(onDemand && onDemandRound && !st.round){
+                onDemand = false;                    // MF-32: on-demand code expired -> close, no renewal
             }
-            if(onDemand && st.paired > paired){
-                onDemand = false;                    // the new phone just paired
+            const pairing = firstRun || onDemand;
+            if(pairing && !st.round && (firstRun || !onDemandRound)){
+                st = (await startRound()) || st;      // first-run renews; on demand: once
+                if(onDemand && st.round){ onDemandRound = true; }
+            }
+            if(st.paired > paired && wasPairing){
+                successUntil = Date.now() + SUCCESS_MS;   // MF-33: "Phone paired" for 3 s
+                onDemand = false;
             }
             render(st);
-            const showPair = firstRun || onDemand;
+            const success = Date.now() < successUntil;
+            $("pairSuccess").hidden = !success;
+            $("pairBox").hidden = success;
+            if(success){                              // nothing of the used code behind the card
+                $("pairCode").textContent = "";
+                $("pairQr").innerHTML = "";
+            }
+            if(success){ setTimeout(tick, Math.max(50, successUntil - Date.now() + 20)); }
+            const showPair = success || (st.paired === 0 && st.media === 0 && !dismissed) || onDemand;
             const showEmpty = !showPair && !dismissed && st.paired > 0 && st.media === 0;
             pairOverlay.classList.toggle("visible", showPair);
+            if(showEmpty && !emptyOverlay.classList.contains("visible")){ openedAt.set(emptyOverlay, Date.now()); }
             emptyOverlay.classList.toggle("visible", showEmpty);
             // Small corner hint whenever pairing is possible but nothing covers the screen.
             $("pairHint").classList.toggle("visible", !showPair && !showEmpty && st.paired === 0);
@@ -188,7 +206,7 @@
 
     async function openMenu(){
         if(wifiRejoinActive()){ return; }            // MF-18: the rejoin screen ignores the menu
-        menuOverlay.classList.add("visible");
+        showOverlay(menuOverlay);
         try{
             const s = await getJSON("/frame/status");
             $("menuIp").textContent = (s.ips || []).length ? s.ips.join(", ") : "not connected";
@@ -212,12 +230,58 @@
         $(id).addEventListener("pointerdown", (e)=> e.stopPropagation());
     }
     button("menuClose", closeMenu);
-    button("menuPair", ()=>{ closeMenu(); onDemand = true; tick(); });
-    button("menuSignOut", async ()=>{
-        await fetch("/pairing/sign-out-all", {method: "POST"});
+    button("menuPair", ()=>{ closeMenu(); onDemand = true; onDemandRound = false; tick(); });
+    // ---------- MF-31: confirm "Sign out all phones" ----------
+    const confirmOverlay = $("confirmOverlay");
+    let confirmBusy = false;
+    function openConfirm(){
         closeMenu();
-        tick();
+        $("confirmAsk").hidden = false;
+        $("confirmDone").hidden = true;
+        $("confirmError").hidden = true;
+        showOverlay(confirmOverlay);
+    }
+    function closeConfirm(){ if(!confirmBusy){ confirmOverlay.classList.remove("visible"); } }
+    button("menuSignOut", openConfirm);
+    button("confirmCancel", closeConfirm);
+    button("confirmSignOut", async ()=>{
+        if(confirmBusy){ return; }
+        confirmBusy = true;
+        let ok = false;
+        try{ ok = (await fetch("/pairing/sign-out-all", {method: "POST"})).ok; }catch(e){ console.warn(e); }
+        if(!ok){                                     // phones are still paired: say so, keep the dialog
+            confirmBusy = false;
+            $("confirmError").hidden = false;
+            return;
+        }
+        $("confirmError").hidden = true;
+        $("confirmAsk").hidden = true;
+        $("confirmDone").hidden = false;
+        setTimeout(()=>{ confirmBusy = false; confirmOverlay.classList.remove("visible"); tick(); }, 2000);
     });
+
+    // ---------- MF-32: outside tap and 60 s idle close (menu, confirm, empty library) ----------
+    let IDLE_CLOSE = 60 * 1000;
+    let lastTouch = Date.now();
+    const openedAt = new Map();
+    function showOverlay(o){ o.classList.add("visible"); openedAt.set(o, Date.now()); }
+    const closers = new Map([[menuOverlay, closeMenu], [confirmOverlay, closeConfirm], [emptyOverlay, dismiss]]);
+    document.addEventListener("pointerdown", ()=>{ lastTouch = Date.now(); }, true);
+    for(const [o, close] of closers){
+        let downOutside = false;
+        o.addEventListener("pointerdown", (e)=>{ downOutside = e.target === o; });
+        o.addEventListener("pointerup", (e)=>{
+            if(downOutside && e.target === o){ e.stopPropagation(); close(); }
+            downOutside = false;
+        });
+    }
+    setInterval(()=>{
+        for(const [o, close] of closers){
+            if(!o.classList.contains("visible")){ continue; }
+            const since = Math.max(lastTouch, openedAt.get(o) || 0);
+            if(Date.now() - since >= IDLE_CLOSE){ close(); }
+        }
+    }, 1000);
     button("pairClose", dismiss);
     button("emptyClose", dismiss);
 
@@ -227,7 +291,7 @@
     let lastTap = null;        // {x, y, t (pointerup time)} of the previous completed tap
     let pointers = 0;
     function overlayOpen(){
-        return [menuOverlay, pairOverlay, emptyOverlay].some((o)=> o && o.classList.contains("visible"))
+        return [menuOverlay, pairOverlay, emptyOverlay, $("confirmOverlay")].some((o)=> o && o.classList.contains("visible"))
             || !!document.querySelector(".mf-modal:not([hidden])");
     }
     document.addEventListener("pointerdown", (e)=>{
@@ -249,7 +313,7 @@
         pointers = Math.max(0, pointers - 1);
         const d = tapDown;
         tapDown = null;
-        if(cancelled || !d || !e.isPrimary){ lastTap = null; return; }
+        if(cancelled || !d || !e.isPrimary || e.pointerType !== "touch"){ lastTap = null; return; }   // touch only
         const now = performance.now();
         const isTap = now - d.t < TAP_MAX_MS && Math.hypot(e.clientX - d.x, e.clientY - d.y) < TAP_MOVE;
         if(!isTap){ lastTap = null; return; }
@@ -276,7 +340,8 @@
     document.addEventListener("pointerup", ()=> clearTimeout(holdTimer));
     document.addEventListener("pointercancel", ()=> clearTimeout(holdTimer));
 
-    window.memoryFramePairing = {tick: tick, openMenu: openMenu, snoozeMs: ERROR_SNOOZE, toastMs: TOAST_MS};
+    window.memoryFramePairing = {tick: tick, openMenu: openMenu, snoozeMs: ERROR_SNOOZE, toastMs: TOAST_MS,
+        idleCloseMs: ()=> IDLE_CLOSE, setIdleCloseForTests: (ms)=>{ IDLE_CLOSE = ms; }};
     tick();
     setInterval(tick, POLL);
 })();

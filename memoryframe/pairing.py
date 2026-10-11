@@ -111,7 +111,8 @@ def pair():
             return jsonify({"error": msg}), 400
         return render_template("pair.html", token="", error=msg), 400
     token = auth.create_session(get_db(), request.headers.get("User-Agent", "phone"))
-    resp = jsonify({"paired": True, "next": "/admin/"}) if wants_json else redirect("/admin/", code=303)
+    # MF-33: one-shot "You're paired!" banner (admin.js removes ?paired=1 so a reload hides it)
+    resp = jsonify({"paired": True, "next": "/admin/?paired=1"}) if wants_json else redirect("/admin/?paired=1", code=303)
     return auth.set_session_cookie(make_response(resp), token)
 
 

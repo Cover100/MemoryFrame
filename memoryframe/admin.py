@@ -3,7 +3,7 @@
 Every route requires a paired session (MF-12); unauthenticated requests are
 redirected to /pair. Upload (MF-14) and the library (MF-16) add the real pages.
 """
-from flask import Blueprint, redirect, render_template
+from flask import Blueprint, redirect, render_template, request
 
 from . import auth
 from .db import get_db
@@ -18,7 +18,8 @@ def home():
     conn = get_db()
     if wifi.pending(conn) is not None:              # MF-18 5f: on the new Wi-Fi -> confirm page
         return redirect("/admin/wifi/keep", code=302)
-    return render_template("admin_home.html", wifi_notice=wifi.admin_notice(conn))
+    return render_template("admin_home.html", wifi_notice=wifi.admin_notice(conn),
+                           just_paired=request.args.get("paired") == "1")
 
 
 @bp.route("/sign-out-all", methods=["POST"])

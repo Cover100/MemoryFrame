@@ -3,11 +3,13 @@
 Two stages:
 1. Choose the *visible window* W: the largest SCREEN_ASPECT (5:3, the 800x480 screen)
    rectangle that fits the image, placed by the rules below. Only moved, never zoomed.
-2. Expand W to the output aspect (the display-copy target, 1000x750 = 4:3) around W's
+2. Expand W to the output aspect (the display-copy target) around W's
    centre, clamped to the image. The frame shows copies with CSS object-fit: cover
    (centred), so on screen exactly the middle 5:3 band of the copy is visible - which is W
    unless clamping had to shift the box.
-If the output aspect is switched to 5:3 (e.g. 1000x600), stage 2 is a no-op.
+With the default 1000x600 target (5:3, the same aspect as the screen) stage 2 is a no-op:
+the copy IS the window and the screen only scales it. Stage 2 only matters for a
+non-default MEMORYFRAME_DISPLAY_SIZE with another aspect.
 
 All coordinates are original-image pixels after EXIF transpose. Boxes are (left, top, right, bottom).
 """

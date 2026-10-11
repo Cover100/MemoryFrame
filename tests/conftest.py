@@ -124,6 +124,11 @@ REAL_OWN_IPS = _frameinfo.own_ips
 
 @pytest.fixture(autouse=True)
 def _mock_network(monkeypatch):
+    # Hermetic: no cached `hostname -I` result from the runner, no leaked overrides.
+    monkeypatch.setitem(_frameinfo._cache, "at", None)
+    monkeypatch.setitem(_frameinfo._cache, "ips", [])
+    for var in ("MEMORYFRAME_SITE_URL", "MEMORYFRAME_FORCE_NETMODE", "MEMORYFRAME_PORTS", "MEMORYFRAME_PORT"):
+        monkeypatch.delenv(var, raising=False)
     monkeypatch.setattr(_frameinfo, "network",
                         lambda: {"mode": "hotspot", "lan_ip": "10.42.0.1", "ips": ["10.42.0.1"]})
     monkeypatch.setattr(_frameinfo, "own_ips", lambda max_age=0: [])

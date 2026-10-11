@@ -129,8 +129,24 @@ def default_route_ip():
         s.close()
 
 
+def _forced_network():
+    """TESTS ONLY: MEMORYFRAME_FORCE_NETMODE=hotspot | lan:<ip> | unknown pins detection so
+    browser tests (server in another thread) don't depend on the runner's own addresses."""
+    raw = os.environ.get("MEMORYFRAME_FORCE_NETMODE", "").strip()
+    if not raw:
+        return None
+    if raw == "hotspot":
+        return {"mode": "hotspot", "lan_ip": HOTSPOT_IP, "ips": [HOTSPOT_IP]}
+    if raw.startswith("lan:") and raw[4:]:
+        return {"mode": "lan", "lan_ip": raw[4:], "ips": [raw[4:]]}
+    return {"mode": "unknown", "lan_ip": None, "ips": []}
+
+
 def network():
     """{"mode": "hotspot"|"lan"|"unknown", "lan_ip": ...} detected at request time."""
+    forced = _forced_network()
+    if forced:
+        return forced
     ips = own_ips()          # cached (15 s): the frame polls every 2 s, don't fork each time
     if HOTSPOT_IP in ips:
         return {"mode": "hotspot", "lan_ip": HOTSPOT_IP, "ips": ips}

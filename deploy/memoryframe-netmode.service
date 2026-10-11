@@ -1,0 +1,21 @@
+# MF-36: apply the network mode (product = hotspot, dev = developer Wi-Fi) at boot.
+# Installed by deploy/install.sh (replaces @APP_DIR@). Reads /boot/firmware/memoryframe-mode.txt.
+# Never fails the boot and never restarts: the outcome is in /run/memoryframe/netmode.json,
+# which the frame shows (dev banner, "Developer Wi-Fi not found", hotspot error screen).
+[Unit]
+Description=Memory Frame network mode (product hotspot / developer Wi-Fi)
+Wants=NetworkManager.service
+After=NetworkManager.service
+Before=memoryframe.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=@APP_DIR@/deploy/netmode.sh boot
+TimeoutStartSec=150
+RuntimeDirectory=memoryframe
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+
+[Install]
+WantedBy=multi-user.target

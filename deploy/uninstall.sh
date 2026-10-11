@@ -4,6 +4,8 @@
 set -u
 sudo systemctl disable --now memoryframe.service 2>/dev/null || true
 sudo rm -f /etc/systemd/system/memoryframe.service
+sudo systemctl disable memoryframe-netmode.service 2>/dev/null || true
+sudo rm -f /etc/systemd/system/memoryframe-netmode.service
 sudo systemctl daemon-reload
 rm -f "$HOME/.config/autostart/memoryframe-kiosk.desktop"
 pkill -f deploy/kiosk.sh || true

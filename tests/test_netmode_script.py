@@ -31,7 +31,13 @@ if [ "$1" = -g ] && [ "$3 $4" = "connection show" ]; then
   esac; exit 0
 fi
 case "$1 $2" in
-  "connection modify") echo "$5" > "$D/p/$3/autoconnect";;
+  "connection modify")
+    if [ "$4" = connection.id ]; then mv "$D/p/$3" "$D/p/$5"; else echo "$5" > "$D/p/$3/autoconnect"; fi;;
+  "connection load")
+    n="$(sed -n 's/^id=//p' "$3")"; mkdir -p "$D/p/$n"
+    echo 802-11-wireless > "$D/p/$n/type"; echo ap > "$D/p/$n/mode"; echo no > "$D/p/$n/autoconnect"
+    cp "$3" "$D/p/$n/keyfile";;
+  "connection delete") rm -rf "$D/p/$3"; [ "$(cat "$D/active")" = "$3" ] && : > "$D/active";;
   "connection up")
     [ -d "$D/p/$3" ] || exit 10
     grep -qxF "$3" "$D/fail" 2>/dev/null && exit 4
@@ -66,15 +72,16 @@ def env(tmp_path):
     boot, state = tmp_path / "boot", tmp_path / "run"
     boot.mkdir()
     (tmp_path / "boot_id").write_text("boot-1\n")
-    e = dict(os.environ, STUB_DIR=str(d), NMCLI=str(nm), MEMORYFRAME_BOOT_DIR=str(boot),
+    e = dict(os.environ, STUB_DIR=str(d), MEMORYFRAME_NM_DIR=str(tmp_path / "nm"), NMCLI=str(nm), MEMORYFRAME_BOOT_DIR=str(boot),
              MEMORYFRAME_STATE_DIR=str(state), MEMORYFRAME_DEV_WAIT="1",
              MEMORYFRAME_BOOT_ID_FILE=str(tmp_path / "boot_id"),
              MEMORYFRAME_HOTSPOT_SH=str(tmp_path / "hotspot.sh"), PATH=f"{d}:{os.environ['PATH']}")
     return {"d": d, "boot": boot, "state": state, "env": e, "tmp": tmp_path}
 
 
-def run(env, *args):
-    return subprocess.run(["bash", str(SCRIPT), *args], env=env["env"], capture_output=True, text=True, timeout=30)
+def run(env, *args, input=None):
+    return subprocess.run(["bash", str(SCRIPT), *args], env=env["env"], capture_output=True, text=True,
+                          timeout=30, input=input)
 
 
 def active(env):
@@ -103,7 +110,7 @@ def test_no_mode_file_boots_product(env):
     assert ac(env, HOME) == "no" and ac(env, OTHER) == "no" and ac(env, HOT) == "no"
     s = state(env)
     assert s == {"mode": "product", "requested": "product", "dev_fallback": False, "hotspot_error": False,
-                 "active": HOT, "boot_id": "boot-1"}
+                 "active": HOT, "boot_id": "boot-1", "reset": False}
 
 
 def test_product_idempotent(env):
@@ -275,4 +282,107 @@ def test_shellcheck_clean():
 def test_service_unit():
     unit = (ROOT / "deploy" / "memoryframe-netmode.service").read_text()
     assert "Type=oneshot" in unit and "Before=memoryframe.service" in unit
-    assert "netmode.sh boot" in unit and "Restart=" not in unit
+    assert "memoryframe-netmode boot" in unit and "Restart=" not in unit
+
+
+def test_sudoers_only_the_three_wifi_commands():
+    rule = [l for l in (ROOT / "deploy" / "memoryframe-sudoers").read_text().splitlines()
+            if l.strip() and not l.startswith("#")]
+    assert len(rule) == 1
+    cmds = [c.strip() for c in rule[0].split("NOPASSWD:", 1)[1].split(",")]
+    assert cmds == [f"/usr/local/sbin/memoryframe-netmode {c}" for c in ("wifi-apply", "wifi-commit", "wifi-rollback")]
+    assert "ALL=(root)" in rule[0] and "*" not in rule[0]
+
+
+# ---------- MF-18 helper: wifi-apply / wifi-commit / wifi-rollback ----------
+
+PENDING = "MemoryFrame-AP-pending"
+NEWPW = "n3w pass\\word!"
+
+
+@pytest.fixture
+def on_hotspot(env):
+    run(env, "boot")
+    assert active(env) == HOT
+    return env
+
+
+def test_apply_reads_stdin_keeps_old_and_never_logs(on_hotspot):
+    env = on_hotspot
+    r = run(env, "wifi-apply", input=f"Café Frame\n{NEWPW}\n")
+    assert r.returncode == 0, r.stderr
+    assert active(env) == PENDING and HOT in os.listdir(env["d"] / "p")
+    kf = (env["tmp"] / "nm" / f"{PENDING}.nmconnection")
+    assert oct(kf.stat().st_mode & 0o777) == "0o600"
+    body = kf.read_text()
+    assert "psk=n3w pass\\\\word!" in body and "mode=ap" in body and "autoconnect=false" in body
+    assert "ssid=67;97;102;195;169;32;70;114;97;109;101;" in body          # UTF-8 bytes, no escaping issues
+    assert (env["state"] / "wifi-change-pending").exists()
+    logs = r.stderr + (env["d"] / "log").read_text() + (env["state"] / "netmode.json").read_text()
+    assert "n3w pass" not in logs and "Café" not in (env["d"] / "log").read_text()
+
+
+def test_mode_switch_refused_while_pending(on_hotspot):
+    env = on_hotspot
+    run(env, "wifi-apply", input=f"New\n{NEWPW}\n")
+    assert run(env, "dev").returncode == 3
+    assert run(env, "wifi-apply", input=f"Other\n{NEWPW}\n").returncode == 3      # second change
+
+
+def test_commit_leaves_exactly_one_ap_profile(on_hotspot):
+    env = on_hotspot
+    run(env, "wifi-apply", input=f"New\n{NEWPW}\n")
+    r = run(env, "wifi-commit")
+    assert r.returncode == 0, r.stderr
+    aps = [n for n in os.listdir(env["d"] / "p") if (env["d"] / "p" / n / "mode").read_text().strip() == "ap"]
+    assert aps == [HOT] and (env["d"] / "p" / HOT / "keyfile").exists()
+    assert not (env["state"] / "wifi-change-pending").exists()
+    assert run(env, "dev").returncode == 0                                  # switches allowed again
+
+
+def test_rollback_restores_old_and_deletes_pending(on_hotspot):
+    env = on_hotspot
+    run(env, "wifi-apply", input=f"New\n{NEWPW}\n")
+    assert run(env, "wifi-rollback").returncode == 0
+    assert active(env) == HOT and PENDING not in os.listdir(env["d"] / "p")
+    assert not (env["tmp"] / "nm" / f"{PENDING}.nmconnection").exists()
+    assert not (env["state"] / "wifi-change-pending").exists()
+
+
+def test_activation_failure_rolls_back(on_hotspot):
+    env = on_hotspot
+    (env["d"] / "fail").write_text(PENDING + "\n")
+    r = run(env, "wifi-apply", input=f"New\n{NEWPW}\n")
+    assert r.returncode == 4
+    assert active(env) == HOT and PENDING not in os.listdir(env["d"] / "p")
+
+
+@pytest.mark.parametrize("data", ["\nabcdefgh\n", "x" * 33 + "\nabcdefgh\n", "ok\nshort\n", "ok\n" + "a" * 64 + "\n",
+                                  "ok\npässwort1\n", "a\tb\nabcdefgh\n"])
+def test_apply_validates(on_hotspot, data):
+    env = on_hotspot
+    assert run(env, "wifi-apply", input=data).returncode == 2
+    assert active(env) == HOT and not (env["state"] / "wifi-change-pending").exists()
+
+
+def test_apply_refused_in_dev_mode(env):
+    run(env, "dev")
+    assert run(env, "wifi-apply", input=f"New\n{NEWPW}\n").returncode == 3
+
+
+def test_commit_without_pending_refused(on_hotspot):
+    assert run(on_hotspot, "wifi-commit").returncode == 4
+
+
+def test_boot_rolls_back_unconfirmed_change(on_hotspot):
+    env = on_hotspot
+    run(env, "wifi-apply", input=f"New\n{NEWPW}\n")
+    run(env, "boot")
+    assert active(env) == HOT and PENDING not in os.listdir(env["d"] / "p")
+    assert not (env["state"] / "wifi-change-pending").exists()
+
+
+def test_reset_flag_in_state(env):
+    (env["boot"] / "memoryframe-reset").write_text("")
+    run(env, "boot")
+    assert state(env)["reset"] is True

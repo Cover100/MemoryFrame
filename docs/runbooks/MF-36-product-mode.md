@@ -53,3 +53,22 @@ no longer starts at boot; NetworkManager behaves as before MF-36, but client pro
 Product boot; boot file → dev; dev → product via boot file and via shell; wrong dev password →
 hotspot fallback + toast; simulated hotspot failure (e.g. `nmcli connection modify MemoryFrame-hotspot
 802-11-wireless.channel 200`) → error screen; `grep -ri password /boot/firmware/memoryframe-*` is empty.
+
+## MF-18: changing the hotspot name/password from a phone
+
+Phone: admin home → `Frame Wi-Fi`. The app never touches the network itself; it calls the
+root-owned helper through one sudoers rule (`/etc/sudoers.d/memoryframe`, from
+`deploy/memoryframe-sudoers`): `sudo -l -U <app user>` must list only
+`/usr/local/sbin/memoryframe-netmode wifi-apply|wifi-commit|wifi-rollback`. The new password goes
+to the helper on stdin (never argv/logs), into a root-only keyfile `MemoryFrame-AP-pending`.
+
+- Pending: old profile kept, frame shows the new Wi-Fi QR and a 5:00 countdown.
+- Keep: a paired phone on the new hotspot (10.42.0.0/24) taps `Keep new Wi-Fi` → pending becomes
+  `MemoryFrame-hotspot`, old profile deleted. The app stores the new name/password (for the QR)
+  in its database; `deploy/hotspot.conf` is not changed.
+- Rollback: timeout, activation failure, app restart or reboot while pending → old hotspot back,
+  pending profile deleted. Mode switches (`netmode.sh product|dev`) are refused while pending, and
+  Wi-Fi changes are refused (409) in dev mode or during a switch.
+- `memoryframe-reset` recreates the hotspot from `deploy/hotspot.conf`; the app then drops its stored
+  name/password so the QR matches again.
+- After updating the code, re-run `deploy/install.sh` so the root-owned helper copy is refreshed.

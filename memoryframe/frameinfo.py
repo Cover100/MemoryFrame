@@ -282,7 +282,7 @@ def netmode_state():
     (e.g. a dev machine without the service). Never contains secrets."""
     import json
     path = os.environ.get("MEMORYFRAME_NETMODE_STATE") or NETMODE_STATE
-    out = {"mode": "product", "dev_fallback": False, "hotspot_error": False, "boot_id": ""}
+    out = {"mode": "product", "dev_fallback": False, "hotspot_error": False, "boot_id": "", "reset": False}
     try:
         with open(path) as f:
             raw = json.load(f)
@@ -294,6 +294,7 @@ def netmode_state():
         out["mode"] = "dev"
     out["dev_fallback"] = raw.get("dev_fallback") is True
     out["hotspot_error"] = raw.get("hotspot_error") is True and out["mode"] == "product"
+    out["reset"] = raw.get("reset") is True
     bid = raw.get("boot_id")
     out["boot_id"] = bid[:64] if isinstance(bid, str) else ""
     return out

@@ -6,6 +6,12 @@
 #   deploy/netmode.sh status         # requested mode, applied mode, active connection
 #   deploy/netmode.sh boot           # what memoryframe-netmode.service runs at boot
 #
+# MF-18 (the app calls these through sudo; the only commands in the sudoers rule):
+#   netmode.sh wifi-apply      # reads "ssid\npassword\n" on STDIN (never argv), writes a root-only
+#                              # MemoryFrame-AP-pending keyfile and switches to it; old profile kept
+#   netmode.sh wifi-commit     # pending becomes the hotspot profile, old profile deleted
+#   netmode.sh wifi-rollback   # old hotspot back up, pending profile deleted
+#
 # Boot-partition files (editable from any PC, drive "bootfs"):
 #   memoryframe-mode.txt      one word: product | dev   (missing/other -> product)
 #   memoryframe-dev-wifi.txt  optional, only  ssid=<name>: which EXISTING NetworkManager
@@ -46,13 +52,16 @@ RESET_FILE="$BOOT_DIR/memoryframe-reset"
 STATE="$STATE_DIR/netmode.json"
 LOCK="$STATE_DIR/netmode.lock"
 PENDING="$STATE_DIR/wifi-change-pending"     # written by the MF-18 helper while a change is pending
+PENDING_CON="${MEMORYFRAME_PENDING_CON:-MemoryFrame-AP-pending}"
+NM_DIR="${MEMORYFRAME_NM_DIR:-/etc/NetworkManager/system-connections}"
+RESET_DONE=false
 
 log() {
     echo "netmode: $*" >&2
     logger -t memoryframe-netmode -- "$*" 2>/dev/null || true
 }
 
-usage() { echo "usage: $0 product|dev|status|boot" >&2; exit 2; }
+usage() { echo "usage: $0 product|dev|status|boot|wifi-apply|wifi-commit|wifi-rollback" >&2; exit 2; }
 
 trim() { local s="${1//$'\r'/}"; s="${s#"${s%%[![:space:]]*}"}"; printf '%s' "${s%"${s##*[![:space:]]}"}"; }
 
@@ -137,7 +146,7 @@ write_state() {   # mode requested dev_fallback hotspot_error
     {
         printf '{"mode": %s, "requested": %s, "dev_fallback": %s, "hotspot_error": %s, ' \
             "$(json_str "$1")" "$(json_str "$2")" "$3" "$4"
-        printf '"active": %s, "boot_id": %s}\n' "$(json_str "$(active)")" "$(json_str "$boot_id")"
+        printf '"active": %s, "boot_id": %s, "reset": %s}\n' "$(json_str "$(active)")" "$(json_str "$boot_id")" "$RESET_DONE"
     } > "$STATE.tmp"
     chmod 0644 "$STATE.tmp"
     mv "$STATE.tmp" "$STATE"
@@ -210,13 +219,13 @@ apply_dev() {
 
 apply() { if [ "$1" = dev ]; then apply_dev; else apply_product product false; fi; }
 
-take_lock() {
+take_lock() {   # [nopending]
     mkdir -p "$STATE_DIR"
     exec 9>"$LOCK"
     if ! flock -n 9; then
         log "another network mode switch is in progress"; exit 3
     fi
-    if [ -e "$PENDING" ]; then
+    if [ "${1:-}" != nopending ] && [ -e "$PENDING" ]; then
         log "a Wi-Fi change is pending (MF-18); try again after it is kept or rolled back"; exit 3
     fi
 }
@@ -231,21 +240,116 @@ status() {
     if [ -f "$STATE" ] && grep -q '"hotspot_error": true' "$STATE"; then echo "error: hotspot did not start"; fi
 }
 
+# ---------- MF-18: hotspot name/password change (pending -> commit | rollback) ----------
+
+applied_mode() { [ -f "$STATE" ] && sed -n 's/.*"mode": "\([a-z]*\)".*/\1/p' "$STATE"; }
+
+valid_ssid() {
+    local s="$1" n
+    n="$(printf '%s' "$s" | LC_ALL=C wc -c)"
+    [ "$n" -ge 1 ] && [ "$n" -le 32 ] && ! printf '%s' "$s" | LC_ALL=C grep -q '[[:cntrl:]]'
+}
+
+valid_psk() { printf '%s' "$1" | LC_ALL=C grep -qxE '[ -~]{8,63}'; }
+
+ssid_bytes() { printf '%s' "$1" | od -An -tu1 -v | tr -s ' \n' ';' | sed 's/^;//'; }
+
+keyfile_escape() {   # GKeyFile value: backslash, and leading/trailing spaces
+    local v="${1//\\/\\\\}"
+    [ "${v:0:1}" = " " ] && v="\\s${v:1}"
+    [ "${v: -1}" = " " ] && v="${v:0:${#v}-1}\\s"
+    printf '%s' "$v"
+}
+
+delete_pending_profile() {
+    if profiles | grep -qxF "$PENDING_CON"; then "$NMCLI" connection delete "$PENDING_CON" >/dev/null 2>&1 || true; fi
+    rm -f "$NM_DIR/$PENDING_CON.nmconnection"
+}
+
+wifi_rollback() {
+    [ "$(active)" = "$PENDING_CON" ] && "$NMCLI" connection down "$PENDING_CON" >/dev/null 2>&1 || true
+    local ok=0
+    if [ "$(active)" != "$HOTSPOT_CON" ]; then
+        "$NMCLI" --wait 30 connection up "$HOTSPOT_CON" >/dev/null 2>&1 || ok=1
+    fi
+    delete_pending_profile
+    rm -f "$PENDING"
+    write_state product product false "$([ "$ok" = 0 ] && echo false || echo true)"
+    log "wifi change rolled back"
+    return "$ok"
+}
+
+wifi_apply() {
+    local ssid="" psk="" f
+    IFS= read -r ssid || true
+    IFS= read -r psk || true
+    if [ "$(applied_mode)" = dev ]; then log "wifi change refused: developer mode"; exit 3; fi
+    if ! valid_ssid "$ssid" || ! valid_psk "$psk"; then log "wifi change refused: invalid name or password"; exit 2; fi
+    if ! profiles | grep -qxF "$HOTSPOT_CON"; then log "wifi change refused: no hotspot profile"; exit 1; fi
+    : > "$PENDING"
+    delete_pending_profile
+    f="$NM_DIR/$PENDING_CON.nmconnection"
+    mkdir -p "$NM_DIR"
+    (
+        umask 077
+        {
+            printf '[connection]\nid=%s\ntype=wifi\ninterface-name=%s\nautoconnect=false\n\n' "$PENDING_CON" "$IFACE"
+            printf '[wifi]\nmode=ap\nband=bg\nchannel=6\nssid=%s\n\n' "$(ssid_bytes "$ssid")"
+            printf '[wifi-security]\nkey-mgmt=wpa-psk\nproto=rsn\npairwise=ccmp\ngroup=ccmp\npsk=%s\n\n' "$(keyfile_escape "$psk")"
+            printf '[ipv4]\nmethod=shared\naddress1=10.42.0.1/24\n\n[ipv6]\nmethod=disabled\n'
+        } > "$f.tmp"
+        chmod 0600 "$f.tmp"
+        mv "$f.tmp" "$f"
+    )
+    psk=""
+    if ! "$NMCLI" connection load "$f" >/dev/null 2>&1; then
+        log "wifi change: could not load the new profile"; wifi_rollback || true; exit 4
+    fi
+    "$NMCLI" connection down "$HOTSPOT_CON" >/dev/null 2>&1 || true
+    if "$NMCLI" --wait 30 connection up "$PENDING_CON" >/dev/null 2>&1 && [ "$(active)" = "$PENDING_CON" ]; then
+        log "wifi change: new hotspot up, waiting for confirmation"
+        write_state product product false false
+        return 0
+    fi
+    log "wifi change: the new hotspot did not start"
+    wifi_rollback || true
+    exit 4
+}
+
+wifi_commit() {
+    if ! profiles | grep -qxF "$PENDING_CON" || [ "$(active)" != "$PENDING_CON" ]; then
+        log "wifi commit refused: no active pending profile"; exit 4
+    fi
+    "$NMCLI" connection delete "$HOTSPOT_CON" >/dev/null 2>&1 || true
+    "$NMCLI" connection modify "$PENDING_CON" connection.id "$HOTSPOT_CON"
+    rm -f "$PENDING"
+    write_state product product false false
+    log "wifi change kept"
+}
+
 case "${1:-}" in
     status) status ;;
+    wifi-apply) take_lock; wifi_apply ;;
+    wifi-commit) take_lock nopending; wifi_commit ;;
+    wifi-rollback) take_lock nopending; wifi_rollback ;;
     product|dev)
         take_lock
         write_mode_file "$1"
         apply "$1" ;;
     boot)
-        take_lock
+        take_lock nopending                   # a pending change is rolled back below
         if [ -e "$RESET_FILE" ]; then
             log "memoryframe-reset found: restoring the default hotspot, product mode"
             rm -f "$RESET_FILE"
+            RESET_DONE=true
             write_mode_file product
             if [ -x "$HOTSPOT_SH" ]; then
                 "$HOTSPOT_SH" </dev/null >/dev/null 2>&1 || log "hotspot profile reset failed"
             fi
+        fi
+        if [ -e "$PENDING" ] || profiles | grep -qxF "$PENDING_CON"; then
+            log "unconfirmed Wi-Fi change found at boot: rolling back"
+            delete_pending_profile; rm -f "$PENDING"
         fi
         # Boot never fails the unit (no reboot loop); the state file carries the outcome.
         apply "$(requested_mode)" || true ;;

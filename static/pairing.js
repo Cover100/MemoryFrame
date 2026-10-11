@@ -115,10 +115,52 @@
         $("hotspotError").hidden = true;
     });
 
+    // ---------- MF-18: hotspot change ----------
+    const CANCELLED_TIMEOUT = 60 * 1000;
+    let wifiDeadline = 0, cancelledClosedId = null, cancelledShownAt = 0, cancelledId = null;
+    function mmss(ms){
+        const s = Math.max(0, Math.ceil(ms / 1000));
+        return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+    }
+    function wifiRejoinActive(){ return !$("wifiRejoin").hidden; }
+    function renderWifi(wc){
+        const pending = !!(wc && wc.state === "pending");
+        $("wifiRejoin").hidden = !pending;
+        if(pending){
+            $("wifiRejoinName").textContent = wc.new_ssid || "";
+            if(typeof wc.qr_svg === "string"){ $("wifiRejoinQr").innerHTML = wc.qr_svg; }
+            wifiDeadline = Date.now() + (Number(wc.remaining) || 0) * 1000;    // server deadline
+            $("wifiCountdown").textContent = mmss(wifiDeadline - Date.now());
+            closeMenu();
+        }
+        $("wifiUpdated").hidden = !(wc && wc.state === "committed");
+        if(wc && wc.state === "committed"){ $("wifiUpdatedName").textContent = wc.new_ssid || ""; }
+        const rolled = !!(wc && wc.state === "rolled_back" && wc.id !== cancelledClosedId);
+        if(rolled && cancelledId !== wc.id){ cancelledId = wc.id; cancelledShownAt = Date.now(); }
+        const showCancelled = rolled && Date.now() - cancelledShownAt < CANCELLED_TIMEOUT;
+        $("wifiCancelled").hidden = !showCancelled;
+        if(showCancelled){
+            $("wifiCancelledName").textContent = wc.old_ssid || "";
+            if(typeof wc.qr_svg === "string"){ $("wifiCancelledQr").innerHTML = wc.qr_svg; }
+        }
+    }
+    setInterval(()=>{ if(wifiRejoinActive()){ $("wifiCountdown").textContent = mmss(wifiDeadline - Date.now()); } }, 250);
+    function closeCancelled(){ cancelledClosedId = cancelledId; $("wifiCancelled").hidden = true; }
+    for(const id of ["wifiRejoin", "wifiUpdated"]){
+        $(id).addEventListener("pointerdown", (e)=> e.stopPropagation());     // not dismissable, no menu
+        $(id).addEventListener("click", (e)=> e.stopPropagation());
+    }
+    $("wifiCancelled").addEventListener("pointerdown", (e)=> e.stopPropagation());
+    $("wifiCancelled").addEventListener("click", (e)=>{
+        e.stopPropagation();
+        if(e.target.id === "wifiCancelled" || e.target.id === "wifiCancelledClose"){ closeCancelled(); }   // outside tap / ×
+    });
+
     async function tick(){
         try{
             let st = await getJSON("/pairing/state");
             renderNetmode(st.netmode);
+            renderWifi(st.wifi_change);
             const firstRun = st.paired === 0 && st.media === 0 && !dismissed;
             const pairing = firstRun || onDemand;
             if(pairing && !st.round){
@@ -142,6 +184,7 @@
     function gb(n){ return (n / 1073741824).toFixed(1) + " GB"; }
 
     async function openMenu(){
+        if(wifiRejoinActive()){ return; }            // MF-18: the rejoin screen ignores the menu
         menuOverlay.classList.add("visible");
         try{
             const s = await getJSON("/frame/status");

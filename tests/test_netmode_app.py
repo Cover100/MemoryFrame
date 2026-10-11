@@ -28,7 +28,7 @@ def nmstate(tmp_path, monkeypatch):
 def test_missing_state_is_product(monkeypatch, tmp_path):
     monkeypatch.setenv("MEMORYFRAME_NETMODE_STATE", str(tmp_path / "nope.json"))
     assert frameinfo.netmode_state() == {"mode": "product", "dev_fallback": False, "hotspot_error": False,
-                                         "boot_id": ""}
+                                         "boot_id": "", "reset": False}
 
 
 @pytest.mark.parametrize("raw", ["", "{", "[]", '{"mode": "evil", "hotspot_error": "yes"}'])

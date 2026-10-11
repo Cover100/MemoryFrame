@@ -33,6 +33,7 @@ def helper(tmp_path, mf_app, monkeypatch):
     monkeypatch.setenv("MEMORYFRAME_SSID", "MemoryFrame-AP")
     monkeypatch.setenv("MEMORYFRAME_WIFI_PASSWORD", OLD_PW)
     monkeypatch.setenv("MEMORYFRAME_NETMODE_STATE", str(tmp_path / "netmode.json"))
+    (tmp_path / "netmode.json").write_text('{"mode": "product"}')   # the frame booted in product mode
     started = []
     mf_app.config["WIFI_START"] = lambda: started.append(1)    # apply is driven by the tests
 
@@ -283,3 +284,12 @@ def test_password_never_logged_or_returned(paired, helper, mf_app, client, caplo
     st.pop("wifi_qr_svg", None)
     for text in bodies + [str(st), fs, caplog.text, "\n".join(helper.calls())]:
         assert NEW_PW not in text and OLD_PW not in text
+
+
+def test_missing_netmode_state_means_dev_409_helper_never_called(paired, helper, mf_app, tmp_path):
+    """#41 SAFETY: no netmode.json (dev Pi, service no-op) -> dev: nothing touches home Wi-Fi."""
+    (tmp_path / "netmode.json").unlink()
+    html = htmlmod.unescape(paired.get("/admin/wifi/", environ_base=PHONE).get_data(as_text=True))
+    assert "Wi-Fi can't be changed right now." in html and 'id="wifiForm"' not in html
+    assert submit(paired).status_code == 409 and row(mf_app) is None
+    assert helper.calls() == [] and helper.start == []

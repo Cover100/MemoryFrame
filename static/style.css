@@ -609,3 +609,6 @@ video {
 #pairHint{position:fixed;right:12px;bottom:10px;z-index:40;display:none;padding:6px 12px;border-radius:8px;
   background:rgba(0,0,0,.45);color:rgba(255,255,255,.85);font:18px system-ui,sans-serif;pointer-events:none}
 #pairHint.visible{display:block}
+
+/* MF-17: transition "None" = instant cut */
+.mf-no-fade .media{transition:none!important}

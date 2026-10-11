@@ -13,6 +13,10 @@ Target hardware: **Raspberry Pi 4 Model B**, **Raspberry Pi OS 64-bit**,
 - If the disk fills up while a file is being written, the upload returns 507 and partial temp files are removed.
 - Display labels keep Unicode letters and digits (for example `Été_à_Paris.jpg`). Path parts and control characters are dropped, and the label falls back to `photo.jpg`.
 
+### Settings (phone)
+
+`/admin/settings` (paired phone): slide time (5 s, 10 s, 30 s, 1 min or 5 min; default 10 s), transition (Fade or None; default Fade) and shuffle (default on). Each tap saves straight away. The frame applies changes within about 2 s without reloading, from the next slide. API: `GET`/`PUT /api/v1/settings` (partial JSON; invalid values return 400).
+
 ## Setup — Raspberry Pi (Raspberry Pi OS 64-bit)
 
 ```bash

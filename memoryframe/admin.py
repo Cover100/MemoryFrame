@@ -31,3 +31,9 @@ def upload_page():
 @bp.route("/library")
 def library_page():
     return render_template("library.html")
+
+
+@bp.route("/settings")
+def settings_page():
+    from . import settings
+    return render_template("settings.html", s=settings.get_all(get_db()), slides=settings.SLIDE_SECONDS)

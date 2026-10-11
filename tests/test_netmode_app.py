@@ -61,6 +61,8 @@ def test_no_network_mode_controls_in_user_ui():
         html = f.read_text()
         # the MF-36 status displays themselves (banner/toast/error copy) are not controls
         html = re.sub(r"<!-- MF-36 \(frame only\).*?(?=<script)", "", html, flags=re.S)
+        # MF-51 (#51) deliberately adds the frame's "Dev mode" menu item and its confirm dialog
+        html = re.sub(r'<button id="menuDevMode".*?</button>|<!-- MF-51.*?<!-- MF-49', "", html, flags=re.S)
         low = html.lower()
         for bad in ("developer mode", "dev mode", "netmode", "network mode", "product mode", "memoryframe-mode"):
             assert bad not in low, (f.name, bad)

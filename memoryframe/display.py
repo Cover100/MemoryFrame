@@ -179,3 +179,34 @@ def shutdown():
     t.daemon = True
     t.start()
     return jsonify({"shutting_down": True})
+
+
+# ---------------- MF-51: Dev mode until reboot (kiosk only) ----------------
+
+DEV_MODE_CMD = ["sudo", "-n", "/usr/local/sbin/memoryframe-netmode", "dev-temp"]
+
+
+@bp.route("/frame/dev-mode", methods=["POST"])
+@localhost_only
+def dev_mode():
+    import hmac
+    import subprocess
+    import threading
+    sent = request.headers.get("X-Frame-Token", "")
+    if not sent or not hmac.compare_digest(sent.encode(), frame_token().encode()):
+        abort(403)
+    cmd = list(current_app.config.get("DEV_MODE_CMD") or DEV_MODE_CMD)
+
+    def run():
+        try:
+            r = subprocess.run(cmd, timeout=120, check=False, capture_output=True)
+            if r.returncode:
+                log.warning("dev mode switch failed (exit %s)", r.returncode)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            log.warning("dev mode switch failed: %s", type(e).__name__)
+
+    log.warning("dev mode (until reboot) requested from the frame menu")
+    t = threading.Timer(float(current_app.config.get("DEV_MODE_DELAY", 1.0)), run)
+    t.daemon = True
+    t.start()
+    return jsonify({"dev_mode": True})

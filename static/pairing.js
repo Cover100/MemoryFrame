@@ -231,6 +231,29 @@
     }
     button("menuClose", closeMenu);
 
+    // ---------- MF-51: Dev mode until reboot ----------
+    const devOverlay = $("devModeOverlay");
+    let devBusy = false;
+    button("menuDevMode", ()=>{
+        closeMenu();
+        $("devModeAsk").hidden = false; $("devModeDone").hidden = true; $("devModeError").hidden = true;
+        devOverlay.classList.add("visible");
+    });
+    button("devModeCancel", ()=>{ if(!devBusy){ devOverlay.classList.remove("visible"); } });
+    button("devModeConfirm", async ()=>{
+        if(devBusy){ return; }
+        devBusy = true;
+        let ok = false;
+        try{
+            const meta = document.querySelector('meta[name="mf-frame-token"]');
+            ok = (await fetch("/frame/dev-mode", {method: "POST",
+                headers: {"X-Frame-Token": meta ? meta.content : ""}})).ok;
+        }catch(e){ console.warn(e); }
+        if(!ok){ devBusy = false; $("devModeError").hidden = false; return; }
+        $("devModeAsk").hidden = true; $("devModeDone").hidden = false;
+        setTimeout(()=>{ devBusy = false; devOverlay.classList.remove("visible"); }, 4000);
+    });
+
     // ---------- MF-49: shut down ----------
     const shutdownOverlay = $("shutdownOverlay");
     let shuttingDown = false;

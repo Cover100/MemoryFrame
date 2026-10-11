@@ -15,7 +15,7 @@ import threading
 
 log = logging.getLogger("memoryframe.imaging")
 
-DEFAULT_TARGET = "1000x750"    # U3 decided: size B (1000x750)
+DEFAULT_TARGET = "1000x600"    # user decision 2026-10-11: exactly 5:3 = the visible window
 MAX_BYTES = 300 * 1024
 QUALITIES = (85, 80, 75, 70, 65, 60, 55, 50)
 
@@ -45,7 +45,7 @@ def parse_target(value):
             return w, h
     except ValueError:
         pass
-    raise ValueError(f"display size must look like 1000x750 (each side {MIN_SIDE}-{MAX_SIDE}), got {value!r}")
+    raise ValueError(f"display size must look like 1000x600 (each side {MIN_SIDE}-{MAX_SIDE}), got {value!r}")
 
 
 def target_or_default(value):
@@ -97,7 +97,8 @@ def make_display_copy(src, dst, target, max_bytes=MAX_BYTES):
         tmp = dst + ".tmp"
         while True:
             for q in QUALITIES:
-                im.save(tmp, "JPEG", quality=q, optimize=True, progressive=True)  # no exif= -> stripped
+                im.save(tmp, "JPEG", quality=q, optimize=True, progressive=True,   # no exif= -> stripped
+                        comment=copy_marker(target))
                 if os.path.getsize(tmp) <= max_bytes:
                     os.replace(tmp, dst)
                     return im.size + (os.path.getsize(dst),)
@@ -105,26 +106,52 @@ def make_display_copy(src, dst, target, max_bytes=MAX_BYTES):
             im = im.resize((max(1, int(im.width * 0.9)), max(1, int(im.height * 0.9))), Image.LANCZOS)
 
 
+COPY_VERSION = "v2"     # bump when crop/size rules change: existing copies are then remade
+_current = {}           # path -> (mtime, target) known to be current (avoids re-reading headers)
+
+
+def copy_marker(target):
+    """Written as the JPEG comment of every copy: rules version + target size."""
+    return f"memoryframe-display {COPY_VERSION} {target[0]}x{target[1]}".encode()
+
+
+def copy_is_current(path, target):
+    """True if `path` was made for this target by the current rules. Copies from older
+    versions (no marker: uncropped, 800x600, 1000x750) or for another size are stale."""
+    try:
+        mtime = os.path.getmtime(path)
+        if _current.get(path) == (mtime, tuple(target)):
+            return True
+        with Image.open(path) as im:
+            ok = im.info.get("comment") == copy_marker(target)
+    except Exception:  # noqa: BLE001
+        return False
+    if ok:
+        _current[path] = (mtime, tuple(target))
+    return ok
+
+
 def ensure_display_copy(data_dir, stored_name, target):
-    """Path of the file the display should show (copy if possible, else the original)."""
+    """Path of the file the display should show (copy if possible, else the original).
+    A missing or stale copy (other size / older rules) is (re)made here, lazily on serve."""
     original = os.path.join(data_dir, "originals", stored_name)
     if not needs_copy(stored_name):
         return original
     dst = os.path.join(data_dir, "display", display_name(stored_name))
-    if os.path.exists(dst):
+    if os.path.exists(dst) and copy_is_current(dst, target):
         return dst
     with _lock:
-        if not os.path.exists(dst):
+        if not (os.path.exists(dst) and copy_is_current(dst, target)):
             try:
                 make_display_copy(original, dst, target)
             except Exception as e:  # noqa: BLE001 - never break the slideshow
                 log.warning("display copy failed for %s: %s", stored_name, e)
-                return original
+                return dst if os.path.exists(dst) else original     # old copy beats nothing
     return dst
 
 
 def backfill(conn, data_dir, target, force=False):
-    """Create missing display copies for every image. Returns (made, failed)."""
+    """Create missing or stale display copies for every image. Returns (made, failed)."""
     made = failed = 0
     rows = conn.execute("SELECT stored_name FROM media WHERE kind = 'image' ORDER BY id").fetchall()
     for (name,) in rows:
@@ -133,7 +160,7 @@ def backfill(conn, data_dir, target, force=False):
         dst = os.path.join(data_dir, "display", display_name(name))
         if force and os.path.exists(dst):
             os.remove(dst)
-        if os.path.exists(dst):
+        if os.path.exists(dst) and copy_is_current(dst, target):
             continue
         if ensure_display_copy(data_dir, name, target) == dst:
             made += 1

@@ -29,6 +29,7 @@ def create_app(config=None):
     storage.ensure_layout(app.config["DATA_DIR"])
     db.init_app(app)
     _sweep(app)
+    _refresh_copies_in_background(app)
     from . import websec
     websec.init_app(app)
 
@@ -43,6 +44,28 @@ def create_app(config=None):
     app.register_blueprint(pairing_bp)
 
     return app
+
+
+def _refresh_copies_in_background(app):
+    """Remake stale display copies (older rules or another MEMORYFRAME_DISPLAY_SIZE) after a
+    deploy, without blocking start-up; the slideshow also remakes them lazily on serve."""
+    if app.config.get("TESTING") and not app.config.get("REFRESH_COPIES_AT_START"):
+        return
+    import threading
+    from . import imaging
+
+    def run():
+        conn = db.connect(app.config["DB_PATH"])
+        try:
+            made, failed = imaging.backfill(conn, app.config["DATA_DIR"], app.config["DISPLAY_TARGET"])
+            if made or failed:
+                app.logger.warning("display copies refreshed at start: %d made, %d failed", made, failed)
+        except Exception as e:  # noqa: BLE001
+            app.logger.warning("display copy refresh failed: %s", e)
+        finally:
+            conn.close()
+
+    threading.Thread(target=run, name="mf-refresh-copies", daemon=True).start()
 
 
 def _sweep(app):

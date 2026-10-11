@@ -152,7 +152,15 @@ def visible(page, el_id):
 def net(monkeypatch):
     """Mock the frame's network detection (what nmcli/ip would report on the Pi)."""
     from memoryframe import frameinfo
-    state = {"mode": "hotspot", "lan_ip": "10.42.0.1", "ips": ["10.42.0.1"]}
+    class State(dict):
+        """Mode used by the app in every thread: patched network() plus the
+        MEMORYFRAME_FORCE_NETMODE override, kept in sync by update()."""
+        def update(self, *a, **kw):
+            super().update(*a, **kw)
+            monkeypatch.setenv("MEMORYFRAME_FORCE_NETMODE",
+                               "hotspot" if self["mode"] == "hotspot" else f"{self['mode']}:{self['lan_ip']}")
+    state = State()
+    state.update(mode="hotspot", lan_ip="10.42.0.1", ips=["10.42.0.1"])
     monkeypatch.setattr(frameinfo, "network", lambda: dict(state))
     monkeypatch.setenv("MEMORYFRAME_SSID", "Frame-WiFi")
     monkeypatch.setenv("MEMORYFRAME_WIFI_PASSWORD", "correct horse;battery")

@@ -219,6 +219,18 @@ There is one owner (D6), who may pair several phones.
 - **Storage:** the original is stored byte-identical in `originals/`, and the display copy (MF-15) is made right away.
 - **Frame refresh:** the frame now polls `/media` every 10 s, so new photos show up without a reload. `GET /api/v1/storage` returns the disk numbers.
 
+## Face-aware cropping (MF-26)
+
+- When a display copy is made (upload or `python -m memoryframe display-copies`), the frame looks for faces **offline** with OpenCV **YuNet**. The model is `memoryframe/models/face_detection_yunet_2023mar.onnx` (230 KB, MIT licence, see `memoryframe/models/LICENSE-YuNet`). Nothing runs at display time.
+- Faces are placed with Designer's rules (`memoryframe/framing.py`):
+  - eyes at 36% of the visible window;
+  - headroom of at least 5%;
+  - groups kept together; if a group is too wide, the largest and most central faces win, and no kept face is cut;
+  - tiny background faces and faces mostly outside the photo are ignored.
+- With 1000x750 copies, the visible 5:3 window is expanded to 4:3, so CSS shows rows 75-675. Kept faces are shifted into that band when the photo allows it. **Limit:** for a 4:3 source the copy *is* the whole photo, so a face in its top or bottom 10% can't be shown. A 1000x600 target (`SCREEN_ASPECT` stays 5:3) removes this limit.
+- **Fallback:** if there's no face, OpenCV is missing, the model is missing, the detector errors, or detection takes more than 1.5 s, the no-face rules apply. This never causes an error. Turn detection off with `MEMORYFRAME_FACE_DETECT=0`.
+- **Cost:** about 65 ms per photo on the dev box (the detector runs on a 640 px copy). The Pi 4 estimate is 0.4-0.7 s per photo, plus about 60 MB RSS while it runs.
+
 ## On-device onboarding and menu (MF-19)
 
 - **No photos and no phone paired:** full onboarding. On the hotspot it shows **1. Join Wi-Fi** (a standard `WIFI:` QR), then **2. Open site** (the pairing QR) and the 6-digit code.

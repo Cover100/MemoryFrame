@@ -88,8 +88,8 @@ def make_display_copy(src, dst, target, max_bytes=MAX_BYTES):
             im = bg
         # Crop first, in original pixels, where the framing rules say (MF-26 / Designer):
         # the visible 5:3 window, expanded to the target aspect. Then scale down only.
-        from . import framing
-        box = framing.crop_box(im.size, target)
+        from . import faces, framing
+        box = framing.crop_box(im.size, target, faces.detect(im))   # MF-26: [] -> no-face rules
         if box != (0, 0) + im.size:
             im = im.crop(box)
         if im.width > target[0] or im.height > target[1]:

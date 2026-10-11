@@ -38,6 +38,21 @@ CREATE TABLE IF NOT EXISTS sessions (
     revoked    INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS wifi_change (           -- MF-18: at most one row (id = 1)
+    id           INTEGER PRIMARY KEY CHECK (id = 1),
+    state        TEXT NOT NULL,                    -- pending | committed | rolled_back
+    old_ssid     TEXT NOT NULL,
+    new_ssid     TEXT NOT NULL,
+    new_password TEXT,                             -- only while pending; cleared afterwards
+    old_profile  TEXT NOT NULL,
+    new_profile  TEXT NOT NULL,
+    deadline     REAL NOT NULL,
+    reason       TEXT,                             -- rollback: timeout | activation | restart
+    updated      REAL NOT NULL,
+    notice_shown INTEGER NOT NULL DEFAULT 0,
+    new_uuid     TEXT                              -- NM uuid of the pending profile (reconciliation)
+);
+
 CREATE TABLE IF NOT EXISTS settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL

@@ -181,6 +181,28 @@
         <button id="hotspotErrorClose" type="button">Close</button>
     </div>
 </div>
+<!-- MF-18: hotspot change (rejoin countdown, updated, cancelled) -->
+<div id="wifiRejoin" class="wifi-overlay" hidden>
+    <div class="wifi-card">
+        <h2>Wi-Fi changed: scan to rejoin</h2>
+        <div class="wifi-qr" id="wifiRejoinQr"></div>
+        <p>Wi-Fi: <span id="wifiRejoinName"></span></p>
+        <p>Then open http://10.42.0.1/ and tap "Keep new Wi-Fi"</p>
+        <p class="wifi-countdown">Old Wi-Fi returns in <span id="wifiCountdown">5:00</span></p>
+    </div>
+</div>
+<div id="wifiUpdated" class="wifi-overlay" hidden>
+    <div class="wifi-card wifi-small"><h2>✓ Wi-Fi updated</h2><p>Wi-Fi: <span id="wifiUpdatedName"></span></p></div>
+</div>
+<div id="wifiCancelled" class="wifi-overlay" hidden>
+    <div class="wifi-card">
+        <button id="wifiCancelledClose" class="wifi-x" type="button" aria-label="Close">×</button>
+        <h2>Wi-Fi change cancelled — old Wi-Fi restored</h2>
+        <div class="wifi-qr" id="wifiCancelledQr"></div>
+        <p>Wi-Fi: <span id="wifiCancelledName"></span></p>
+        <p>Phones can rejoin with the old password.</p>
+    </div>
+</div>
 <script src="/static/pairing.js"></script>
 
 

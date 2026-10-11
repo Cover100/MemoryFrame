@@ -93,7 +93,11 @@ def test_security_headers(client, path):
 def test_no_inline_scripts_or_external_references():
     for t in (ROOT / "templates").glob("*.html"):
         html = t.read_text()
-        assert not re.search(r"https?://", html), f"external reference in {t.name}"
+        # Visible copy may name the frame's address (MF-18: "open http://10.42.0.1/");
+        # nothing may be LOADED or linked from another origin.
+        assert not re.search(r"""(src|href|action|content)\s*=\s*["']?\s*(https?:)?//""", html), \
+            f"external reference in {t.name}"
+        assert not re.search(r"url\(\s*['\"]?(https?:)?//", html), f"external reference in {t.name}"
         for m in re.finditer(r"<script([^>]*)>(.*?)</script>", html, re.S):
             attrs, body = m.groups()
             assert "src=" in attrs or 'type="application/json"' in attrs, f"inline script in {t.name}"

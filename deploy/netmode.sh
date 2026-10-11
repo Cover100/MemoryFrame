@@ -6,6 +6,12 @@
 #   deploy/netmode.sh status         # requested mode, applied mode, active connection
 #   deploy/netmode.sh boot           # what memoryframe-netmode.service runs at boot
 #
+# MF-18 (the app calls these through sudo; the only commands in the sudoers rule):
+#   netmode.sh wifi-apply      # reads "ssid\npassword\n" on STDIN (never argv), writes a root-only
+#                              # MemoryFrame-AP-pending keyfile and switches to it; old profile kept
+#   netmode.sh wifi-commit     # pending becomes the hotspot profile, old profile deleted
+#   netmode.sh wifi-rollback   # old hotspot back up, pending profile deleted
+#
 # Boot-partition files (editable from any PC, drive "bootfs"):
 #   memoryframe-mode.txt      one word: product | dev. Missing/empty/other -> developer default:
 #                             the boot service changes NOTHING (home Wi-Fi stays). Only an explicit
@@ -68,13 +74,18 @@ RESET_FILE="$BOOT_DIR/memoryframe-reset"
 STATE="$STATE_DIR/netmode.json"
 LOCK="$STATE_DIR/netmode.lock"
 PENDING="$STATE_DIR/wifi-change-pending"     # written by the MF-18 helper while a change is pending
+PENDING_CON="${MEMORYFRAME_PENDING_CON:-MemoryFrame-AP-pending}"
+OLD_CON="${MEMORYFRAME_OLD_CON:-MemoryFrame-hotspot-old}"   # only during wifi-commit
+NM_DIR="${MEMORYFRAME_NM_DIR:-/etc/NetworkManager/system-connections}"
+RESET_DONE=false
+COMMIT_RECOVERED=false
 
 log() {
     echo "netmode: $*" >&2
     logger -t memoryframe-netmode -- "$*" 2>/dev/null || true
 }
 
-usage() { echo "usage: $0 product|dev|status|boot" >&2; exit 2; }
+usage() { echo "usage: $0 product|dev|status|boot|wifi-apply|wifi-commit|wifi-rollback" >&2; exit 2; }
 
 trim() { local s="${1//$'\r'/}"; s="${s#"${s%%[![:space:]]*}"}"; printf '%s' "${s%"${s##*[![:space:]]}"}"; }
 
@@ -163,7 +174,13 @@ write_state() {   # mode requested dev_fallback hotspot_error
     {
         printf '{"mode": %s, "requested": %s, "dev_fallback": %s, "hotspot_error": %s, ' \
             "$(json_str "$1")" "$(json_str "$2")" "$3" "$4"
-        printf '"active": %s, "boot_id": %s}\n' "$(json_str "$(active)")" "$(json_str "$boot_id")"
+        printf '"active": %s, "boot_id": %s, "reset": %s, ' "$(json_str "$(active)")" "$(json_str "$boot_id")" "$RESET_DONE"
+        # MF-18 reconciliation for the app (no secrets): the hotspot profile's uuid, whether an
+        # MF-18 pending/old profile still exists, and whether boot finished an interrupted commit.
+        local wp=false
+        if profiles | grep -qxF -e "$PENDING_CON" -e "$OLD_CON"; then wp=true; fi
+        printf '"hotspot_uuid": %s, "wifi_profiles": %s, "commit_recovered": %s}\n' \
+            "$(json_str "$(prop "$HOTSPOT_CON" connection.uuid)")" "$wp" "$COMMIT_RECOVERED"
     } > "$STATE.tmp"
     chmod 0644 "$STATE.tmp"
     mv "$STATE.tmp" "$STATE"
@@ -290,13 +307,13 @@ apply() {
     esac
 }
 
-take_lock() {
+take_lock() {   # [nopending]
     mkdir -p "$STATE_DIR"
     exec 9>"$LOCK"
     if ! flock -n 9; then
         log "another network mode switch is in progress"; exit 3
     fi
-    if [ -e "$PENDING" ]; then
+    if [ "${1:-}" != nopending ] && [ -e "$PENDING" ]; then
         log "a Wi-Fi change is pending (MF-18); try again after it is kept or rolled back"; exit 3
     fi
 }
@@ -315,8 +332,138 @@ status() {
     if [ -f "$STATE" ] && grep -q '"hotspot_error": true' "$STATE"; then echo "error: hotspot did not start"; fi
 }
 
+# ---------- MF-18: hotspot name/password change (pending -> commit | rollback) ----------
+
+applied_mode() { if [ -f "$STATE" ]; then sed -n 's/.*"mode": "\([a-z]*\)".*/\1/p' "$STATE"; fi; }
+
+valid_ssid() {
+    local s="$1" n
+    n="$(printf '%s' "$s" | LC_ALL=C wc -c)"
+    [ "$n" -ge 1 ] && [ "$n" -le 32 ] && ! printf '%s' "$s" | LC_ALL=C grep -q '[[:cntrl:]]'
+}
+
+valid_psk() { printf '%s' "$1" | LC_ALL=C grep -qxE '[ -~]{8,63}'; }
+
+ssid_bytes() { printf '%s' "$1" | od -An -tu1 -v | tr -s ' \n' ';' | sed 's/^;//'; }
+
+keyfile_escape() {   # GKeyFile value: backslash, and leading/trailing spaces
+    local v="${1//\\/\\\\}"
+    [ "${v:0:1}" = " " ] && v="\\s${v:1}"
+    [ "${v: -1}" = " " ] && v="${v:0:${#v}-1}\\s"
+    printf '%s' "$v"
+}
+
+delete_pending_profile() {
+    if profiles | grep -qxF "$PENDING_CON"; then "$NMCLI" connection delete "$PENDING_CON" >/dev/null 2>&1 || true; fi
+    rm -f "$NM_DIR/$PENDING_CON.nmconnection"
+}
+
+require_product() {
+    # SAFETY (#41): Wi-Fi changes only when product mode was applied this boot. A missing or
+    # unreadable netmode.json means dev: never touch the home Wi-Fi.
+    if [ "$(applied_mode)" != product ]; then
+        log "wifi change refused: product mode is not applied (developer mode or no state)"; exit 3
+    fi
+}
+
+wifi_rollback() {
+    require_product
+    # Restore whatever was active before wifi-apply (recorded in $PENDING; default the hotspot).
+    local prev=""
+    if [ -s "$PENDING" ]; then prev="$(head -n1 "$PENDING")"; fi
+    if [ -z "$prev" ] || [ "$prev" = "$PENDING_CON" ] || ! profiles | grep -qxF "$prev"; then prev="$HOTSPOT_CON"; fi
+    if [ "$(active)" = "$PENDING_CON" ]; then "$NMCLI" connection down "$PENDING_CON" >/dev/null 2>&1 || true; fi
+    local ok=0
+    if [ "$(active)" != "$prev" ]; then
+        "$NMCLI" --wait 30 connection up "$prev" >/dev/null 2>&1 || ok=1
+    fi
+    delete_pending_profile
+    rm -f "$PENDING"
+    local err=false
+    if [ "$ok" != 0 ]; then err=true; fi
+    write_state product product false "$err"
+    log "wifi change rolled back"
+    return "$ok"
+}
+
+wifi_apply() {
+    local ssid="" psk="" f
+    IFS= read -r ssid || true
+    IFS= read -r psk || true
+    require_product
+    if ! valid_ssid "$ssid" || ! valid_psk "$psk"; then log "wifi change refused: invalid name or password"; exit 2; fi
+    if ! profiles | grep -qxF "$HOTSPOT_CON"; then log "wifi change refused: no hotspot profile"; exit 1; fi
+    local prev
+    prev="$(active)"
+    if [ "$prev" != "$HOTSPOT_CON" ]; then
+        log "wifi change refused: wlan0 is not on $HOTSPOT_CON (active: ${prev:-none})"; exit 3
+    fi
+    printf '%s\n' "$prev" > "$PENDING"          # rollback restores exactly this
+    delete_pending_profile
+    f="$NM_DIR/$PENDING_CON.nmconnection"
+    mkdir -p "$NM_DIR"
+    (
+        umask 077
+        {
+            printf '[connection]\nid=%s\ntype=wifi\ninterface-name=%s\nautoconnect=false\n\n' "$PENDING_CON" "$IFACE"
+            printf '[wifi]\nmode=ap\nband=bg\nchannel=6\nssid=%s\n\n' "$(ssid_bytes "$ssid")"
+            printf '[wifi-security]\nkey-mgmt=wpa-psk\nproto=rsn\npairwise=ccmp\ngroup=ccmp\npsk=%s\n\n' "$(keyfile_escape "$psk")"
+            printf '[ipv4]\nmethod=shared\naddress1=10.42.0.1/24\n\n[ipv6]\nmethod=disabled\n'
+        } > "$f.tmp"
+        chmod 0600 "$f.tmp"
+        mv "$f.tmp" "$f"
+    )
+    psk=""
+    if ! "$NMCLI" connection load "$f" >/dev/null 2>&1; then
+        log "wifi change: could not load the new profile"; wifi_rollback || true; exit 4
+    fi
+    "$NMCLI" connection down "$HOTSPOT_CON" >/dev/null 2>&1 || true
+    if "$NMCLI" --wait 30 connection up "$PENDING_CON" >/dev/null 2>&1 && [ "$(active)" = "$PENDING_CON" ]; then
+        log "wifi change: new hotspot up, waiting for confirmation"
+        write_state product product false false
+        printf 'uuid=%s\n' "$(prop "$PENDING_CON" connection.uuid)"   # stdout -> app (not secret)
+        return 0
+    fi
+    log "wifi change: the new hotspot did not start"
+    wifi_rollback || true
+    exit 4
+}
+
+recover_commit() {   # boot: finish or undo a wifi-commit cut short by a power loss
+    if ! profiles | grep -qxF "$OLD_CON"; then return 0; fi
+    if profiles | grep -qxF "$HOTSPOT_CON"; then
+        log "boot: interrupted Wi-Fi commit: new hotspot profile in place, removing the old one"
+        "$NMCLI" connection delete "$OLD_CON" >/dev/null 2>&1 || true
+        COMMIT_RECOVERED=true
+    else
+        log "boot: interrupted Wi-Fi commit: restoring the old hotspot profile"
+        "$NMCLI" connection modify "$OLD_CON" connection.id "$HOTSPOT_CON" >/dev/null 2>&1 || true
+    fi
+}
+
+wifi_commit() {
+    require_product
+    if ! profiles | grep -qxF "$PENDING_CON" || [ "$(active)" != "$PENDING_CON" ]; then
+        log "wifi commit refused: no active pending profile"; exit 4
+    fi
+    # Power-cut safe: rename old -> OLD_CON, pending -> HOTSPOT_CON, and only then delete the old
+    # one. At every point a hotspot profile exists; boot (recover_commit) finishes or undoes it.
+    if profiles | grep -qxF "$HOTSPOT_CON"; then
+        "$NMCLI" connection modify "$HOTSPOT_CON" connection.id "$OLD_CON"
+    fi
+    "$NMCLI" connection modify "$PENDING_CON" connection.id "$HOTSPOT_CON"
+    "$NMCLI" connection modify "$HOTSPOT_CON" connection.autoconnect yes connection.autoconnect-priority 100 >/dev/null 2>&1 || true
+    rm -f "$PENDING"
+    if profiles | grep -qxF "$OLD_CON"; then "$NMCLI" connection delete "$OLD_CON" >/dev/null 2>&1 || true; fi
+    write_state product product false false
+    log "wifi change kept"
+}
+
 case "${1:-}" in
     status) status ;;
+    wifi-apply) take_lock; wifi_apply ;;
+    wifi-commit) take_lock nopending; wifi_commit ;;
+    wifi-rollback) take_lock nopending; wifi_rollback ;;
     product|dev)
         take_lock
         if [ "$1" = product ]; then rm -f "$CONFIRMED"; fi   # explicit arm: watch the first product boot
@@ -324,14 +471,20 @@ case "${1:-}" in
         apply "$1" ;;
     product-watch) product_watch ;;
     boot)
-        take_lock
+        take_lock nopending                   # a pending change is rolled back below
         if [ -e "$RESET_FILE" ]; then
             log "memoryframe-reset found: restoring the default hotspot, product mode"
             rm -f "$RESET_FILE"
+            RESET_DONE=true
             write_mode_file product
             if [ -x "$HOTSPOT_SH" ]; then
                 "$HOTSPOT_SH" </dev/null >/dev/null 2>&1 || log "hotspot profile reset failed"
             fi
+        fi
+        recover_commit
+        if [ -e "$PENDING" ] || profiles | grep -qxF "$PENDING_CON"; then
+            log "unconfirmed Wi-Fi change found at boot: rolling back"
+            delete_pending_profile; rm -f "$PENDING"
         fi
         # Boot never fails the unit (no reboot loop); the state file carries the outcome.
         # SAFETY: the boot service is a strict no-op unless the mode file explicitly says product,

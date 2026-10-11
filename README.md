@@ -152,7 +152,7 @@ nano deploy/hotspot.conf                             # set SSID and PASSWORD
 
 - Security: WPA2-PSK (AES/CCMP). Password must be 8-63 characters, 12+ recommended; the old
   default `MemoryFrame123` is refused. Never commit `deploy/hotspot.conf`.
-- Address: while active, the frame is **10.42.0.1**: open **http://10.42.0.1:5000** from a phone
+- Address: while active, the frame is **10.42.0.1**: open **http://10.42.0.1/** (or **http://memoryframe.lan/**) from a phone
   (no internet needed).
 - `--test SECONDS` (30-1800) arms the revert first (`systemd-run --on-active=SECONDS`, runs as
   root and survives the session dropping), then brings the hotspot up. The revert takes the
@@ -217,6 +217,13 @@ There is one owner (D6), who may pair several phones.
 - **Validation:** files are checked by **content**: Pillow must decode them as JPEG, PNG, WebP, GIF or HEIC. The stored extension comes from the content, and stored names are server-generated. The client's file name is only kept, sanitised, as a label.
 - **Storage:** the original is stored byte-identical in `originals/`, and the display copy (MF-15) is made right away.
 - **Frame refresh:** the frame now polls `/media` every 10 s, so new photos show up without a reload. `GET /api/v1/storage` returns the disk numbers.
+
+## NFC tag (MF-24)
+
+- Write the tag as an **http://** URI record: `http://10.42.0.1/` (or `http://memoryframe.lan/`). **Never use https://.** The frame serves plain HTTP only (ports 80/5000) and has no certificate, so an https:// tag fails on the phone (Samsung Internet shows "null is unreachable").
+- With NFC Tools: Write → Add a record → **URL/URI** → choose the `http://` prefix → `10.42.0.1/`.
+- The on-screen QR codes always encode http:// links. An https `MEMORYFRAME_SITE_URL` is downgraded to http and logged.
+- The frame never sends HSTS, so a phone never learns to force https for the frame.
 
 ## On-device onboarding and menu (MF-19)
 

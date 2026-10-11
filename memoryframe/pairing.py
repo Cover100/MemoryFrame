@@ -36,7 +36,7 @@ def qr_svg(data):
 def _state():
     rnd = auth.pairing().current()
     urls = frameinfo.site_urls()
-    base = current_app.config.get("PAIR_BASE_URL") or urls["primary"]
+    base = frameinfo._safe(current_app.config.get("PAIR_BASE_URL")) or urls["primary"]
     fallback = None if current_app.config.get("PAIR_BASE_URL") else urls["fallback"]
     conn = get_db()
     name, password = frameinfo.hotspot_conf()

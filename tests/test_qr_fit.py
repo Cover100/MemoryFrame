@@ -137,3 +137,26 @@ def test_onboarding_fits_at_1000x600(page, server, mf_app, net):
     g = json.loads(evaluate(page, GEOM))
     for q in g["qrs"].values():
         assert inside(q["svg"], [0, 0, 1000, 600]) and not q["clipped"]
+
+
+# ---------- MF-24 (#31): the frame JS never shows null/undefined as an address ----------
+
+@pytest.mark.no_media
+@pytest.mark.parametrize("network,expected", [("hotspot", "http://10.42.0.1/pair"),
+                                              ("lan", "http://memoryframe.local/pair")])
+def test_js_guards_null_url_fields(page, server, mf_app, net, monkeypatch, network, expected):
+    from memoryframe import pairing
+    real = pairing._state
+
+    def broken():
+        st = real()
+        st.update(url=None, url_fallback="http://null/pair", site_url="null", network=network)
+        return st
+
+    monkeypatch.setattr(pairing, "_state", broken)
+    page.pump(3)
+    body = evaluate(page, "document.getElementById('pairOverlay').innerText + "
+                          "document.getElementById('emptyOverlay').innerText")
+    assert evaluate(page, "document.getElementById('pairUrl').textContent") == expected
+    assert "null" not in body.lower() and "undefined" not in body.lower(), body
+    assert page.exceptions() == []

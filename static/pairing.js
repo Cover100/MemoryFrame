@@ -44,17 +44,27 @@
         finally{ starting = false; }
     }
 
+    // MF-24: never show "null"/"undefined" as an address; fall back per network.
+    function okUrl(u){
+        return typeof u === "string" && /^https?:\/\/[^\/\s]+/.test(u)
+            && !/^https?:\/\/(null|none|undefined|nan)?([:\/]|$)/i.test(u);
+    }
+    function fallbackBase(st){
+        return st && st.network === "hotspot" ? "http://10.42.0.1/" : "http://memoryframe.local/";
+    }
+
     function render(st){
         paired = st.paired;
-        $("pairUrl").textContent = st.url;
-        $("pairUrlAlt").textContent = st.url_fallback ? "or " + st.url_fallback : "";
-        $("emptyUrl").textContent = st.site_url;
+        const base = fallbackBase(st);
+        $("pairUrl").textContent = okUrl(st.url) ? st.url : base + "pair";
+        $("pairUrlAlt").textContent = okUrl(st.url_fallback) ? "or " + st.url_fallback : "";
+        $("emptyUrl").textContent = okUrl(st.site_url) ? st.site_url : base;
         $("pairSsid").textContent = st.ssid || "";
         const wifi = !!st.wifi_qr_svg;
         $("wifiStep").hidden = !wifi;
-        if(wifi){ $("wifiQr").innerHTML = st.wifi_qr_svg; }     // SVG from our own server
+        if(wifi && typeof st.wifi_qr_svg === "string"){ $("wifiQr").innerHTML = st.wifi_qr_svg; }     // SVG from our own server
         $("siteTitle").textContent = wifi ? "2. Open site" : "Pair your phone";
-        if(st.round){
+        if(st.round && typeof st.round.qr_svg === "string" && typeof st.round.code === "string"){
             $("pairCode").textContent = st.round.code.slice(0, 3) + " " + st.round.code.slice(3);
             $("pairQr").innerHTML = st.round.qr_svg;
         }
@@ -90,11 +100,12 @@
         menuOverlay.classList.add("visible");
         try{
             const s = await getJSON("/frame/status");
-            $("menuIp").textContent = s.ips.length ? s.ips.join(", ") : "not connected";
+            $("menuIp").textContent = (s.ips || []).length ? s.ips.join(", ") : "not connected";
             $("menuSsid").textContent = s.network === "hotspot" ? (s.ssid || "hotspot") + " (hotspot)"
                                                                 : "home Wi-Fi";
-            $("menuSite").textContent = s.site.replace("http://", "") +
-                (s.site_fallback ? "  or  " + s.site_fallback.replace("http://", "") : "");
+            const site = okUrl(s.site) ? s.site : fallbackBase(s);
+            $("menuSite").textContent = site.replace("http://", "") +
+                (okUrl(s.site_fallback) ? "  or  " + s.site_fallback.replace("http://", "") : "");
             $("menuFree").textContent = gb(s.storage.free) + " of " + gb(s.storage.total);
             $("menuPaired").textContent = String(s.paired);
             $("menuVersion").textContent = s.version;

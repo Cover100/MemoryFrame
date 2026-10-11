@@ -152,7 +152,7 @@ nano deploy/hotspot.conf                             # set SSID and PASSWORD
 
 - Security: WPA2-PSK (AES/CCMP). Password must be 8-63 characters, 12+ recommended; the old
   default `MemoryFrame123` is refused. Never commit `deploy/hotspot.conf`.
-- Address: while active, the frame is **10.42.0.1**: open **http://10.42.0.1:5000** from a phone
+- Address: while active, the frame is **10.42.0.1**: open **http://10.42.0.1/** (or **http://memoryframe.lan/**) from a phone
   (no internet needed).
 - `--test SECONDS` (30-1800) arms the revert first (`systemd-run --on-active=SECONDS`, runs as
   root and survives the session dropping), then brings the hotspot up. The revert takes the
@@ -181,8 +181,8 @@ The slideshow never loads the original files. For every image, a JPEG **display 
 
 Originals in `originals/` are only read, never changed. Animated GIFs are served as originals.
 
-- **Target size:** `MEMORYFRAME_DISPLAY_SIZE`, default **`1000x750`** (U3 decided: size B). Set it with `deploy/env-file.sh MEMORYFRAME_DISPLAY_SIZE WxH` (each side 320-4000; out-of-range values fall back to 1000x750 and are logged). After changing it, or after upgrading from an older version, run `python -m memoryframe display-copies --force`.
-- **Cover-crop cap:** copies are cut to what `object-fit: cover` actually shows. Copies are cropped with Designer's framing rules (`memoryframe/framing.py`). First the visible 5:3 window is chosen; with no face, portraits centre it at 30% of the height, 4:3/3:2 landscapes put 35% of the spare height above, very tall images (aspect ≤ 0.56) start 15% down, and panoramas (aspect ≥ 2.2) are centred. Then it is expanded to 4:3 around its centre, so CSS cover on 800x480 (rows 75-675 of 750) shows exactly that window. The screen aspect is one constant (`SCREEN_ASPECT`); a 1000x600 target makes the copy equal the window, not 1000x1333 or 1000x2141, and a panorama becomes 1000 wide. Each copy stays at or under 300 KB.
+- **Target size:** `MEMORYFRAME_DISPLAY_SIZE`, default **`1000x600`**, exactly the 5:3 screen (user decision 2026-10-11; was 800x600, then briefly 1000x750). Set it with `deploy/env-file.sh MEMORYFRAME_DISPLAY_SIZE WxH` (each side 320-4000; out-of-range values fall back to 1000x600 and are logged). After changing it, or after upgrading from an older version, run `python -m memoryframe display-copies --force`.
+- **Cover-crop cap:** copies are cropped with Designer's framing rules (`memoryframe/framing.py`). First the visible 5:3 window is chosen; with no face, portraits centre it at 30% of the height, 4:3/3:2 landscapes put 35% of the spare height above, very tall images (aspect ≤ 0.56) start 15% down, and panoramas (aspect ≥ 2.2) are centred. At 1000x600 the copy **is** that window: the screen only scales it by 0.8 and nothing more is cropped. For other target aspects the window is expanded around its centre (generic). The screen aspect is one constant (`SCREEN_ASPECT`). Portraits and panoramas are no longer oversized (previously 1000x1333 or 3000x750). Each copy stays at or under 300 KB.
 - **New photos:** the copy is made when the photo is added, or on its first request.
 - **Existing photos:** `python -m memoryframe display-copies` creates the missing copies (`install.sh` runs it).
 - **HEIC/HEIF** from phones is accepted through `pillow-heif` (wheels exist for Pi aarch64 / Python 3.13). The original `.heic` is kept, and the display gets a JPEG copy.
@@ -227,9 +227,16 @@ There is one owner (D6), who may pair several phones.
   - headroom of at least 5%;
   - groups kept together; if a group is too wide, the largest and most central faces win, and no kept face is cut;
   - tiny background faces and faces mostly outside the photo are ignored.
-- With 1000x750 copies, the visible 5:3 window is expanded to 4:3, so CSS shows rows 75-675. Kept faces are shifted into that band when the photo allows it. **Limit:** for a 4:3 source the copy *is* the whole photo, so a face in its top or bottom 10% can't be shown. A 1000x600 target (`SCREEN_ASPECT` stays 5:3) removes this limit.
+- With the default 1000x600 copies, the copy **is** the visible 5:3 window, so every kept face that fits in the window is on screen. For other target aspects (e.g. 4:3) the window is expanded around its centre and kept faces are shifted into the CSS-visible band where the photo allows it.
 - **Fallback:** if there's no face, OpenCV is missing, the model is missing, the detector errors, or detection takes more than 1.5 s, the no-face rules apply. This never causes an error. Turn detection off with `MEMORYFRAME_FACE_DETECT=0`.
 - **Cost:** about 65 ms per photo on the dev box (the detector runs on a 640 px copy). The Pi 4 estimate is 0.4-0.7 s per photo, plus about 60 MB RSS while it runs.
+
+## NFC tag (MF-24)
+
+- Write the tag as an **http://** URI record: `http://10.42.0.1/` (or `http://memoryframe.lan/`). **Never use https://.** The frame serves plain HTTP only (ports 80/5000) and has no certificate, so an https:// tag fails on the phone (Samsung Internet shows "null is unreachable").
+- With NFC Tools: Write → Add a record → **URL/URI** → choose the `http://` prefix → `10.42.0.1/`.
+- The on-screen QR codes always encode http:// links. An https `MEMORYFRAME_SITE_URL` is downgraded to http and logged.
+- The frame never sends HSTS, so a phone never learns to force https for the frame.
 
 ## On-device onboarding and menu (MF-19)
 

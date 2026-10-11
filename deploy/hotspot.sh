@@ -19,7 +19,7 @@
 #
 # SSID/password come from deploy/hotspot.conf (git-ignored, see
 # hotspot.conf.example) or are prompted for. Nothing secret is stored in git.
-# When active, the frame is reachable at http://10.42.0.1:5000.
+# When active, the frame is reachable at http://10.42.0.1/ (or http://memoryframe.lan/).
 #
 # Other NetworkManager profiles (e.g. the home Wi-Fi or the old manual
 # 'Hotspot' profile) are never modified or deleted by this script.
@@ -138,6 +138,6 @@ test)
         /bin/sh -c "$REVERT"
     echo "Revert scheduled in ${TEST_SECONDS}s (back to: ${PREV:-whatever NetworkManager picks})."
     nm connection up "$CON_NAME"
-    echo "Hotspot '$SSID' active for ${TEST_SECONDS}s. Frame URL: http://${ADDRESS%/*}:5000"
+    echo "Hotspot '$SSID' active for ${TEST_SECONDS}s. Frame URL: http://${ADDRESS%/*}/ (or http://memoryframe.lan/)"
     ;;
 esac

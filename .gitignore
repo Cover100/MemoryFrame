@@ -12,3 +12,6 @@ venv/
 # Local hotspot config (contains the Wi-Fi password)
 deploy/hotspot.conf
 data/
+
+# Python wheels / downloads
+*.whl

@@ -109,7 +109,7 @@ What `install.sh` does, in order (`set -euo pipefail`, so it stops at the first 
 3. Creates `$R/.venv` if missing, runs `.venv/bin/pip install -r requirements.txt`, and runs `mkdir -p uploads`.
 4. **Runs `deploy/audit-autostart.sh --disable`** (see 1.4).
 5. Renders `deploy/memoryframe.service` with `@USER@=memoryframe` and `@APP_DIR@=$R` into **`/etc/systemd/system/memoryframe.service`**, then runs `systemctl daemon-reload`, `enable` and `restart`. The unit:
-   - runs `ExecStart=$R/.venv/bin/python $R/app.py`, which starts waitress on `0.0.0.0:5000` with 4 threads
+   - runs `ExecStart=$R/.venv/bin/python $R/app.py`, which starts waitress on `0.0.0.0` ports 80 and 5000 (`MEMORYFRAME_PORTS=80,5000`; 5000 is for the kiosk/localhost) with 4 threads
    - sets `Restart=always`, `RestartSec=2`, `StartLimitIntervalSec=0`, `WantedBy=multi-user.target`
 6. Runs `chmod +x deploy/kiosk.sh` and writes **`~/.config/autostart/memoryframe-kiosk.desktop`** with `Exec=$R/deploy/kiosk.sh`.
 7. Prints `XDG_SESSION_TYPE`. **Record it in the MF-04 results.**
@@ -338,7 +338,7 @@ cd ~/mf-hotspot
 ./deploy/hotspot.sh --test 180    # 3 minutes; the revert is armed before the switch
 systemctl list-timers 'memoryframe-hotspot-revert-*'   # (on the local screen) shows the pending revert
 ```
-On the phone: join the SSID with the new password, then open `http://10.42.0.1:5000`. The slideshow page should load (no internet needed). Note iOS/Android "no internet" prompts for MF-07.
+On the phone: join the SSID with the new password, then open `http://10.42.0.1/` (or `http://memoryframe.lan/`). The slideshow page should load (no internet needed). Note iOS/Android "no internet" prompts for MF-07.
 After 180 s, check on the local screen:
 ```bash
 nmcli -t -f NAME,DEVICE connection show --active    # netplan-wlan0-Oversclan_5G on wlan0 again
@@ -421,7 +421,7 @@ tar tf /var/lib/memoryframe/backups/legacy-uploads-*.tar   # uploads/<6 files> +
 diff <(cd uploads && sha256sum * | awk '{print $1}' | sort) <(cd /var/lib/memoryframe/originals && sha256sum * | awk '{print $1}' | sort) && echo "originals identical"
 curl -s http://localhost:5000/media | python3 -m json.tool | head   # 6 entries, filenames are random hex names
 curl -s -o /dev/null -w "%{http_code}\n" -X POST -H 'Content-Type: application/json' -d '{"value":120}' http://localhost:5000/brightness   # 200 (from the Pi itself)
-# From a laptop/phone on the same network: same POST to http://192.168.50.124:5000/brightness -> 403
+# From a laptop/phone on the same network: same POST to http://192.168.50.124/brightness -> 403
 .venv/bin/python -m memoryframe migrate               # second run: "already done; nothing to do"
 sudo systemctl restart memoryframe && sleep 3 && curl -s http://localhost:5000/media | grep -c filename   # still 6, no re-import
 ```
@@ -458,3 +458,26 @@ Prerequisite: MF-11 is deployed. Back up `uploads/` and `/var/lib/memoryframe` f
 5. Reboot, then repeat steps 2 and 3. Repeat step 4 only if the user is present.
 
 Rollback: `sudo deploy/network-setup.sh --remove`, set `Environment=MEMORYFRAME_PORTS=5000` (or check out the previous commit) and re-run `install.sh`.
+
+
+## NFC tag check (MF-24, #31)
+
+1. On a phone, read the tag with NFC Tools. The record must be **URI `http://10.42.0.1/`**: http, not https.
+2. If it shows https:// (or a bare host that the browser upgrades to https), rewrite it: Write → URL/URI → prefix `http://` → `10.42.0.1/`.
+3. During a `hotspot.sh --test` window, tap the tag on the S22 Ultra. The frame site must open, not "null is unreachable".
+
+## Display copy size (MF-15 / MF-26)
+
+- Default `MEMORYFRAME_DISPLAY_SIZE` is **1000x600**, exactly the 5:3 screen, so the copy is the visible picture.
+- The Pi has a systemd drop-in that sets `MEMORYFRAME_DISPLAY_SIZE`, and it overrides the EnvironmentFile. Find and remove it:
+  ```
+  systemctl cat memoryframe | grep -n DISPLAY_SIZE
+  sudo rm /etc/systemd/system/memoryframe.service.d/<that file>
+  sudo systemctl daemon-reload
+  ```
+- After deploying, regenerate the copies (originals are untouched), then restart the service:
+  ```
+  cd ~/Documents/GitHub/MemoryFrame && .venv/bin/python -m memoryframe display-copies --force
+  sudo systemctl restart memoryframe
+  ```
+- Check: `python3 -c "from PIL import Image; import glob as g; print({Image.open(p).size for p in g.glob('/var/lib/memoryframe/display/*.jpg')})"` should print `{(1000, 600)}`. Photos smaller than 1000x600 keep their native size.

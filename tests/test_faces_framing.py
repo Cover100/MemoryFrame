@@ -9,7 +9,7 @@ from memoryframe import faces as mffaces
 from memoryframe import framing, imaging
 from memoryframe.faces import Face
 
-T = (1000, 750)
+T = (1000, 600)   # default display copy: exactly the 5:3 window
 HERE = os.path.dirname(__file__)
 
 
@@ -51,18 +51,19 @@ def test_1_one_face_centre_right_upper_half():
 def test_2_face_touching_top_edge_clamps():
     f = Face(1800, 0, 400, 500)
     box, window, kept = win((4000, 3000), [f])
-    assert window[1] == 0 and box[1] >= 0 and kept == [f]
-    assert in_window(f, window)
-    # Option B limit: a 4:3 source IS the 4:3 copy, so CSS hides its top/bottom 10 %
-    # whatever we choose; a face at the very top can't be in rows 75-675. Option A
-    # (1000x600) would show the window exactly - see test_option_a_shows_window_exactly.
-    assert box == (0, 0, 4000, 3000)
+    assert window[1] == 0 and box == (0, 0, 4000, 2400) and kept == [f]
+    check_visible(box, window, kept)                 # at 1000x600 the copy is the window
 
 
-def test_option_a_shows_window_exactly():
+def test_generic_4x3_target_option_b_limit():
+    """Non-default 4:3 target: a 4:3 source's copy is the whole photo and CSS hides its
+    top/bottom 10 %, so a face at the very top can't be in the visible band (documented)."""
     f = Face(1800, 0, 400, 500)
-    box, window, kept = framing.choose((4000, 3000), (1000, 600), [f])
-    assert box[1] == 0 and box[3] - box[1] == 2400 and in_band(f, box)
+    box, window, kept = framing.choose((4000, 3000), (1000, 750), [f])
+    assert box == (0, 0, 4000, 3000) and in_window(f, window)
+    f2 = Face(1300, 3200, 400, 480)                  # feasible case: shifted into the band
+    box, window, kept = framing.choose((3000, 4000), (1000, 750), [f2])
+    assert in_band(f2, box)
 
 
 # 3
@@ -184,6 +185,8 @@ def test_15_close_up_headroom_5_percent():
 @pytest.mark.parametrize("size,f", [((3000, 4000), Face(1300, 300, 400, 480)),
                                     ((3000, 4000), Face(1300, 3200, 400, 480)),
                                     ((4000, 3000), Face(1800, 900, 400, 480)),
+                                    ((4000, 3000), Face(1800, 60, 400, 480)),
+                                    ((4000, 3000), Face(1800, 2450, 400, 480)),
                                     ((4000, 2250), Face(3500, 800, 300, 360)),
                                     ((1080, 2400), Face(400, 2000, 200, 240))])
 def test_16_kept_faces_inside_rows_75_675(tmp_path, size, f):
@@ -191,10 +194,11 @@ def test_16_kept_faces_inside_rows_75_675(tmp_path, size, f):
     assert kept
     for k in kept:
         assert in_band(k, box), (k, box, framing.visible_band(box))
-    # and in copy pixels: rows 75..675 of 750
-    sy = 750 / (box[3] - box[1])
+    # and in copy pixels: at 1000x600 the whole copy (rows 0..600) is on screen
+    assert (box[2] - box[0]) / (box[3] - box[1]) == pytest.approx(5 / 3, rel=0.01)
+    sy = 600 / (box[3] - box[1])
     for k in kept:
-        assert (k.y - box[1]) * sy >= 75 - 1 and (k.y + k.h - box[1]) * sy <= 675 + 1
+        assert (k.y - box[1]) * sy >= -1 and (k.y + k.h - box[1]) * sy <= 601
 
 
 # 18

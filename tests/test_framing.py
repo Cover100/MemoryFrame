@@ -6,7 +6,7 @@ from PIL import Image
 
 from memoryframe import framing, imaging
 
-T = (1000, 750)
+T = (1000, 750)       # generic 4:3 target (Option B); the default 1000x600 is tested below
 
 
 def W(w, h):
@@ -103,3 +103,22 @@ def test_screen_aspect_single_constant_flip(monkeypatch):
     box = framing.crop_box((w, h), (1000, 600))
     win = W(w, h)
     assert box == (0, round(win[1]), 3000, round(win[1] + win[3]))
+
+
+@pytest.mark.parametrize("size", [(3000, 4000), (4000, 3000), (1080, 2400), (8000, 2000), (640, 480), (4032, 3024)])
+def test_default_1000x600_copy_is_exactly_the_window(size):
+    w, h = size
+    assert imaging.parse_target(imaging.DEFAULT_TARGET) == (1000, 600)
+    win = W(w, h)
+    box = framing.crop_box(size, (1000, 600))
+    assert box == (round(win[0]), round(win[1]), round(win[0] + win[2]), round(win[1] + win[3]))
+    band = framing.visible_band(box)                 # CSS on 800x480 shows the whole copy
+    assert band == pytest.approx(box, abs=0.5)
+
+
+@pytest.mark.parametrize("size", [(4000, 3000), (3000, 4000), (1080, 2312), (8000, 1000)])
+def test_noisy_1000x600_under_300kb(tmp_path, size):
+    src, dst = tmp_path / "s.jpg", tmp_path / "d.jpg"
+    Image.frombytes("RGB", size, os.urandom(size[0] * size[1] * 3)).save(src, quality=95)
+    w, h, n = imaging.make_display_copy(str(src), str(dst), (1000, 600))
+    assert (w, h) == (1000, 600) and n <= imaging.MAX_BYTES

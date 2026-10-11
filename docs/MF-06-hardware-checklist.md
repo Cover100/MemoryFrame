@@ -19,7 +19,7 @@ Result codes: PASS / FAIL / BLOCKED / N/A. Every FAIL gets a note and becomes a 
 | # | Area (ticket) | Steps | Pass criterion | Result | Notes |
 |---|---|---|---|---|---|
 | H1 | Hotspot persistence (MF-09) | Power-cycle the Pi (pull power 10 s). On phone, scan Wi-Fi. | SSID visible and phone joins with configured password, no one runs nmcli. | PENDING | |
-| H2 | Hotspot reachability (MF-09) | On joined phone, open `http://<documented IP>:5000/`. | Page loads with no internet available. | PENDING | |
+| H2 | Hotspot reachability (MF-09) | On joined phone, open `http://10.42.0.1/` (or `http://memoryframe.lan/`). | Page loads with no internet available. | PENDING | |
 | H3 | Hotspot security (MF-09) | Try connecting with `MemoryFrame123`; check `nmcli -s connection show <profile>` key-mgmt. | Old password rejected; key-mgmt `wpa-psk`. | PENDING | |
 | H4 | Boot to slideshow (MF-04) | Power-cycle with stopwatch from power-on. Repeat 3×. | Slideshow visible ≤ 60 s each time; never a connection-refused page. Record times. | PENDING | |
 | H5 | Single instance (MF-04) | After boot: `pgrep -af "app.py\|waitress\|gunicorn"`; `pgrep -c chromium` main process. | Exactly one app instance and one Chromium kiosk. | PENDING | |

@@ -15,7 +15,7 @@ import threading
 
 log = logging.getLogger("memoryframe.imaging")
 
-DEFAULT_TARGET = "1000x750"    # U3 decided: size B (1000x750)
+DEFAULT_TARGET = "1000x600"    # user decision 2026-10-11: exactly 5:3 = the visible window
 MAX_BYTES = 300 * 1024
 QUALITIES = (85, 80, 75, 70, 65, 60, 55, 50)
 
@@ -45,7 +45,7 @@ def parse_target(value):
             return w, h
     except ValueError:
         pass
-    raise ValueError(f"display size must look like 1000x750 (each side {MIN_SIDE}-{MAX_SIDE}), got {value!r}")
+    raise ValueError(f"display size must look like 1000x600 (each side {MIN_SIDE}-{MAX_SIDE}), got {value!r}")
 
 
 def target_or_default(value):

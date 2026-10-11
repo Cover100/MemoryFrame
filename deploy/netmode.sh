@@ -157,8 +157,10 @@ hotspot_autoconnect() {   # yes|no: only ever the MemoryFrame hotspot profile is
     local want="$1" prio=0
     if [ "$want" = yes ]; then prio=100; fi
     if [ "$(prop "$HOTSPOT_CON" connection.autoconnect)" != "$want" ]; then
-        "$NMCLI" connection modify "$HOTSPOT_CON" connection.autoconnect "$want" \
-            connection.autoconnect-priority "$prio" >/dev/null 2>&1 && log "hotspot autoconnect $want" || true
+        if "$NMCLI" connection modify "$HOTSPOT_CON" connection.autoconnect "$want" \
+            connection.autoconnect-priority "$prio" >/dev/null 2>&1; then
+            log "hotspot autoconnect $want"
+        fi
     fi
 }
 

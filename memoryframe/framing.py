@@ -9,11 +9,6 @@ All coordinates are original-image pixels after EXIF transpose. Boxes are (left,
 """
 
 SCREEN_ASPECT = 5 / 3          # the 800x480 display; flip here if the screen changes
-TALL_AR = 0.56                 # aspect <= this: "very tall" (9:16 portraits, screenshots)
-PANO_AR = 2.2                  # aspect >= this: panorama
-FALLBACK_PORTRAIT_Y = 0.30     # no face, portrait: window centre at 30 % of the height
-FALLBACK_LANDSCAPE_TOP = 0.35  # no face, landscape narrower than 5:3: 35 % of the slack on top
-FALLBACK_TALL_TOP = 0.15       # no face, very tall: window starts 15 % down
 
 
 def _clamp(v, lo, hi):
@@ -27,21 +22,11 @@ def window_size(w, h, aspect=SCREEN_ASPECT):
 
 
 def fallback_window(w, h, aspect=SCREEN_ASPECT):
-    """No-face (or no-detector) placement of the visible window. Returns (left, top, ww, wh)."""
+    """No-face (or no-detector) placement: the window is CENTRED, for every aspect (portrait,
+    landscape, very tall, panorama). User decision 2026-10-11: no top bias.
+    Returns (left, top, ww, wh)."""
     ww, wh = window_size(w, h, aspect)
-    ar = w / h
-    left = (w - ww) / 2                                   # always centred sideways
-    if ar >= PANO_AR:
-        top = (h - wh) / 2                                # window is full height anyway
-    elif ar <= TALL_AR:
-        top = FALLBACK_TALL_TOP * h
-    elif h > w:
-        top = FALLBACK_PORTRAIT_Y * h - wh / 2
-    elif ar < aspect:
-        top = FALLBACK_LANDSCAPE_TOP * (h - wh)
-    else:
-        top = (h - wh) / 2
-    return _clamp(left, 0, w - ww), _clamp(top, 0, h - wh), ww, wh
+    return (w - ww) / 2, (h - wh) / 2, ww, wh
 
 
 # ---------------- faces (Designer sections 1-5, 8) ----------------

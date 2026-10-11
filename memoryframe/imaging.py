@@ -106,7 +106,7 @@ def make_display_copy(src, dst, target, max_bytes=MAX_BYTES):
             im = im.resize((max(1, int(im.width * 0.9)), max(1, int(im.height * 0.9))), Image.LANCZOS)
 
 
-COPY_VERSION = "mf26"   # bump when crop/size rules change: existing copies are then remade
+COPY_VERSION = "mf26c"  # bump when crop/size rules change: existing copies are then remade
 _current = {}           # path -> (mtime, target) known to be current (avoids re-reading headers)
 
 

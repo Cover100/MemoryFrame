@@ -13,19 +13,28 @@ def W(w, h):
     return framing.fallback_window(w, h)
 
 
-def test_4_portrait_no_face_window_top_300():
+# User decision 2026-10-11: no face -> centre crop for every aspect (no top bias).
+def test_4_portrait_no_face_centred():
     left, top, ww, wh = W(3000, 4000)
-    assert (left, ww, round(wh)) == (0, 3000, 1800) and top == pytest.approx(300)
+    assert (left, ww, round(wh)) == (0, 3000, 1800) and top == pytest.approx(1100)
 
 
-def test_5_landscape_4x3_no_face_top_210():
+def test_5_landscape_4x3_no_face_centred():
     left, top, ww, wh = W(4000, 3000)
-    assert (ww, wh) == (4000, 2400) and top == pytest.approx(210)
+    assert (ww, wh) == (4000, 2400) and top == pytest.approx(300)
 
 
-def test_12_tall_screenshot_starts_15_percent_down():
+def test_12_tall_screenshot_centred():
     left, top, ww, wh = W(1080, 2400)
-    assert top == pytest.approx(0.15 * 2400) and ww == 1080
+    assert ww == 1080 and top == pytest.approx((2400 - 1080 * 3 / 5) / 2)
+
+
+@pytest.mark.parametrize("size", [(3000, 4000), (4000, 3000), (1080, 2400), (8000, 2000), (4000, 2250),
+                                  (3024, 4032), (1000, 1000), (6000, 4000), (2000, 8000)])
+def test_no_face_always_centred(size):
+    w, h = size
+    left, top, ww, wh = W(w, h)
+    assert left == pytest.approx((w - ww) / 2) and top == pytest.approx((h - wh) / 2)
 
 
 def test_panorama_no_face_centred():
@@ -84,9 +93,9 @@ def test_noisy_1000x600_under_300kb(tmp_path, size):
 
 
 def test_portrait_copy_shows_the_window(tmp_path):
-    """3000x4000, marker band exactly where the window is (rows 300..2100): the copy is that band."""
+    """3000x4000, marker band exactly where the centred window is (rows 1100..2900): the copy is that band."""
     im = Image.new("RGB", (3000, 4000), (255, 0, 0))
-    im.paste((0, 255, 0), (0, 300, 3000, 2100))
+    im.paste((0, 255, 0), (0, 1100, 3000, 2900))
     src, dst = tmp_path / "s.jpg", tmp_path / "d.jpg"
     im.save(src, quality=95)
     imaging.make_display_copy(str(src), str(dst), T)

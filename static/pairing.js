@@ -1,10 +1,13 @@
-// MF-12 + MF-19: on-device onboarding and long-press menu.
+// MF-12 + MF-19 + MF-34: on-device onboarding and the menu (double tap).
 // - No photos and no phone paired: full onboarding (Wi-Fi join QR on the hotspot -> site QR + code).
-// - Photos but no phone paired: the slideshow runs; only a small "Hold 3 s for menu" hint.
+// - Photos but no phone paired: the slideshow runs; only a small "Double-tap for menu" hint.
 // - Paired but no photos: "No photos yet" screen.
-// - Pairing is always available from the long-press menu ("Pair new device").
+// - Pairing is always available from the menu ("Pair new device").
 // The site URL/QR follow the frame's current network (hotspot 10.42.0.1 or home Wi-Fi .local + IP).
-// - Still long-press >= 3 s: menu (IP, SSID, free storage, version, pair new device, sign out all).
+// - Double tap opens the menu (IP, SSID, free storage, version, pair new device, sign out all).
+//   A tap: down->up < 250 ms, moved < 20 px. Double: 2nd down <= 300 ms after the 1st up, within
+//   40 px. Primary pointer only; multi-touch resets. Ignored while an overlay is open.
+//   Still long-press >= 3 s also opens it (kept as an unadvertised fallback).
 // Only localhost routes are used (/pairing/*, /frame/status).
 (function(){
     const PAIR_HOLD = 3000;
@@ -16,7 +19,7 @@
 
     let onDemand = false;     // "Pair new device" chosen in the menu
     // Close dismisses the onboarding / empty-library screens for this browser session
-    // (kiosk restarts and reboots start a new session). Pairing stays in the long-press menu.
+    // (kiosk restarts and reboots start a new session). Pairing stays in the menu.
     let dismissed = sessionStorage.getItem("mfOverlayDismissed") === "1";
 
     function dismiss(){
@@ -129,6 +132,48 @@
     });
     button("pairClose", dismiss);
     button("emptyClose", dismiss);
+
+    // ---------- MF-34: double tap ----------
+    const TAP_MAX_MS = 250, TAP_MOVE = 20, DOUBLE_GAP_MS = 300, DOUBLE_DIST = 40;
+    let tapDown = null;        // {x, y, t} of the current press, if it can still be a tap
+    let lastTap = null;        // {x, y, t (pointerup time)} of the previous completed tap
+    let pointers = 0;
+    function overlayOpen(){
+        return [menuOverlay, pairOverlay, emptyOverlay].some((o)=> o && o.classList.contains("visible"))
+            || !!document.querySelector(".mf-modal:not([hidden])");
+    }
+    document.addEventListener("pointerdown", (e)=>{
+        pointers += 1;
+        if(!e.isPrimary || pointers > 1){ tapDown = null; lastTap = null; return; }   // multi-touch resets
+        const now = performance.now();
+        if(lastTap && (now - lastTap.t > DOUBLE_GAP_MS
+                       || Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) > DOUBLE_DIST)){
+            lastTap = null;
+        }
+        tapDown = {x: e.clientX, y: e.clientY, t: now};
+    }, true);
+    document.addEventListener("pointermove", (e)=>{
+        if(tapDown && e.isPrimary && Math.hypot(e.clientX - tapDown.x, e.clientY - tapDown.y) >= TAP_MOVE){
+            tapDown = null; lastTap = null;                  // a swipe or drag, not a tap
+        }
+    }, true);
+    function pointerEnd(e, cancelled){
+        pointers = Math.max(0, pointers - 1);
+        const d = tapDown;
+        tapDown = null;
+        if(cancelled || !d || !e.isPrimary){ lastTap = null; return; }
+        const now = performance.now();
+        const isTap = now - d.t < TAP_MAX_MS && Math.hypot(e.clientX - d.x, e.clientY - d.y) < TAP_MOVE;
+        if(!isTap){ lastTap = null; return; }
+        if(lastTap){
+            lastTap = null;
+            if(!overlayOpen()){ openMenu(); }
+            return;
+        }
+        lastTap = {x: e.clientX, y: e.clientY, t: now};
+    }
+    document.addEventListener("pointerup", (e)=> pointerEnd(e, false), true);
+    document.addEventListener("pointercancel", (e)=> pointerEnd(e, true), true);
 
     document.addEventListener("pointerdown", (e)=>{
         sx = e.clientX; sy = e.clientY;

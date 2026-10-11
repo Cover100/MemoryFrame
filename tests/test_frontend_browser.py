@@ -222,7 +222,7 @@ def test_state_b_photos_no_phone_slideshow_runs_on_home_wifi(page, server, mf_ap
     # The slideshow is not blocked: no overlay, a photo on screen, only the small hint.
     assert not overlay(page)["visible"] and not visible(page, "emptyOverlay")
     assert evaluate(page, "document.getElementById('image').getAttribute('src')||''").startswith("/uploads/")
-    assert visible(page, "pairHint") and "Hold 3 s" in text(page, "pairHint")
+    assert visible(page, "pairHint") and text(page, "pairHint") == "Double-tap for menu to pair a phone"
     hint = evaluate(page, "JSON.stringify(document.getElementById('pairHint').getBoundingClientRect())")
     import json
     h = json.loads(hint)

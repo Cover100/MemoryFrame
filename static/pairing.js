@@ -71,9 +71,54 @@
         $("pairClose").hidden = false;              // always dismissable
     }
 
+    // ---------- MF-36: network mode (dev banner, fallback toast, hotspot error) ----------
+    const ERROR_SNOOZE = 10 * 60 * 1000;
+    const TOAST_MS = 30 * 1000;
+    let errorSnoozedUntil = 0;
+    let toastTimer = null;
+
+    function hideToast(){
+        const t = $("devToast");
+        if(t.hidden){ return; }
+        t.classList.add("fading");
+        setTimeout(()=>{ t.hidden = true; t.classList.remove("fading"); }, 600);
+    }
+
+    function renderNetmode(nm){
+        nm = nm || {};
+        const banner = $("devBanner");
+        banner.hidden = !nm.dev;
+        if(nm.dev){
+            const ip = typeof nm.lan_ip === "string" && /^[0-9.]+$/.test(nm.lan_ip) ? nm.lan_ip : null;
+            banner.textContent = "Developer mode \u00b7 " + (ip || "no network");
+        }
+        if(nm.dev_fallback){
+            const key = "mf-devtoast-" + (nm.boot_id || "boot");
+            let seen = false;
+            try{ seen = localStorage.getItem(key) === "1"; }catch(e){}
+            if(!seen){                                       // once per boot
+                try{ localStorage.setItem(key, "1"); }catch(e){}
+                $("devToast").hidden = false;
+                clearTimeout(toastTimer);
+                toastTimer = setTimeout(hideToast, TOAST_MS);
+            }
+        }
+        $("hotspotError").hidden = !(nm.hotspot_error && Date.now() >= errorSnoozedUntil);
+    }
+
+    $("devToast").addEventListener("click", (e)=>{ e.stopPropagation(); hideToast(); });
+    $("devToast").addEventListener("pointerdown", (e)=> e.stopPropagation());
+    $("hotspotError").addEventListener("pointerdown", (e)=> e.stopPropagation());
+    $("hotspotErrorClose").addEventListener("click", (e)=>{
+        e.stopPropagation();
+        errorSnoozedUntil = Date.now() + ERROR_SNOOZE;      // reappears while the failure persists
+        $("hotspotError").hidden = true;
+    });
+
     async function tick(){
         try{
             let st = await getJSON("/pairing/state");
+            renderNetmode(st.netmode);
             const firstRun = st.paired === 0 && st.media === 0 && !dismissed;
             const pairing = firstRun || onDemand;
             if(pairing && !st.round){
@@ -143,7 +188,7 @@
     document.addEventListener("pointerup", ()=> clearTimeout(holdTimer));
     document.addEventListener("pointercancel", ()=> clearTimeout(holdTimer));
 
-    window.memoryFramePairing = {tick: tick, openMenu: openMenu};
+    window.memoryFramePairing = {tick: tick, openMenu: openMenu, snoozeMs: ERROR_SNOOZE, toastMs: TOAST_MS};
     tick();
     setInterval(tick, POLL);
 })();

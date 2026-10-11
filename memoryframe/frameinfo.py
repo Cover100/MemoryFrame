@@ -269,3 +269,35 @@ def _site_urls(net=None):
     primary = f"http://memoryframe.local{sfx}"
     fallback = f"http://{net['lan_ip']}{sfx}" if net.get("lan_ip") else None
     return {"mode": net["mode"], "primary": primary, "fallback": fallback}
+
+
+# ---------------- MF-36: network mode (written by deploy/netmode.sh) ----------------
+
+NETMODE_STATE = "/run/memoryframe/netmode.json"
+
+
+def netmode_state():
+    """What deploy/netmode.sh applied at boot: {"mode": "product"|"dev", "dev_fallback": bool,
+    "hotspot_error": bool, "boot_id": str}. Missing/unreadable file -> product, no flags
+    (e.g. a dev machine without the service). Never contains secrets."""
+    import json
+    path = os.environ.get("MEMORYFRAME_NETMODE_STATE") or NETMODE_STATE
+    out = {"mode": "product", "dev_fallback": False, "hotspot_error": False, "boot_id": ""}
+    try:
+        with open(path) as f:
+            raw = json.load(f)
+    except (OSError, ValueError):
+        return out
+    if not isinstance(raw, dict):
+        return out
+    if raw.get("mode") == "dev":
+        out["mode"] = "dev"
+    out["dev_fallback"] = raw.get("dev_fallback") is True
+    out["hotspot_error"] = raw.get("hotspot_error") is True and out["mode"] == "product"
+    bid = raw.get("boot_id")
+    out["boot_id"] = bid[:64] if isinstance(bid, str) else ""
+    return out
+
+
+def dev_mode():
+    return netmode_state()["mode"] == "dev"

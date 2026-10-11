@@ -49,6 +49,16 @@ def _state():
     if (out["paired"] == 0 and urls["mode"] == "hotspot" and name and password
             and frameinfo.show_wifi_qr(conn)):
         out["wifi_qr_svg"] = qr_svg(frameinfo.wifi_qr_payload(name, password))
+    nm = frameinfo.netmode_state()
+    lan_ip = None
+    if nm["mode"] == "dev":                     # the only place a LAN IP is shown (6a, dev only)
+        try:
+            lan_ip = frameinfo.network().get("lan_ip")
+        except Exception:  # noqa: BLE001
+            lan_ip = None
+    out["netmode"] = {"dev": nm["mode"] == "dev", "lan_ip": lan_ip if isinstance(lan_ip, str) and lan_ip else None,
+                      "dev_fallback": nm["dev_fallback"], "hotspot_error": nm["hotspot_error"],
+                      "boot_id": nm["boot_id"]}
     if rnd:
         link = f"{base}/pair?t={rnd['token']}"
         out["round"] = {"code": rnd["code"], "expires_in": rnd["expires_in"], "qr_svg": qr_svg(link)}

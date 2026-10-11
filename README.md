@@ -250,3 +250,11 @@ There is one owner (D6), who may pair several phones.
   - **Delete:** after a confirmation, removes the original, the display copy, the thumbnail and the database row.
 - **API** (session and CSRF): `GET /api/v1/media`, `GET /api/v1/media/<id>/thumb`, `PUT /api/v1/media/<id>/hidden {"hidden": bool}`, `DELETE /api/v1/media/<id>`, `POST /api/v1/media/<id>/show-now`.
 - **Frame:** it polls `GET /show-now` every 2 s. That response carries the show-now request and a library revision, so uploads, hides and deletes reach the frame fast.
+
+## Product mode and developer mode (MF-36)
+
+The frame boots into **product mode**: its own hotspot, phones at `http://10.42.0.1/`. Developer
+mode (home Wi-Fi) is only reachable from the boot partition (`memoryframe-mode.txt` = `dev`) or the
+shell (`sudo deploy/netmode.sh dev`). Dev Wi-Fi credentials stay in the existing NetworkManager
+profile; boot-partition files never hold a password. See
+[docs/runbooks/MF-36-product-mode.md](docs/runbooks/MF-36-product-mode.md).

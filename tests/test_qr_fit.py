@@ -72,11 +72,21 @@ def decode(png, rect):
     pad = 10
     crop = img[max(0, y0 - pad):y1 + pad, max(0, x0 - pad):x1 + pad]
     crop = cv2.copyMakeBorder(crop, 20, 20, 20, 20, cv2.BORDER_CONSTANT, value=(255, 255, 255))
-    for scale in (2, 1, 3):
-        im = cv2.resize(crop, None, fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST) if scale != 1 else crop
-        data, _, _ = cv2.QRCodeDetector().detectAndDecode(im)
-        if data:
-            return data
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    _, bw = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+    detectors = [cv2.QRCodeDetector()]
+    if hasattr(cv2, "QRCodeDetectorAruco"):
+        detectors.append(cv2.QRCodeDetectorAruco())
+    for src in (bw, crop):
+        for scale in (2, 3, 1, 4):
+            im = src if scale == 1 else cv2.resize(src, None, fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST)
+            for det in detectors:
+                try:
+                    data, _, _ = det.detectAndDecode(im)
+                except cv2.error:
+                    data = ""
+                if data:
+                    return data
     return ""
 
 

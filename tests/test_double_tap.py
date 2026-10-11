@@ -128,9 +128,11 @@ def test_double_tap_while_menu_open_does_not_stack(ready):
     assert menu_open(ready)
     calls = evaluate(ready, "(()=>{window.__opens=0;const m=document.getElementById('menuOverlay');"
                             "new MutationObserver(()=>window.__opens++).observe(m,{attributes:true});return 0;})()")
-    tap(ready, 30, 30)                         # on the dimmed overlay, not a button
+    r = evaluate(ready, "(()=>{const b=document.querySelector('#menuBox .menuTitle').getBoundingClientRect();"
+                        "return [b.left+b.width/2,b.top+b.height/2];})()")
+    tap(ready, r[0], r[1])                     # inside the menu card (not a button)
     time.sleep(0.1)
-    tap(ready, 30, 30)
+    tap(ready, r[0], r[1])
     ready.pump(0.5)
     assert evaluate(ready, "window.__opens") == 0 and calls == 0
 

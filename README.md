@@ -182,7 +182,7 @@ The slideshow never loads the original files. For every image, a JPEG **display 
 Originals in `originals/` are only read, never changed. Animated GIFs are served as originals.
 
 - **Target size:** `MEMORYFRAME_DISPLAY_SIZE`, default **`1000x600`**, exactly the 5:3 screen (user decision 2026-10-11; was 800x600, then briefly 1000x750). Set it with `deploy/env-file.sh MEMORYFRAME_DISPLAY_SIZE WxH` (each side 320-4000; out-of-range values fall back to 1000x600 and are logged). Copies record their size and rules version (JPEG comment marker). Copies that don't match the current target or rules are remade automatically, in the background at start-up and lazily when served, so `display-copies --force` is optional.
-- **Cover-crop cap:** copies are cropped with Designer's framing rules (`memoryframe/framing.py`). First the visible 5:3 window is chosen; with no face, portraits centre it at 30% of the height, 4:3/3:2 landscapes put 35% of the spare height above, very tall images (aspect ≤ 0.56) start 15% down, and panoramas (aspect ≥ 2.2) are centred. At 1000x600 the copy **is** that window: the screen only scales it by 0.8 and nothing more is cropped. For other target aspects the window is expanded around its centre (generic). The screen aspect is one constant (`SCREEN_ASPECT`). Portraits and panoramas are no longer oversized (previously 1000x1333 or 3000x750). Each copy stays at or under 300 KB.
+- **Cover-crop cap:** copies are cropped with Designer's framing rules (`memoryframe/framing.py`). First the visible 5:3 window is chosen; with no face it is centred, for every aspect (portraits, landscapes, very tall images and panoramas alike). At 1000x600 the copy **is** that window: the screen only scales it by 0.8 and nothing more is cropped. The screen aspect is one constant (`SCREEN_ASPECT`). Portraits and panoramas are no longer oversized (previously 1000x1333 or 3000x750). Each copy stays at or under 300 KB.
 - **New photos:** the copy is made when the photo is added, or on its first request.
 - **Existing photos:** `python -m memoryframe display-copies` creates the missing copies (`install.sh` runs it).
 - **HEIC/HEIF** from phones is accepted through `pillow-heif` (wheels exist for Pi aarch64 / Python 3.13). The original `.heic` is kept, and the display gets a JPEG copy.
@@ -190,12 +190,12 @@ Originals in `originals/` are only read, never changed. Animated GIFs are served
 ## Pairing a phone (MF-12)
 
 There is one owner (D6), who may pair several phones.
-- **Overlay:** with no paired phone, the frame shows a pairing overlay: a QR code, a 6-digit code, and the Wi-Fi name (from `MEMORYFRAME_SSID` or `deploy/hotspot.conf`). A still long-press of **3 s or more** on the screen shows it at any time.
+- **Overlay:** with no paired phone, the frame shows a pairing overlay: a QR code, a 6-digit code, and the Wi-Fi name (from `MEMORYFRAME_SSID` or `deploy/hotspot.conf`). Double-tap the screen to open the menu, then **Pair new device**, to show it at any time.
 - **Pairing:** scan the QR (it opens `http://10.42.0.1/pair?t=…`; tap "Pair this phone"), or open `http://10.42.0.1/pair` and type the code. Either lands on `/admin/`.
 - **Code rules:** codes and QR links are single-use and expire after 120 s. 5 wrong codes rotate the code. More than 10 attempts per minute from one phone get HTTP 429.
 - **Session:** the phone gets an HttpOnly, SameSite=Strict cookie (`mf_session`, valid 1 year). Only its SHA-256 is stored in the database.
 - **Access rules:** every `/admin/*` route redirects to `/pair` and every `/api/v1/*` route returns 401 without a session. The frame's own pairing routes (`/pairing/*`) are localhost only.
-- **Sign out all phones:** available on the site, or on the frame's overlay (long-press). It revokes every session; phones then re-pair.
+- **Sign out all phones:** available on the site, or in the frame's menu (double tap). It revokes every session; phones then re-pair.
 
 ## Web security (MF-13)
 
@@ -219,6 +219,18 @@ There is one owner (D6), who may pair several phones.
 - **Storage:** the original is stored byte-identical in `originals/`, and the display copy (MF-15) is made right away.
 - **Frame refresh:** the frame now polls `/media` every 10 s, so new photos show up without a reload. `GET /api/v1/storage` returns the disk numbers.
 
+## Face-aware cropping (MF-26)
+
+- When a display copy is made (upload or `python -m memoryframe display-copies`), the frame looks for faces **offline** with OpenCV **YuNet**. The model is `memoryframe/models/face_detection_yunet_2023mar.onnx` (230 KB, MIT licence, see `memoryframe/models/LICENSE-YuNet`). Nothing runs at display time.
+- Faces are placed with Designer's rules (`memoryframe/framing.py`):
+  - eyes at 36% of the visible window;
+  - headroom of at least 5%;
+  - groups kept together; if a group is too wide, the largest and most central faces win, and no kept face is cut;
+  - tiny background faces and faces mostly outside the photo are ignored.
+- The 1000x600 copy **is** the chosen 5:3 window: it is cropped, then scaled down only, and the 800x480 screen scales it without further cropping. Copies made by older rules (uncropped, 800x600 or 1000x750, or without face framing) carry no current marker and are remade by `python -m memoryframe display-copies`, which `install.sh` runs.
+- **Fallback:** if there's no face, OpenCV is missing, the model is missing, the detector errors, or detection takes more than 1.5 s, the no-face rules apply. This never causes an error. Turn detection off with `MEMORYFRAME_FACE_DETECT=0`.
+- **Cost:** about 65 ms per photo on the dev box (the detector runs on a 640 px copy). The Pi 4 estimate is 0.4-0.7 s per photo, plus about 60 MB RSS while it runs.
+
 ## NFC tag (MF-24)
 
 - Write the tag as an **http://** URI record: `http://10.42.0.1/` (or `http://memoryframe.lan/`). **Never use https://.** The frame serves plain HTTP only (ports 80/5000) and has no certificate, so an https:// tag fails on the phone (Samsung Internet shows "null is unreachable").
@@ -229,10 +241,10 @@ There is one owner (D6), who may pair several phones.
 ## On-device onboarding and menu (MF-19)
 
 - **No photos and no phone paired:** full onboarding. On the hotspot it shows **1. Join Wi-Fi** (a standard `WIFI:` QR), then **2. Open site** (the pairing QR) and the 6-digit code.
-- **Close:** every overlay has a Close button. It dismisses the onboarding and empty-library screens for the browser session, in every state including no photos, and a reboot or kiosk restart brings them back. While dismissed, only the small corner hint shows, and pairing stays in the long-press menu.
-- **Photos but no phone paired:** the slideshow runs. Only a small "Hold 3 s for menu to pair a phone" hint shows in the corner.
+- **Close:** every overlay has a Close button. It dismisses the onboarding and empty-library screens for the browser session, in every state including no photos, and a reboot or kiosk restart brings them back. While dismissed, only the small corner hint shows, and pairing stays in the menu (double tap).
+- **Photos but no phone paired:** the slideshow runs. Only a small "Double-tap for menu to pair a phone" hint shows in the corner. Double-tap the screen anywhere to open the menu.
 - **Paired but no photos:** a "No photos yet" screen.
-- **Still long-press of 3 s or more:** a menu with IP, Wi-Fi, site address, free storage, phones paired and version, plus **Pair new device** (always available), **Sign out all phones** and **Close**. Text is at least 24 px at 800x480.
+- **Double tap** (two quick taps on the same spot): a menu with IP, Wi-Fi, site address, free storage, phones paired and version, plus **Pair new device** (always available), **Sign out all phones** and **Close**. Text is at least 24 px at 800x480.
 - **Addresses follow the current network** (checked on every request):
   - **Hotspot** (the frame holds 10.42.0.1): `http://10.42.0.1/pair`, or `memoryframe.lan`.
   - **Home Wi-Fi:** `http://memoryframe.local/pair`, plus the frame's own IP as a fallback (e.g. `http://192.168.50.124/pair`).

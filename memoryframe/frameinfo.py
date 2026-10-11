@@ -129,17 +129,41 @@ def default_route_ip():
         s.close()
 
 
+def _force_allowed():
+    """MEMORYFRAME_FORCE_NETMODE is a test hook: only under pytest or a testing Flask app."""
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return True
+    try:
+        from flask import current_app
+        return bool(current_app and current_app.testing)
+    except RuntimeError:                                 # no app context
+        return False
+
+
 def _forced_network():
-    """TESTS ONLY: MEMORYFRAME_FORCE_NETMODE=hotspot | lan:<ip> | unknown pins detection so
-    browser tests (server in another thread) don't depend on the runner's own addresses."""
+    """TESTS ONLY: MEMORYFRAME_FORCE_NETMODE=hotspot | lan:<IPv4> | unknown pins detection so
+    browser tests (server in another thread) don't depend on the runner's own addresses.
+    Ignored, with a warning, outside tests or when the value is invalid."""
+    import ipaddress
     raw = os.environ.get("MEMORYFRAME_FORCE_NETMODE", "").strip()
     if not raw:
         return None
+    if not _force_allowed():
+        _log_once(("force-netmode", "not-test"), "MEMORYFRAME_FORCE_NETMODE is set but ignored (tests only)")
+        return None
     if raw == "hotspot":
         return {"mode": "hotspot", "lan_ip": HOTSPOT_IP, "ips": [HOTSPOT_IP]}
-    if raw.startswith("lan:") and raw[4:]:
-        return {"mode": "lan", "lan_ip": raw[4:], "ips": [raw[4:]]}
-    return {"mode": "unknown", "lan_ip": None, "ips": []}
+    if raw == "unknown":
+        return {"mode": "unknown", "lan_ip": None, "ips": []}
+    if raw.startswith("lan:"):
+        try:
+            ip = ipaddress.IPv4Address(raw[4:])
+            if not (ip.is_loopback or ip.is_unspecified or ip.is_multicast):
+                return {"mode": "lan", "lan_ip": str(ip), "ips": [str(ip)]}
+        except ValueError:
+            pass
+    _log_once(("force-netmode", raw), "ignoring invalid MEMORYFRAME_FORCE_NETMODE %r", raw)
+    return None
 
 
 def network():

@@ -61,7 +61,7 @@ def test_code_pairs_and_lands_on_admin(client, mf_app):
     code = start(client)["round"]["code"]
     assert len(code) == 6 and code.isdigit()
     r = client.post("/pair", data={"code": code}, environ_base=PHONE)
-    assert r.status_code == 303 and r.location.endswith("/admin/")
+    assert r.status_code == 303 and r.location.endswith("/admin/?paired=1")
     cookie = r.headers["Set-Cookie"]
     assert "mf_session=" in cookie and "HttpOnly" in cookie and "SameSite=Strict" in cookie
     token = client.get_cookie("mf_session").value

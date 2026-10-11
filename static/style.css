@@ -632,3 +632,18 @@ video {
 .hotspot-error-foot{font-size:16px;color:#666;max-width:470px}
 #hotspotErrorClose{position:absolute;right:20px;bottom:16px;height:64px;min-width:120px;font-size:20px;
     border:0;border-radius:10px;background:#222;color:#fff}
+/* MF-31 confirm dialog, MF-33 paired success */
+#confirmOverlay{z-index:70}
+#confirmBox{width:480px;height:260px;box-sizing:border-box;background:#222;border-radius:12px;padding:20px 24px;
+  display:flex;flex-direction:column;justify-content:space-between}
+.confirmTitle{font-size:28px;font-weight:700}
+.confirmBody{font-size:20px;line-height:1.3;margin-top:8px}
+.confirmButtons{display:flex;justify-content:space-between}
+.confirmButtons button{width:200px;min-height:64px;margin:0!important}
+#confirmCancel{background:#ddd;color:#111}
+#confirmSignOut{background:#c62828;color:#fff}
+#confirmDone{font-size:30px;font-weight:700;margin:auto;text-align:center}
+#confirmDone[hidden],#confirmAsk[hidden],#pairSuccess[hidden],#pairBox[hidden]{display:none}
+#pairSuccess{text-align:center}
+.successTitle{font-size:40px;font-weight:700}
+.successText{font-size:26px;margin-top:10px}

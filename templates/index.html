@@ -4,6 +4,7 @@
 <head>
 
     <meta charset="UTF-8">
+    <meta name="mf-frame-token" content="{{ frame_token }}">
 
 
     <meta name="viewport"
@@ -138,11 +139,31 @@
             <div class="menuButtons">
                 <button id="menuPair" type="button">Pair new device</button>
                 <button id="menuSignOut" type="button">Sign out all phones</button>
+                <button id="menuShutdown" type="button">Shut down</button>
                 <button id="menuClose" type="button">Close</button>
             </div>
         </div>
     </div>
 
+
+    <!-- MF-49: shut down (confirm, then "Safe to unplug") -->
+    <div id="shutdownOverlay" class="overlay">
+        <div id="shutdownBox">
+            <div id="shutdownAsk">
+                <div class="confirmTitle">Shut down the frame?</div>
+                <div class="confirmBody">Photos stay on the frame. To turn it on again, unplug it and plug it back in.</div>
+                <div class="shutdownButtons">
+                    <button id="shutdownCancel" type="button">Cancel</button>
+                    <button id="shutdownConfirm" type="button">Shut down</button>
+                </div>
+            </div>
+            <div id="shutdownDone" hidden>
+                <div class="confirmTitle">Shutting down…</div>
+                <div class="confirmBody">Safe to unplug when the screen goes dark (about 20 seconds).</div>
+            </div>
+            <div id="shutdownError" hidden>Couldn't shut down. Try again.</div>
+        </div>
+    </div>
 
     <!-- MF-31: confirm "Sign out all phones" -->
     <div id="confirmOverlay" class="overlay">

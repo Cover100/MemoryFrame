@@ -25,19 +25,19 @@ def nmstate(tmp_path, monkeypatch):
     return write
 
 
-def test_missing_state_is_product(monkeypatch, tmp_path):
+def test_missing_state_is_dev(monkeypatch, tmp_path):
     monkeypatch.setenv("MEMORYFRAME_NETMODE_STATE", str(tmp_path / "nope.json"))
-    assert frameinfo.netmode_state() == {"mode": "product", "dev_fallback": False, "hotspot_error": False,
+    assert frameinfo.netmode_state() == {"mode": "dev", "dev_fallback": False, "hotspot_error": False,
                                          "boot_id": ""}
 
 
 @pytest.mark.parametrize("raw", ["", "{", "[]", '{"mode": "evil", "hotspot_error": "yes"}'])
-def test_garbage_state_is_product(monkeypatch, tmp_path, raw):
+def test_garbage_state_is_dev(monkeypatch, tmp_path, raw):
     p = tmp_path / "s.json"
     p.write_text(raw)
     monkeypatch.setenv("MEMORYFRAME_NETMODE_STATE", str(p))
     s = frameinfo.netmode_state()
-    assert s["mode"] == "product" and s["hotspot_error"] is False
+    assert s["mode"] == "dev" and s["hotspot_error"] is False
 
 
 def test_pairing_state_carries_netmode(client, nmstate, net):

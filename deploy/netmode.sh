@@ -10,6 +10,8 @@
 #   memoryframe-mode.txt      one word: product | dev. Missing/empty/other -> developer default:
 #                             the boot service changes NOTHING (home Wi-Fi stays). Only an explicit
 #                             `sudo netmode.sh product` (or memoryframe-reset) writes product.
+#                             At boot the service is a strict no-op unless the file says product
+#                             (or product mode was applied before and has to be undone).
 #                             install.sh never writes this file.
 #   memoryframe-dev-wifi.txt  optional, only  ssid=<name>: which EXISTING NetworkManager
 #                             profile to use in dev mode (default: the most recently used one). Never a password: dev Wi-Fi
@@ -177,6 +179,26 @@ apply_product() {   # requested dev_fallback [keep-clients]
     return 1
 }
 
+clients_autoconnect_on() {   # undo product mode (dev from the boot partition)
+    local n
+    while IFS= read -r n; do
+        if [ "$(prop "$n" connection.autoconnect)" = no ]; then
+            "$NMCLI" connection modify "$n" connection.autoconnect yes && log "autoconnect on: $n"
+        fi
+    done < <(client_profiles)
+}
+
+left_by_product() {
+    # True only if product mode was applied before: there are client Wi-Fi profiles and every one
+    # has autoconnect=no. A normal dev Pi (home Wi-Fi autoconnects) -> false -> boot does nothing.
+    local n any=false
+    while IFS= read -r n; do
+        any=true
+        if [ "$(prop "$n" connection.autoconnect)" != no ]; then return 1; fi
+    done < <(client_profiles)
+    [ "$any" = true ]
+}
+
 dev_profile() {
     # ssid= given: the profile for that SSID. Otherwise the most recently used client profile.
     local ssid="$1" n best="" best_ts=-1 ts
@@ -268,6 +290,18 @@ case "${1:-}" in
             fi
         fi
         # Boot never fails the unit (no reboot loop); the state file carries the outcome.
-        apply "$(requested_mode)" || true ;;
+        # SAFETY: the boot service is a strict no-op unless the mode file explicitly says product,
+        # or product mode was applied before and must be undone (mode file dev/missing).
+        req="$(requested_mode)"
+        if [ "$req" = product ]; then
+            apply product || true
+        elif left_by_product; then
+            log "boot: product mode was applied before and is no longer armed: back to developer Wi-Fi"
+            clients_autoconnect_on
+            apply_dev || true
+        else
+            log "boot: product mode not armed; developer default, network left as is (no-op)"
+            write_state dev "$req" false false
+        fi ;;
     *) usage ;;
 esac

@@ -89,6 +89,13 @@ def state(env):
     return json.loads((env["state"] / "netmode.json").read_text())
 
 
+def after_product(env):
+    """Product mode was applied before (all client autoconnect off): boot 'dev' must undo it."""
+    for n in (HOME, OTHER):
+        if (env["d"] / "p" / n).exists():
+            (env["d"] / "p" / n / "autoconnect").write_text("no\n")
+
+
 def mutations(env):
     return [line for line in (env["d"] / "log").read_text().splitlines()
             if " modify " in line or " up " in line or " down " in line]
@@ -137,6 +144,7 @@ def test_status_shows_armed_vs_current(env):
 
 
 def test_dev_fallback_keeps_client_autoconnect(env):
+    after_product(env)
     (env["boot"] / "memoryframe-mode.txt").write_text("dev\n")
     (env["d"] / "fail").write_text(HOME + "\n")
     (env["d"] / "active").write_text("\n")                 # home Wi-Fi down at boot
@@ -183,6 +191,7 @@ def test_missing_hotspot_profile_is_error_not_created(env):
 # ---------- dev ----------
 
 def test_dev_from_boot_file_joins_last_used_profile(env):
+    after_product(env)
     (env["d"] / "active").write_text(HOT + "\n")
     (env["boot"] / "memoryframe-mode.txt").write_text("dev\n")
     r = run(env, "boot")
@@ -193,6 +202,7 @@ def test_dev_from_boot_file_joins_last_used_profile(env):
 
 
 def test_dev_ssid_selects_profile(env):
+    after_product(env)
     (env["boot"] / "memoryframe-mode.txt").write_text("dev\n")
     (env["boot"] / "memoryframe-dev-wifi.txt").write_text("ssid=OfficeNet\n")
     run(env, "boot")
@@ -218,14 +228,19 @@ def test_dev_wifi_missing_falls_back_to_hotspot(env, why):
         shutil.rmtree(env["d"] / "p" / HOME)
         shutil.rmtree(env["d"] / "p" / OTHER)
     (env["d"] / "active").write_text("\n")
+    after_product(env)
     r = run(env, "boot")
     assert r.returncode == 0
+    if why == "no_profiles":                     # no client profile: nothing to undo -> strict no-op
+        assert active(env) == "" and mutations(env) == []
+        return
     assert active(env) == HOT
     s = state(env)
     assert s["mode"] == "product" and s["requested"] == "dev" and s["dev_fallback"] is True
 
 
 def test_password_line_ignored_warned_never_logged(env):
+    after_product(env)
     (env["boot"] / "memoryframe-mode.txt").write_text("dev\n")
     (env["boot"] / "memoryframe-dev-wifi.txt").write_text(
         f"ssid=OfficeNet\npassword={SECRET}\nPSK = {SECRET}\nfoo={SECRET}\n")
@@ -294,6 +309,7 @@ def test_refused_while_another_switch_runs(env):
 
 
 def test_status_prints_mode_and_active(env):
+    after_product(env)
     (env["d"] / "active").write_text(HOT + "\n")
     (env["d"] / "fail").write_text(HOME + "\n")
     (env["boot"] / "memoryframe-mode.txt").write_text("dev\n")
@@ -319,3 +335,25 @@ def test_service_unit():
     unit = (ROOT / "deploy" / "memoryframe-netmode.service").read_text()
     assert "Type=oneshot" in unit and "Before=memoryframe.service" in unit
     assert "netmode.sh boot" in unit and "Restart=" not in unit
+
+
+# ---------- SAFETY: the boot service is a strict no-op on a dev Pi ----------
+
+@pytest.mark.parametrize("text", [None, "dev\n", "", "junk\n"])
+def test_boot_service_strict_noop_unless_product(env, text):
+    if text is not None:
+        (env["boot"] / "memoryframe-mode.txt").write_text(text)
+    (env["boot"] / "memoryframe-dev-wifi.txt").write_text("ssid=OfficeNet\n")   # even with a dev ssid
+    for _ in range(3):
+        assert run(env, "boot").returncode == 0
+    assert mutations(env) == [] and active(env) == HOME
+    assert ac(env, HOME) == "yes" and ac(env, OTHER) == "yes"
+
+
+def test_boot_dev_undoes_previous_product(env):
+    (env["boot"] / "memoryframe-mode.txt").write_text("product\n")
+    run(env, "boot")
+    assert active(env) == HOT and ac(env, HOME) == "no"
+    (env["boot"] / "memoryframe-mode.txt").write_text("dev\n")   # edited on a PC
+    run(env, "boot")
+    assert active(env) == HOME and ac(env, HOME) == "yes" and ac(env, OTHER) == "yes"

@@ -60,7 +60,12 @@ fi
 echo "== systemd service"
 sed -e "s#@USER@#$APP_USER#g" -e "s#@APP_DIR@#$APP_DIR#g" \
     "$APP_DIR/deploy/memoryframe.service" | sudo tee /etc/systemd/system/memoryframe.service >/dev/null
+sed -e "s#@APP_DIR@#$APP_DIR#g" \
+    "$APP_DIR/deploy/memoryframe-netmode.service" | sudo tee /etc/systemd/system/memoryframe-netmode.service >/dev/null
+chmod +x "$APP_DIR/deploy/netmode.sh"
 sudo systemctl daemon-reload
+# MF-36: applied at the NEXT boot (enabling does not switch the network now).
+sudo systemctl enable memoryframe-netmode.service
 sudo systemctl enable memoryframe.service
 sudo systemctl restart memoryframe.service
 

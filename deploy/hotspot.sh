@@ -6,10 +6,10 @@
 #                                        # automatically switch back to the previous Wi-Fi
 #   deploy/hotspot.sh --rollback         # take the profile down, delete it, let NM reconnect wlan0
 #
-# MANUAL ONLY: the profile always has autoconnect=no (also when an existing
-# profile is updated), so NetworkManager never starts it at boot or on its own.
-# It only comes up through an explicit --test run. Starting at boot is
-# deliberately not supported.
+# The profile always has autoconnect=no (also when an existing profile is
+# updated), so NetworkManager never starts it on its own. At boot it is brought
+# up only by deploy/netmode.sh (MF-36 product mode, memoryframe-netmode.service);
+# otherwise only through an explicit --test run.
 #
 # SAFETY: on a Raspberry Pi 4 wlan0 cannot be a client and an AP at the same
 # time through NetworkManager. Activating the hotspot DROPS the current Wi-Fi

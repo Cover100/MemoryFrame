@@ -65,8 +65,10 @@ def show_now_state():
     if name and get_db().execute("SELECT 1 FROM media WHERE stored_name = ? AND hidden = 0",
                                  (name,)).fetchone() is None:
         name = None                                  # deleted or hidden since
+    from . import settings
     return jsonify({"seq": state["seq"], "filename": name,
-                    "rev": current_app.extensions.get("mf_media_rev", 0)})
+                    "rev": current_app.extensions.get("mf_media_rev", 0),
+                    "settings": settings.get_all(get_db())})       # MF-17: applied live by the frame
 
 
 def clear_show_now(app, stored_name):

@@ -12,6 +12,23 @@ bp = Blueprint("api", __name__)
 bp.before_request(auth.require_session("api"))
 
 
+@bp.route("/settings", methods=["GET"])
+def get_settings():
+    from . import settings
+    return jsonify(settings.get_all(get_db()))
+
+
+@bp.route("/settings", methods=["PUT"])
+def put_settings():
+    from . import settings
+    clean, err = settings.validate(request.get_json(silent=True))
+    if err:
+        return jsonify({"error": err}), 400
+    conn = get_db()
+    settings.save(conn, clean)
+    return jsonify(settings.get_all(conn))
+
+
 @bp.route("/status")
 def status():
     db = get_db()

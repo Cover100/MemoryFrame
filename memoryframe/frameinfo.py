@@ -52,18 +52,30 @@ def show_wifi_qr(conn):
 
 
 def ip_addresses():
-    """IPv4 addresses of this machine (excluding loopback)."""
+    """IPv4 addresses of this machine (excluding loopback), or None if they can't be read.
+
+    `hostname -I` lists addresses in no particular order; in AP mode 10.42.0.1 may be the only
+    one. Every token is validated, so garbage/IPv6/empty output never becomes an address.
+    """
+    import ipaddress
     try:
-        out = subprocess.run(["hostname", "-I"], capture_output=True, text=True, timeout=2).stdout
-        ips = [a for a in out.split() if "." in a and not a.startswith("127.")]
-        if ips:
+        res = subprocess.run(["hostname", "-I"], capture_output=True, text=True, timeout=2)
+        if res.returncode == 0:
+            ips = []
+            for tok in (res.stdout or "").split():
+                try:
+                    a = ipaddress.ip_address(tok)
+                except ValueError:
+                    continue
+                if a.version == 4 and not a.is_loopback and not a.is_unspecified and tok not in ips:
+                    ips.append(tok)
             return ips
     except (OSError, subprocess.SubprocessError):
         pass
     try:
         return [a for a in socket.gethostbyname_ex(socket.gethostname())[2] if not a.startswith("127.")]
     except OSError:
-        return []
+        return None
 
 
 def version():
@@ -84,18 +96,24 @@ def free_storage(data_dir):
 # ---------------- network-aware addresses (Tester bug at cb270ce) ----------------
 
 HOTSPOT_IP = "10.42.0.1"
-_cache = {"at": 0.0, "ips": []}
-CACHE_SECONDS = 15
+_cache = {"at": None, "ips": []}
+# MF-24: must be well under the 10 s the screen has to follow a hotspot switch.
+CACHE_SECONDS = 5
 
 
-def own_ips(max_age=CACHE_SECONDS):
-    """This machine's IPv4 addresses, cached briefly (used per request by the Host check)."""
+def own_ips(max_age=None):
+    """This machine's IPv4 addresses, cached briefly (the frame polls every 2 s and the Host
+    check runs per request). A failed read is not cached: the last good value is returned and
+    the next call tries again."""
     import time
+    max_age = CACHE_SECONDS if max_age is None else max_age
     now = time.monotonic()
-    if now - _cache["at"] > max_age:
-        _cache["ips"] = ip_addresses()
-        _cache["at"] = now
-    return _cache["ips"]
+    if _cache["at"] is None or now - _cache["at"] >= max_age:
+        ips = ip_addresses()
+        if ips is not None:
+            _cache["ips"] = ips
+            _cache["at"] = now
+    return list(_cache["ips"])
 
 
 def default_route_ip():
@@ -169,6 +187,11 @@ def site_url_override():
     if url is None:
         _log_once(("bad", raw), "MEMORYFRAME_SITE_URL=%r ignored: must be http(s)://host[:port]", raw)
         return None
+    if url.startswith("https://"):
+        # MF-24 (#31): the frame serves plain HTTP only; an https:// link fails on phones
+        # ("null is unreachable" via NFC). QRs and links always use http://.
+        _log_once(("https", url), "MEMORYFRAME_SITE_URL=%s uses https; the frame serves http only - using http", url)
+        url = "http://" + url[len("https://"):]
     try:
         from urllib.parse import urlsplit
         from . import websec
@@ -180,7 +203,45 @@ def site_url_override():
     return url
 
 
+_BAD_HOSTS = {"", "null", "none", "undefined", "nan", "0.0.0.0"}
+
+
+def _safe(url):
+    """url if it is http(s)://<real host> - never 'null'/'None'/empty (MF-24) - else None."""
+    from urllib.parse import urlsplit
+    clean = validate_site_url(url) if isinstance(url, str) else None
+    if clean is not None and clean.startswith("https://"):
+        clean = "http://" + clean[len("https://"):]          # QRs/links are always http://
+    if clean is None or (urlsplit(clean).hostname or "").lower() in _BAD_HOSTS:
+        return None
+    return clean
+
+
+def default_base(mode):
+    sfx = port_suffix()
+    return f"http://{HOTSPOT_IP}{sfx}" if mode == "hotspot" else f"http://memoryframe.local{sfx}"
+
+
 def site_urls(net=None):
+    """Primary and fallback base URLs for phones on the frame's current network. Always returns
+    a usable primary: hotspot -> http://10.42.0.1, otherwise http://memoryframe.local."""
+    try:
+        urls = _site_urls(net)
+    except Exception:  # noqa: BLE001 - detection must never break the screen
+        log.exception("network detection failed")
+        urls = {"mode": "unknown", "primary": None, "fallback": None}
+    mode = urls.get("mode") if urls.get("mode") in ("hotspot", "lan", "unknown") else "unknown"
+    primary = _safe(urls.get("primary"))
+    if primary is None:
+        _log_once(("primary", repr(urls.get("primary"))), "unusable site URL %r; using default", urls.get("primary"))
+        primary = default_base(mode)
+    fallback = _safe(urls.get("fallback"))
+    if fallback == primary:
+        fallback = None
+    return {"mode": mode, "primary": primary, "fallback": fallback}
+
+
+def _site_urls(net=None):
     """Primary and fallback base URLs for phones on the frame's current network."""
     net = net or network()
     override = site_url_override()

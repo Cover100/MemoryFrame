@@ -22,15 +22,21 @@ def ssid():
     return frameinfo.hotspot_conf()[0]
 
 
+QR_BORDER = 4
+
+
 def qr_svg(data):
     import segno
-    return segno.make(data, error="m").svg_inline(scale=6, border=2, dark="#000", light="#fff")
+    # MF-23: 4-module white quiet zone (QR spec minimum) and a viewBox with no fixed size, so CSS
+    # scales the whole symbol + margin to fit the 800x480 screen instead of cropping it.
+    svg = segno.make(data, error="m").svg_inline(border=QR_BORDER, omitsize=True, dark="#000", light="#fff")
+    return svg.replace("<svg ", f'<svg data-border="{QR_BORDER}" preserveAspectRatio="xMidYMid meet" ', 1)
 
 
 def _state():
     rnd = auth.pairing().current()
     urls = frameinfo.site_urls()
-    base = current_app.config.get("PAIR_BASE_URL") or urls["primary"]
+    base = frameinfo._safe(current_app.config.get("PAIR_BASE_URL")) or urls["primary"]
     fallback = None if current_app.config.get("PAIR_BASE_URL") else urls["fallback"]
     conn = get_db()
     name, password = frameinfo.hotspot_conf()

@@ -190,3 +190,28 @@ def test_rollback_when_absent_is_safe(stub):
     d, _, env = stub
     assert run(env, "--rollback").returncode == 0
     assert read(d, "profiles").splitlines() == [HOME_WIFI, "Hotspot"]
+
+
+def test_test_mode_prints_port_80_url(stub):
+    """MF-25 (#32): since MF-10 the site is on port 80 - no :5000 in the printed URL."""
+    d, _, env = stub
+    r = run(env, "--test", "120")
+    assert r.returncode == 0, r.stderr
+    assert "Frame URL: http://10.42.0.1/ (or http://memoryframe.lan/)" in r.stdout
+    assert ":5000" not in r.stdout + r.stderr
+
+
+def test_no_user_facing_5000_urls_in_repo():
+    """Only the kiosk/localhost may use :5000; phones and docs use port 80."""
+    import pathlib
+    import re
+    root = pathlib.Path(__file__).resolve().parent.parent
+    bad = []
+    for p in list(root.glob("*.md")) + list(root.glob("docs/**/*.md")) + list(root.glob("deploy/*")) \
+            + list(root.glob("templates/*.html")) + list(root.glob("static/*.js")):
+        if p.is_file():
+            for n, line in enumerate(p.read_text(errors="ignore").splitlines(), 1):
+                for m in re.finditer(r"https?://([^/\s`'\")]+):5000", line):
+                    if m.group(1) not in ("localhost", "127.0.0.1"):
+                        bad.append(f"{p.relative_to(root)}:{n}: {line.strip()}")
+    assert bad == []

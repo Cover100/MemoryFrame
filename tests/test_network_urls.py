@@ -216,11 +216,183 @@ def test_network_detection_uses_cache_on_2s_polls(client, monkeypatch):
     clock = [1000.0]
     monkeypatch.setattr(time, "monotonic", lambda: clock[0])
     client.post("/pairing/start", environ_base=LOCAL)
-    for _ in range(7):                                   # 14 s of 2 s polls (state + status)
+    for _ in range(3):                                   # polls at 0, 2, 4 s (state + status)
         client.get("/pairing/state", environ_base=LOCAL)
         client.get("/frame/status", environ_base=LOCAL)
         clock[0] += 2
     assert len(calls) == 1
-    clock[0] += 15
+    clock[0] += 1                                        # 7 s: cache (5 s) expired
     client.get("/pairing/state", environ_base=LOCAL)
     assert len(calls) == 2
+
+
+# ---------- MF-24 (#31): never a null/None/empty host; AP-mode detection ----------
+
+@pytest.fixture
+def hostname_out(monkeypatch):
+    """Fake `hostname -I` (stdout, returncode or exception) with the real detection + cache."""
+    import subprocess
+    import time
+    st = {"out": "", "rc": 0, "raise": None, "calls": 0, "route": None}
+    real_run = subprocess.run
+
+    def fake_run(cmd, *a, **kw):
+        if cmd[:2] == ["hostname", "-I"]:
+            st["calls"] += 1
+            if st["raise"]:
+                raise st["raise"]
+            return subprocess.CompletedProcess(cmd, st["rc"], stdout=st["out"], stderr="")
+        return real_run(cmd, *a, **kw)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(socket, "gethostbyname_ex", lambda h: (_ for _ in ()).throw(OSError("no")))
+    monkeypatch.setattr(frameinfo, "default_route_ip", lambda: st["route"])
+    monkeypatch.setattr(frameinfo, "network", REAL_NETWORK)
+    monkeypatch.setattr(frameinfo, "own_ips", REAL_OWN_IPS)
+    monkeypatch.setitem(frameinfo._cache, "at", None)
+    monkeypatch.setitem(frameinfo._cache, "ips", [])
+    clock = [5000.0]
+    monkeypatch.setattr(time, "monotonic", lambda: clock[0])
+    st["clock"] = clock
+    monkeypatch.setenv("MEMORYFRAME_PORTS", "80,5000")
+    return st
+
+
+def _state(client):
+    client.post("/pairing/start", environ_base=LOCAL)
+    return client.get("/pairing/state", environ_base=LOCAL).get_json()
+
+
+def _no_null(st):
+    blob = repr(st).lower()
+    for bad in ("//null", "//none", "//undefined", "http:///"):
+        assert bad not in blob, st
+
+
+@pytest.mark.parametrize("out", ["10.42.0.1\n", "10.42.0.1 fe80::1 \n", "fe80::1 10.42.0.1",
+                                 "172.17.0.1 10.42.0.1 2001:db8::5"])
+def test_ap_only_or_reordered_hostname_output_is_hotspot(client, hostname_out, out):
+    hostname_out["out"] = out
+    st = _state(client)
+    assert st["network"] == "hotspot" and st["url"] == "http://10.42.0.1/pair"
+    assert st["url_fallback"] == "http://memoryframe.lan/pair"
+    _no_null(st)
+
+
+@pytest.mark.parametrize("case", ["empty", "rc1", "oserror", "timeout", "garbage"])
+def test_failed_or_empty_detection_never_null(client, hostname_out, case):
+    import subprocess
+    if case == "empty":
+        hostname_out["out"] = "   \n"
+    elif case == "rc1":
+        hostname_out["rc"] = 1
+    elif case == "oserror":
+        hostname_out["raise"] = FileNotFoundError("hostname")
+    elif case == "timeout":
+        hostname_out["raise"] = subprocess.TimeoutExpired("hostname", 2)
+    else:
+        hostname_out["out"] = "null None undefined 999.1.1.1"
+    st = _state(client)
+    assert st["url"] == "http://memoryframe.local/pair" and st["site_url"] == "http://memoryframe.local/"
+    _no_null(st)
+    status = client.get("/frame/status", environ_base=LOCAL).get_json()
+    assert status["site"] == "http://memoryframe.local/"
+    _no_null(status)
+
+
+def test_network_switch_followed_within_10s_and_back(client, hostname_out):
+    hostname_out["out"] = "192.168.50.124"
+    hostname_out["route"] = "192.168.50.124"
+    assert _state(client)["url"] == "http://memoryframe.local/pair"
+    # hotspot comes up: no default route, only 10.42.0.1
+    hostname_out["out"], hostname_out["route"] = "10.42.0.1", None
+    hostname_out["clock"][0] += 2
+    assert _state(client)["url"] == "http://memoryframe.local/pair"      # still cached (2 s)
+    hostname_out["clock"][0] += 4                                         # 6 s after the switch
+    st = _state(client)
+    assert st["network"] == "hotspot" and st["url"] == "http://10.42.0.1/pair"
+    # revert to home Wi-Fi
+    hostname_out["out"], hostname_out["route"] = "192.168.50.124", "192.168.50.124"
+    hostname_out["clock"][0] += 6
+    st = _state(client)
+    assert st["network"] == "lan" and st["url"] == "http://memoryframe.local/pair"
+
+
+def test_failed_read_is_not_cached_keeps_last_good(client, hostname_out):
+    hostname_out["out"] = "10.42.0.1"
+    assert _state(client)["network"] == "hotspot"
+    hostname_out["clock"][0] += 6
+    hostname_out["raise"] = OSError("boom")
+    assert _state(client)["network"] == "hotspot"                        # last good value
+    n = hostname_out["calls"]
+    hostname_out["raise"] = None
+    hostname_out["clock"][0] += 1
+    _state(client)
+    assert hostname_out["calls"] > n                                     # retried, not cached
+
+
+@pytest.mark.parametrize("bad", [None, "", "http://null", "http://None:5000", "null", "http://undefined/"])
+def test_site_urls_sanitises_any_bad_primary(monkeypatch, bad):
+    for mode, expected in (("hotspot", "http://10.42.0.1"), ("lan", "http://memoryframe.local")):
+        monkeypatch.setattr(frameinfo, "_site_urls", lambda net=None, m=mode: {"mode": m, "primary": bad,
+                                                                                "fallback": bad})
+        monkeypatch.setenv("MEMORYFRAME_PORTS", "80")
+        u = frameinfo.site_urls()
+        assert u["primary"] == expected and u["fallback"] is None
+
+
+def test_detection_exception_falls_back(monkeypatch):
+    monkeypatch.setattr(frameinfo, "_site_urls", lambda net=None: 1 / 0)
+    monkeypatch.setenv("MEMORYFRAME_PORTS", "80")
+    assert frameinfo.site_urls()["primary"] == "http://memoryframe.local"
+
+
+def test_pair_base_url_null_ignored(client, mf_app):
+    mf_app.config["PAIR_BASE_URL"] = "http://null"
+    st = _state(client)
+    assert st["url"].startswith("http://10.42.0.1")                      # conftest: hotspot
+    _no_null(st)
+
+
+# ---------- MF-24 (#31, rewritten): QRs always encode http://; no HSTS ever ----------
+
+def test_https_site_url_downgraded_to_http_and_logged(client, monkeypatch, caplog):
+    import segno
+    payloads = []
+    real_make = segno.make
+    monkeypatch.setattr(segno, "make", lambda data, **kw: payloads.append(data) or real_make(data, **kw))
+    monkeypatch.setattr(frameinfo, "_logged", set())
+    monkeypatch.setenv("MEMORYFRAME_SITE_URL", "https://memoryframe.lan")
+    st = _state(client)
+    assert st["url"] == "http://memoryframe.lan/pair" and st["site_url"] == "http://memoryframe.lan/"
+    assert "https" in caplog.text and "using http" in caplog.text
+    assert payloads and all(p.startswith(("http://", "WIFI:")) for p in payloads), payloads
+
+
+@pytest.mark.parametrize("mode", ["hotspot", "lan", "unknown"])
+def test_every_qr_encodes_http(client, monkeypatch, mode):
+    import segno
+    payloads = []
+    real_make = segno.make
+    monkeypatch.setattr(segno, "make", lambda data, **kw: payloads.append(data) or real_make(data, **kw))
+    monkeypatch.setattr(frameinfo, "network",
+                        lambda: {"mode": mode, "lan_ip": "192.168.50.124" if mode == "lan" else None, "ips": []})
+    st = _state(client)
+    urls = [p for p in payloads if not p.startswith("WIFI:")]
+    assert urls and all(p.startswith("http://") for p in urls), payloads
+    assert st["url"].startswith("http://")
+
+
+def test_no_response_sends_hsts(client, paired, mf_app):
+    from conftest import pair_client  # noqa: F401
+    seen = []
+    for rule in mf_app.url_map.iter_rules():
+        if "GET" not in rule.methods or "<" in rule.rule:
+            continue
+        for env in (LOCAL, {"REMOTE_ADDR": "10.42.0.23"}):
+            r = paired.get(rule.rule, environ_base=env)
+            seen.append(rule.rule)
+            assert "Strict-Transport-Security" not in r.headers, rule.rule
+    r = paired.get("/", environ_base=LOCAL, headers={"X-Forwarded-Proto": "https"}, base_url="https://10.42.0.1")
+    assert "Strict-Transport-Security" not in r.headers
+    assert len(seen) > 10

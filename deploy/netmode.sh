@@ -16,6 +16,8 @@
 #   memoryframe-mode.txt      one word: product | dev. Missing/empty/other -> developer default:
 #                             the boot service changes NOTHING (home Wi-Fi stays). Only an explicit
 #                             `sudo netmode.sh product` (or memoryframe-reset) writes product.
+#                             At boot the service is a strict no-op unless the file says product
+#                             (or product mode was applied before and has to be undone).
 #                             install.sh never writes this file.
 #   memoryframe-dev-wifi.txt  optional, only  ssid=<name>: which EXISTING NetworkManager
 #                             profile to use in dev mode (default: the most recently used one). Never a password: dev Wi-Fi
@@ -186,6 +188,26 @@ apply_product() {   # requested dev_fallback [keep-clients]
     return 1
 }
 
+clients_autoconnect_on() {   # undo product mode (dev from the boot partition)
+    local n
+    while IFS= read -r n; do
+        if [ "$(prop "$n" connection.autoconnect)" = no ]; then
+            "$NMCLI" connection modify "$n" connection.autoconnect yes && log "autoconnect on: $n"
+        fi
+    done < <(client_profiles)
+}
+
+left_by_product() {
+    # True only if product mode was applied before: there are client Wi-Fi profiles and every one
+    # has autoconnect=no. A normal dev Pi (home Wi-Fi autoconnects) -> false -> boot does nothing.
+    local n any=false
+    while IFS= read -r n; do
+        any=true
+        if [ "$(prop "$n" connection.autoconnect)" != no ]; then return 1; fi
+    done < <(client_profiles)
+    [ "$any" = true ]
+}
+
 dev_profile() {
     # ssid= given: the profile for that SSID. Otherwise the most recently used client profile.
     local ssid="$1" n best="" best_ts=-1 ts
@@ -262,7 +284,7 @@ status() {
 
 # ---------- MF-18: hotspot name/password change (pending -> commit | rollback) ----------
 
-applied_mode() { [ -f "$STATE" ] && sed -n 's/.*"mode": "\([a-z]*\)".*/\1/p' "$STATE"; }
+applied_mode() { if [ -f "$STATE" ]; then sed -n 's/.*"mode": "\([a-z]*\)".*/\1/p' "$STATE"; fi; }
 
 valid_ssid() {
     local s="$1" n
@@ -286,7 +308,16 @@ delete_pending_profile() {
     rm -f "$NM_DIR/$PENDING_CON.nmconnection"
 }
 
+require_product() {
+    # SAFETY (#41): Wi-Fi changes only when product mode was applied this boot. A missing or
+    # unreadable netmode.json means dev: never touch the home Wi-Fi.
+    if [ "$(applied_mode)" != product ]; then
+        log "wifi change refused: product mode is not applied (developer mode or no state)"; exit 3
+    fi
+}
+
 wifi_rollback() {
+    require_product
     if [ "$(active)" = "$PENDING_CON" ]; then "$NMCLI" connection down "$PENDING_CON" >/dev/null 2>&1 || true; fi
     local ok=0
     if [ "$(active)" != "$HOTSPOT_CON" ]; then
@@ -305,7 +336,7 @@ wifi_apply() {
     local ssid="" psk="" f
     IFS= read -r ssid || true
     IFS= read -r psk || true
-    if [ "$(applied_mode)" = dev ]; then log "wifi change refused: developer mode"; exit 3; fi
+    require_product
     if ! valid_ssid "$ssid" || ! valid_psk "$psk"; then log "wifi change refused: invalid name or password"; exit 2; fi
     if ! profiles | grep -qxF "$HOTSPOT_CON"; then log "wifi change refused: no hotspot profile"; exit 1; fi
     : > "$PENDING"
@@ -339,6 +370,7 @@ wifi_apply() {
 }
 
 wifi_commit() {
+    require_product
     if ! profiles | grep -qxF "$PENDING_CON" || [ "$(active)" != "$PENDING_CON" ]; then
         log "wifi commit refused: no active pending profile"; exit 4
     fi
@@ -374,6 +406,18 @@ case "${1:-}" in
             delete_pending_profile; rm -f "$PENDING"
         fi
         # Boot never fails the unit (no reboot loop); the state file carries the outcome.
-        apply "$(requested_mode)" || true ;;
+        # SAFETY: the boot service is a strict no-op unless the mode file explicitly says product,
+        # or product mode was applied before and must be undone (mode file dev/missing).
+        req="$(requested_mode)"
+        if [ "$req" = product ]; then
+            apply product || true
+        elif left_by_product; then
+            log "boot: product mode was applied before and is no longer armed: back to developer Wi-Fi"
+            clients_autoconnect_on
+            apply_dev || true
+        else
+            log "boot: product mode not armed; developer default, network left as is (no-op)"
+            write_state dev "$req" false false
+        fi ;;
     *) usage ;;
 esac

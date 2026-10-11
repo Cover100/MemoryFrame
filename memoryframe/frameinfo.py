@@ -278,11 +278,11 @@ NETMODE_STATE = "/run/memoryframe/netmode.json"
 
 def netmode_state():
     """What deploy/netmode.sh applied at boot: {"mode": "product"|"dev", "dev_fallback": bool,
-    "hotspot_error": bool, "boot_id": str}. Missing/unreadable file -> product, no flags
-    (e.g. a dev machine without the service). Never contains secrets."""
+    "hotspot_error": bool, "boot_id": str}. Missing/unreadable/unknown file -> DEV, no flags
+    (safety: nothing assumes product mode unless the boot service applied it). Never contains secrets."""
     import json
     path = os.environ.get("MEMORYFRAME_NETMODE_STATE") or NETMODE_STATE
-    out = {"mode": "product", "dev_fallback": False, "hotspot_error": False, "boot_id": "", "reset": False}
+    out = {"mode": "dev", "dev_fallback": False, "hotspot_error": False, "boot_id": "", "reset": False}
     try:
         with open(path) as f:
             raw = json.load(f)
@@ -290,8 +290,8 @@ def netmode_state():
         return out
     if not isinstance(raw, dict):
         return out
-    if raw.get("mode") == "dev":
-        out["mode"] = "dev"
+    if raw.get("mode") == "product":
+        out["mode"] = "product"
     out["dev_fallback"] = raw.get("dev_fallback") is True
     out["hotspot_error"] = raw.get("hotspot_error") is True and out["mode"] == "product"
     out["reset"] = raw.get("reset") is True

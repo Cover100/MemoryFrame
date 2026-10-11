@@ -1,8 +1,9 @@
 """Where to crop a photo for the frame (Designer's MF-26 framing rules, target 1000x600).
 
-The display copy IS the visible window W: the largest 5:3 rectangle that fits the image,
-placed by the rules below (faces if found, otherwise the no-face fallback), cropped and then
-scaled down to 1000x600 (never up). The 800x480 screen is also 5:3, so CSS object-fit: cover
+The display copy IS the window W: the largest rectangle with the TARGET's aspect
+(MEMORYFRAME_DISPLAY_SIZE, default 1000x600 = 5:3) that fits the image. With faces it is placed
+by the face rules; with no faces it is a pure geometric centre crop. Then it is scaled down to
+the target (never up), so nothing is ever stretched. The 800x480 screen is also 5:3, so CSS object-fit: cover
 only scales it - what we choose here is exactly what is shown.
 
 All coordinates are original-image pixels after EXIF transpose. Boxes are (left, top, right, bottom).
@@ -162,6 +163,8 @@ def choose(size, faces=None, screen_aspect=SCREEN_ASPECT):
 
 
 def crop_box(size, target=None, faces=None):
-    """Crop box (in the image) for a display copy: the 5:3 window. `target` is only checked
-    to have the screen's aspect (the copy is scaled to it afterwards)."""
-    return choose(size, faces)[0]
+    """Crop box (in the image) for a display copy, in the TARGET's own aspect (e.g. 5:3 for
+    1000x600, 4:3 for 1000x750), so scaling it to the target never distorts. With faces the
+    face window is computed in that aspect; with none it is a pure geometric centre crop."""
+    aspect = target[0] / target[1] if target else SCREEN_ASPECT
+    return choose(size, faces, aspect)[0]

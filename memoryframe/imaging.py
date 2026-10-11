@@ -93,7 +93,7 @@ def make_display_copy(src, dst, target, max_bytes=MAX_BYTES):
         if box != (0, 0) + im.size:
             im = im.crop(box)
         if im.width > target[0] or im.height > target[1]:
-            im = im.resize(target, Image.LANCZOS)          # exactly 1000x600; never upscaled
+            im = im.resize(target, Image.LANCZOS)          # box has the target aspect: no distortion
         tmp = dst + ".tmp"
         while True:
             for q in QUALITIES:

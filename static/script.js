@@ -8,11 +8,18 @@
 // Settings
 // ======================================================
 
-const IMAGE_DURATION = 10000;
+// MF-17: slide time, transition and shuffle come from the phone's Settings via /show-now.
+let IMAGE_DURATION = 10000;
 
 const REFRESH_INTERVAL = 10000; // MF-14: new uploads appear within ~10 s
 
-const FADE_TIME = 800;
+let FADE_TIME = 800;
+
+const FADE_TIME_DEFAULT = 800;
+
+let SHUFFLE = true;
+
+let libraryOrder = [];   // filenames in /media order (by name)
 
 const SWIPE_THRESHOLD = 80;
 
@@ -118,7 +125,20 @@ let lastSentBrightness = null;
 // Every item shown once before repeat
 // ======================================================
 
+function inLibraryOrder(array){
+    const pos = new Map(libraryOrder.map((f, i)=> [f, i]));
+    return [...array].sort((a, b)=>{
+        const pa = pos.has(a.filename) ? pos.get(a.filename) : Infinity;
+        const pb = pos.has(b.filename) ? pos.get(b.filename) : Infinity;
+        return pa !== pb ? pa - pb : (a.filename < b.filename ? -1 : a.filename > b.filename ? 1 : 0);
+    });
+}
+
 function shuffle(array){
+
+    if(!SHUFFLE){
+        return inLibraryOrder(array);    // MF-17: shuffle off -> library (name) order
+    }
 
 
     let shuffled = [...array];
@@ -163,6 +183,8 @@ function shuffle(array){
 // ======================================================
 
 function createPlaylist(files){
+
+    libraryOrder = files.map((x)=> x.filename);
 
 
     playlist =
@@ -352,6 +374,7 @@ function showImage(item){
             },100);
 
 
+            imageShownAt = Date.now();
 
             slideTimer =
                 setTimeout(()=>{
@@ -744,6 +767,8 @@ async function refreshMedia(){
 
         let newMedia =
             await response.json();
+
+        libraryOrder = newMedia.map((x)=> x.filename);
 
         let oldFiles =
             playlist
@@ -1263,6 +1288,55 @@ async function jumpTo(filename){
 
 }
 
+// ======================================================
+// MF-17: settings applied live (no reload)
+// ======================================================
+
+let imageShownAt = 0;
+
+function applySettings(st){
+
+    if(!st || typeof st !== "object"){ return; }
+
+    const secs = [5, 10, 30, 60, 300].includes(st.slide_seconds) ? st.slide_seconds : 10;
+    const duration = secs * 1000;
+    if(duration !== IMAGE_DURATION){
+        IMAGE_DURATION = duration;
+        // From the next slide: re-arm the running image timer, measured from now.
+        let item = playlist[currentIndex];
+        if(isPlaying && item && item.type === "image" && imageElement.classList.contains("visible")){
+            clearTimeout(slideTimer);
+            slideTimer = setTimeout(()=>{ nextMedia(); }, IMAGE_DURATION);
+        }
+    }
+
+    const fade = st.transition !== "none";
+    FADE_TIME = fade ? FADE_TIME_DEFAULT : 0;
+    document.documentElement.classList.toggle("mf-no-fade", !fade);
+
+    const shuffleOn = st.shuffle !== false;
+    if(shuffleOn !== SHUFFLE){
+        SHUFFLE = shuffleOn;
+        let current = playlist[currentIndex];
+        if(SHUFFLE){
+            // reshuffle what's left; the photo on screen stays where it is
+            let rest = playlist.slice(currentIndex + 1);
+            SHUFFLE = true;
+            playlist = playlist.slice(0, currentIndex + 1).concat(shuffle(rest));
+        }else{
+            playlist = inLibraryOrder(playlist);
+            let i = current ? playlist.findIndex((x)=> x.filename === current.filename) : -1;
+            currentIndex = i >= 0 ? i : 0;
+        }
+        if(playlistUpdatePending && pendingPlaylist){
+            pendingPlaylist = shuffle(pendingPlaylist);
+        }
+    }
+
+    window.memoryFrameSettings = {imageDuration: IMAGE_DURATION, fadeTime: FADE_TIME, shuffle: SHUFFLE,
+                                  playlist: playlist.map((x)=> x.filename), index: currentIndex};
+}
+
 async function pollControl(){
 
     try{
@@ -1271,6 +1345,7 @@ async function pollControl(){
             refreshMedia();
         }
         controlRev = c.rev;
+        applySettings(c.settings);
         if(controlSeq !== null && c.seq !== controlSeq && c.filename){
             console.log("Show now:", c.filename);
             jumpTo(c.filename);

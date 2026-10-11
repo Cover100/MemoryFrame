@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<title>Settings</title>
+<link rel="stylesheet" href="/static/pair.css">
+<link rel="stylesheet" href="/static/settings.css">
+</head>
+<body>
+<h1>Settings</h1>
+{% macro label(v) %}{% if v < 60 %}{{ v }} s{% elif v == 60 %}1 min{% else %}{{ v // 60 }} min{% endif %}{% endmacro %}
+<section>
+  <h2>Slide time</h2>
+  <div class="seg" id="slideSeg" role="radiogroup">
+    {% for v in slides %}<button type="button" data-key="slide_seconds" data-value="{{ v }}" role="radio"
+      aria-checked="{{ 'true' if s.slide_seconds == v else 'false' }}">{{ label(v) }}</button>{% endfor %}
+  </div>
+  <span class="status" data-for="slide_seconds" aria-live="polite"></span>
+</section>
+<section>
+  <h2>Transition</h2>
+  <div class="seg" id="transitionSeg" role="radiogroup">
+    <button type="button" data-key="transition" data-value="fade" role="radio" aria-checked="{{ 'true' if s.transition == 'fade' else 'false' }}">Fade</button><button
+      type="button" data-key="transition" data-value="none" role="radio" aria-checked="{{ 'true' if s.transition == 'none' else 'false' }}">None</button>
+  </div>
+  <span class="status" data-for="transition" aria-live="polite"></span>
+</section>
+<section>
+  <h2>Shuffle</h2>
+  <label class="toggle"><input type="checkbox" id="shuffle" data-key="shuffle" {% if s.shuffle %}checked{% endif %}> On</label>
+  <span class="status" data-for="shuffle" aria-live="polite"></span>
+</section>
+<p><a href="/admin/">Back</a></p>
+<script src="/static/settings.js"></script>
+</body>
+</html>

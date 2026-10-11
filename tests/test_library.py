@@ -93,11 +93,17 @@ def test_reupload_after_delete(paired, item):
     assert r.status_code == 201
 
 
+def show_now(client):
+    d = client.get("/show-now").get_json()
+    d.pop("settings")                                  # MF-17, covered in test_settings.py
+    return d
+
+
 def test_show_now(paired, item, client, mf_app):
-    assert client.get("/show-now").get_json() == {"seq": 0, "filename": None, "rev": 1}   # upload bumped rev
+    assert show_now(client) == {"seq": 0, "filename": None, "rev": 1}   # upload bumped rev
     r = paired.post(f"/api/v1/media/{item['id']}/show-now", environ_base=PHONE)
     assert r.status_code == 200 and r.get_json()["seq"] == 1
-    assert client.get("/show-now").get_json() == {"seq": 1, "filename": stored_name(mf_app, item["id"]), "rev": 1}
+    assert show_now(client) == {"seq": 1, "filename": stored_name(mf_app, item["id"]), "rev": 1}
     paired.put(f"/api/v1/media/{item['id']}/hidden", json={"hidden": True}, environ_base=PHONE)
     assert paired.post(f"/api/v1/media/{item['id']}/show-now", environ_base=PHONE).status_code == 409
 
@@ -148,7 +154,7 @@ def test_show_now_cleared_on_hide(paired, item, client):
 
 def test_show_now_never_returns_missing_file_even_if_state_stale(paired, item, client, mf_app):
     mf_app.extensions["mf_show_now"] = {"seq": 9, "filename": "gone.jpg", "at": 0}
-    assert client.get("/show-now").get_json() == {"seq": 9, "filename": None, "rev": 1}
+    assert show_now(client) == {"seq": 9, "filename": None, "rev": 1}
 
 
 def test_delete_db_failure_keeps_files_and_row(paired, item, mf_app, monkeypatch):

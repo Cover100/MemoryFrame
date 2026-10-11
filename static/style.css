@@ -610,6 +610,8 @@ video {
   background:rgba(0,0,0,.45);color:rgba(255,255,255,.85);font:18px system-ui,sans-serif;pointer-events:none}
 #pairHint.visible{display:block}
 
+/* MF-17: transition "None" = instant cut */
+.mf-no-fade .media{transition:none!important}
 /* MF-31 confirm dialog, MF-33 paired success */
 #confirmOverlay{z-index:70}
 #confirmBox{width:480px;height:260px;box-sizing:border-box;background:#222;border-radius:12px;padding:20px 24px;

@@ -262,3 +262,15 @@ There is one owner (D6), who may pair several phones.
   - **Delete:** after a confirmation, removes the original, the display copy, the thumbnail and the database row.
 - **API** (session and CSRF): `GET /api/v1/media`, `GET /api/v1/media/<id>/thumb`, `PUT /api/v1/media/<id>/hidden {"hidden": bool}`, `DELETE /api/v1/media/<id>`, `POST /api/v1/media/<id>/show-now`.
 - **Frame:** it polls `GET /show-now` every 2 s. That response carries the show-now request and a library revision, so uploads, hides and deletes reach the frame fast.
+
+## Product mode and developer mode (MF-36)
+
+**Product mode** (its own hotspot, phones at `http://10.42.0.1/`) is armed ONLY by an explicit
+`sudo deploy/netmode.sh product`, which writes `memoryframe-mode.txt` = `product` on the boot
+partition (or by the `memoryframe-reset` recovery file). `install.sh`, upgrades and reboots never
+arm it: with no mode file the frame stays in developer mode on home Wi-Fi and the boot service
+changes nothing. `deploy/netmode.sh status` shows `armed for next boot:` and `current mode:`.
+Switching to product cuts off Pi Connect: only do it with the user present and the way back tested.
+Back to developer mode: `sudo deploy/netmode.sh dev`, or `dev` in (or deleting) the mode file. Dev Wi-Fi credentials stay in the existing NetworkManager
+profile; boot-partition files never hold a password. See
+[docs/runbooks/MF-36-product-mode.md](docs/runbooks/MF-36-product-mode.md).

@@ -64,20 +64,53 @@ def quiet_zone_modules(png, rect, modules):
 
 
 def decode(png, rect):
+    """Decode the QR in rect: at 2x (nearest neighbour keeps module edges sharp), then 1x."""
     import cv2
     import numpy as np
     img = cv2.imdecode(np.frombuffer(png, np.uint8), cv2.IMREAD_COLOR)
     x0, y0, x1, y1 = (int(round(v)) for v in rect)
     pad = 10
     crop = img[max(0, y0 - pad):y1 + pad, max(0, x0 - pad):x1 + pad]
-    data, _, _ = cv2.QRCodeDetector().detectAndDecode(crop)
-    return data
+    crop = cv2.copyMakeBorder(crop, 20, 20, 20, 20, cv2.BORDER_CONSTANT, value=(255, 255, 255))
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    _, bw = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+    detectors = [cv2.QRCodeDetector()]
+    if hasattr(cv2, "QRCodeDetectorAruco"):
+        detectors.append(cv2.QRCodeDetectorAruco())
+    for src in (bw, crop):
+        for scale in (2, 3, 1, 4):
+            im = src if scale == 1 else cv2.resize(src, None, fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST)
+            for det in detectors:
+                try:
+                    data, _, _ = det.detectAndDecode(im)
+                except cv2.error:
+                    data = ""
+                if data:
+                    return data
+    return ""
 
 
-def check(page, shot_name, expect_ids):
+def painted(page):
+    """Wait until the QR SVGs are in the DOM and two animation frames have been painted
+    (the frame re-renders the overlay every 2 s poll)."""
+    page.call("Runtime.evaluate", {"expression": "new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(()=>r(1))))",
+                                   "awaitPromise": True})
+
+
+def check(page, shot_name, expect_ids, attempts=5):
+    """Geometry checks plus decode; a screenshot taken mid-repaint is retried (up to `attempts`)."""
+    for i in range(attempts):
+        painted(page)
+        decoded, png = _check_once(page, expect_ids)
+        if all(decoded.values()) or i == attempts - 1:
+            save(png, shot_name)
+            return decoded
+        page.pump(0.3)
+
+
+def _check_once(page, expect_ids):
     g = json.loads(evaluate(page, GEOM))
     png = screenshot(page)
-    save(png, shot_name)
     assert (g["vw"], g["vh"]) == (800, 480)
     assert sorted(g["qrs"]) == sorted(expect_ids), g
     view = [0, 0, g["vw"], g["vh"]]
@@ -93,7 +126,7 @@ def check(page, shot_name, expect_ids):
         assert q["border"] >= 4, q
         assert quiet_zone_modules(png, q["svg"], q["viewBox"][2]) >= 3.9, qid
         decoded[qid] = decode(png, q["svg"])
-    return decoded
+    return decoded, png
 
 
 @pytest.mark.no_media

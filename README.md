@@ -194,12 +194,12 @@ Originals in `originals/` are only read, never changed. Animated GIFs are served
 ## Pairing a phone (MF-12)
 
 There is one owner (D6), who may pair several phones.
-- **Overlay:** with no paired phone, the frame shows a pairing overlay: a QR code, a 6-digit code, and the Wi-Fi name (from `MEMORYFRAME_SSID` or `deploy/hotspot.conf`). A still long-press of **3 s or more** on the screen shows it at any time.
+- **Overlay:** with no paired phone, the frame shows a pairing overlay: a QR code, a 6-digit code, and the Wi-Fi name (from `MEMORYFRAME_SSID` or `deploy/hotspot.conf`). Double-tap the screen to open the menu, then **Pair new device**, to show it at any time.
 - **Pairing:** scan the QR (it opens `http://10.42.0.1/pair?t=…`; tap "Pair this phone"), or open `http://10.42.0.1/pair` and type the code. Either lands on `/admin/`.
 - **Code rules:** codes and QR links are single-use and expire after 120 s. 5 wrong codes rotate the code. More than 10 attempts per minute from one phone get HTTP 429.
 - **Session:** the phone gets an HttpOnly, SameSite=Strict cookie (`mf_session`, valid 1 year). Only its SHA-256 is stored in the database.
 - **Access rules:** every `/admin/*` route redirects to `/pair` and every `/api/v1/*` route returns 401 without a session. The frame's own pairing routes (`/pairing/*`) are localhost only.
-- **Sign out all phones:** available on the site, or on the frame's overlay (long-press). It revokes every session; phones then re-pair.
+- **Sign out all phones:** available on the site, or in the frame's menu (double tap). It revokes every session; phones then re-pair.
 
 ## Web security (MF-13)
 
@@ -245,10 +245,10 @@ There is one owner (D6), who may pair several phones.
 ## On-device onboarding and menu (MF-19)
 
 - **No photos and no phone paired:** full onboarding. On the hotspot it shows **1. Join Wi-Fi** (a standard `WIFI:` QR), then **2. Open site** (the pairing QR) and the 6-digit code.
-- **Close:** every overlay has a Close button. It dismisses the onboarding and empty-library screens for the browser session, in every state including no photos, and a reboot or kiosk restart brings them back. While dismissed, only the small corner hint shows, and pairing stays in the long-press menu.
-- **Photos but no phone paired:** the slideshow runs. Only a small "Hold 3 s for menu to pair a phone" hint shows in the corner.
+- **Close:** every overlay has a Close button. It dismisses the onboarding and empty-library screens for the browser session, in every state including no photos, and a reboot or kiosk restart brings them back. While dismissed, only the small corner hint shows, and pairing stays in the menu (double tap).
+- **Photos but no phone paired:** the slideshow runs. Only a small "Double-tap for menu to pair a phone" hint shows in the corner. Double-tap the screen anywhere to open the menu.
 - **Paired but no photos:** a "No photos yet" screen.
-- **Still long-press of 3 s or more:** a menu with IP, Wi-Fi, site address, free storage, phones paired and version, plus **Pair new device** (always available), **Sign out all phones** and **Close**. Text is at least 24 px at 800x480.
+- **Double tap** (two quick taps on the same spot): a menu with IP, Wi-Fi, site address, free storage, phones paired and version, plus **Pair new device** (always available), **Sign out all phones** and **Close**. Text is at least 24 px at 800x480.
 - **Addresses follow the current network** (checked on every request):
   - **Hotspot** (the frame holds 10.42.0.1): `http://10.42.0.1/pair`, or `memoryframe.lan`.
   - **Home Wi-Fi:** `http://memoryframe.local/pair`, plus the frame's own IP as a fallback (e.g. `http://192.168.50.124/pair`).

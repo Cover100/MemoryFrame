@@ -6,9 +6,18 @@
 > Wi-Fi. Switching to product cuts off Pi Connect: only with the user present and the way back tested.
 > `deploy/netmode.sh status` shows `armed for next boot: …` and `current mode: …`.
 
-Product mode is the default. At boot `memoryframe-netmode.service` runs `deploy/netmode.sh boot`:
-the hotspot (`MemoryFrame-hotspot`, SSID `MemoryFrame-AP`) comes up and every Wi-Fi client profile
-gets `autoconnect=no`. Phones reach `http://10.42.0.1/`.
+Once armed (`sudo deploy/netmode.sh product`), `memoryframe-netmode.service` runs
+`deploy/netmode.sh boot` at every boot: the hotspot (`MemoryFrame-hotspot`, SSID `MemoryFrame-AP`) is
+brought up and verified, and only then made the preferred boot connection (its own
+`autoconnect=yes`, `autoconnect-priority=100`). **Home Wi-Fi profiles are never modified**
+(netplan-generated profiles would be rewritten in /etc/netplan). If the hotspot fails, the previous
+connection is brought back. Phones reach `http://10.42.0.1/`.
+
+**First product boot safety net:** after arming, if no phone joins the hotspot within
+`MEMORYFRAME_PRODUCT_CONFIRM_MIN` minutes (default 10, `0` = off; set in the service's
+environment), the frame reverts to developer mode and home Wi-Fi by itself and logs
+`no phone joined the hotspot within … min` (`journalctl -t memoryframe-netmode`). Once a phone has
+joined, later boots are not watched until product is armed again.
 
 There is **no** network-mode control in the frame menu or on the phone.
 
@@ -50,9 +59,8 @@ Switches are refused (exit 3) while another switch runs or an MF-18 Wi-Fi change
 
 From any PC, without network: open "bootfs", write `product` in `memoryframe-mode.txt` (deleting the file means developer default),
 optionally create `memoryframe-reset`, boot. The hotspot is back after one boot.
-To remove MF-36 completely: `sudo systemctl disable memoryframe-netmode.service` (the hotspot then
-no longer starts at boot; NetworkManager behaves as before MF-36, but client profiles keep
-`autoconnect=no` until changed with `nmcli connection modify <name> connection.autoconnect yes`).
+To remove MF-36 completely: `sudo systemctl disable memoryframe-netmode.service` and
+`sudo deploy/netmode.sh dev` (the hotspot loses its autoconnect; client profiles were never changed).
 
 ## Hardware test (blocked until U6; Tester)
 

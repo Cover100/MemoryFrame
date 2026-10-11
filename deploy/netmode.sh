@@ -28,8 +28,15 @@
 #                             product mode (the file is removed).
 #
 # Behaviour:
-#   product: every Wi-Fi client profile gets autoconnect=no; the hotspot profile is brought up.
-#            If that fails, the failure is recorded for the frame's error screen. Never reboots.
+#   NEVER modifies a non-MemoryFrame profile (home Wi-Fi profiles may be netplan-generated, and
+#   a modify writes back to /etc/netplan). Only MemoryFrame-* profiles are ever modified.
+#   product: the hotspot is brought up and VERIFIED first; only then is it made the preferred
+#            boot connection (MemoryFrame-hotspot autoconnect=yes, autoconnect-priority 100).
+#            If it fails, the previous connection (home Wi-Fi) is brought back and the failure is
+#            recorded for the frame's error screen. Never reboots.
+#            First product boot after arming: if no phone associates with the hotspot within
+#            MEMORYFRAME_PRODUCT_CONFIRM_MIN minutes (default 10; 0 = off), the frame reverts to
+#            developer mode / home Wi-Fi and logs it (product-watch, run via systemd-run).
 #   dev:     hotspot down, the dev profile up (waits up to MEMORYFRAME_DEV_WAIT s). If it
 #            doesn't connect: the hotspot is started for this boot only (the frame shows "Developer
 #            Wi-Fi not found"); client autoconnect and the mode file are left alone, so the next
@@ -40,7 +47,8 @@
 #
 # The frame app reads $STATE_DIR/netmode.json (no secrets in it).
 # Test hooks: NMCLI, MEMORYFRAME_BOOT_DIR, MEMORYFRAME_STATE_DIR, MEMORYFRAME_HOTSPOT_SH,
-# MEMORYFRAME_DEV_WAIT, MEMORYFRAME_BOOT_ID_FILE.
+# MEMORYFRAME_DEV_WAIT, MEMORYFRAME_BOOT_ID_FILE, MEMORYFRAME_VAR_DIR, SYSTEMD_RUN, IW,
+# MEMORYFRAME_PRODUCT_CONFIRM_MIN, MEMORYFRAME_CONFIRM_POLL.
 set -euo pipefail
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -52,6 +60,13 @@ HOTSPOT_SH="${MEMORYFRAME_HOTSPOT_SH:-$DIR/hotspot.sh}"
 DEV_WAIT="${MEMORYFRAME_DEV_WAIT:-45}"
 BOOT_ID_FILE="${MEMORYFRAME_BOOT_ID_FILE:-/proc/sys/kernel/random/boot_id}"
 IFACE="${MEMORYFRAME_IFACE:-wlan0}"
+VAR_DIR="${MEMORYFRAME_VAR_DIR:-/var/lib/memoryframe}"
+SYSTEMD_RUN="${SYSTEMD_RUN-systemd-run}"
+IW="${IW:-iw}"
+CONFIRM_MIN="${MEMORYFRAME_PRODUCT_CONFIRM_MIN:-10}"
+CONFIRM_POLL="${MEMORYFRAME_CONFIRM_POLL:-15}"
+SELF="$DIR/$(basename "$0")"
+CONFIRMED="$VAR_DIR/netmode-product-confirmed"   # a phone has joined the hotspot since product was armed
 
 MODE_FILE="$BOOT_DIR/memoryframe-mode.txt"
 WIFI_FILE="$BOOT_DIR/memoryframe-dev-wifi.txt"
@@ -60,6 +75,7 @@ STATE="$STATE_DIR/netmode.json"
 LOCK="$STATE_DIR/netmode.lock"
 PENDING="$STATE_DIR/wifi-change-pending"     # written by the MF-18 helper while a change is pending
 PENDING_CON="${MEMORYFRAME_PENDING_CON:-MemoryFrame-AP-pending}"
+OLD_CON="${MEMORYFRAME_OLD_CON:-MemoryFrame-hotspot-old}"   # only during wifi-commit
 NM_DIR="${MEMORYFRAME_NM_DIR:-/etc/NetworkManager/system-connections}"
 RESET_DONE=false
 
@@ -137,13 +153,13 @@ client_profiles() {
     done < <(profiles)
 }
 
-clients_autoconnect_off() {
-    local n
-    while IFS= read -r n; do
-        if [ "$(prop "$n" connection.autoconnect)" != no ]; then
-            "$NMCLI" connection modify "$n" connection.autoconnect no && log "autoconnect off: $n"
-        fi
-    done < <(client_profiles)
+hotspot_autoconnect() {   # yes|no: only ever the MemoryFrame hotspot profile is modified
+    local want="$1" prio=0
+    if [ "$want" = yes ]; then prio=100; fi
+    if [ "$(prop "$HOTSPOT_CON" connection.autoconnect)" != "$want" ]; then
+        "$NMCLI" connection modify "$HOTSPOT_CON" connection.autoconnect "$want" \
+            connection.autoconnect-priority "$prio" >/dev/null 2>&1 && log "hotspot autoconnect $want" || true
+    fi
 }
 
 json_str() { local s="${1//\\/\\\\}"; s="${s//\"/\\\"}"; printf '"%s"' "${s//[$'\t\r\n']/ }"; }
@@ -161,12 +177,14 @@ write_state() {   # mode requested dev_fallback hotspot_error
     mv "$STATE.tmp" "$STATE"
 }
 
-apply_product() {   # requested dev_fallback [keep-clients]
-    # keep-clients (dev fallback): client profiles keep autoconnect, so the home Wi-Fi is retried
-    # at the next boot; only an explicit product mode turns their autoconnect off.
-    if [ "${3:-}" != keep-clients ]; then clients_autoconnect_off; fi
-    if [ "$(active)" = "$HOTSPOT_CON" ]; then
+apply_product() {   # requested dev_fallback [fallback]
+    # Bring the hotspot up and VERIFY it before anything else changes. On failure the previous
+    # connection is restored. "fallback" (dev Wi-Fi missing): hotspot for this boot only, not preferred.
+    local prev try
+    prev="$(active)"
+    if [ "$prev" = "$HOTSPOT_CON" ]; then
         log "product: hotspot already active"
+        if [ "${3:-}" != fallback ]; then hotspot_autoconnect yes; fi
         write_state product "$1" "$2" false
         return 0
     fi
@@ -175,37 +193,26 @@ apply_product() {   # requested dev_fallback [keep-clients]
         write_state product "$1" "$2" true
         return 1
     fi
-    local try
     for try in 1 2; do
         if "$NMCLI" --wait 30 connection up "$HOTSPOT_CON" >/dev/null 2>&1 && [ "$(active)" = "$HOTSPOT_CON" ]; then
             log "product: hotspot up"
+            if [ "${3:-}" != fallback ]; then hotspot_autoconnect yes; fi
             write_state product "$1" "$2" false
             return 0
         fi
         log "product: hotspot activation failed (attempt $try)"
     done
+    if [ -n "$prev" ] && [ "$(active)" != "$prev" ]; then
+        log "product: restoring the previous connection ($prev)"
+        "$NMCLI" --wait "$DEV_WAIT" connection up "$prev" >/dev/null 2>&1 || log "could not restore $prev"
+    fi
     write_state product "$1" "$2" true
     return 1
 }
 
-clients_autoconnect_on() {   # undo product mode (dev from the boot partition)
-    local n
-    while IFS= read -r n; do
-        if [ "$(prop "$n" connection.autoconnect)" = no ]; then
-            "$NMCLI" connection modify "$n" connection.autoconnect yes && log "autoconnect on: $n"
-        fi
-    done < <(client_profiles)
-}
-
 left_by_product() {
-    # True only if product mode was applied before: there are client Wi-Fi profiles and every one
-    # has autoconnect=no. A normal dev Pi (home Wi-Fi autoconnects) -> false -> boot does nothing.
-    local n any=false
-    while IFS= read -r n; do
-        any=true
-        if [ "$(prop "$n" connection.autoconnect)" != no ]; then return 1; fi
-    done < <(client_profiles)
-    [ "$any" = true ]
+    # Product mode was applied before (the hotspot is the preferred boot connection).
+    profiles | grep -qxF "$HOTSPOT_CON" && [ "$(prop "$HOTSPOT_CON" connection.autoconnect)" = yes ]
 }
 
 dev_profile() {
@@ -228,9 +235,10 @@ apply_dev() {
     ssid="$(dev_ssid)"
     if ! p="$(dev_profile "$ssid")"; then
         log "dev: no matching NetworkManager Wi-Fi profile${ssid:+ for the configured ssid}; starting the hotspot"
-        apply_product dev true keep-clients || true
+        apply_product dev true fallback || true
         return 1
     fi
+    if profiles | grep -qxF "$HOTSPOT_CON"; then hotspot_autoconnect no; fi
     if [ "$(active)" = "$p" ]; then
         log "dev: already on $p"
         write_state dev dev false false
@@ -243,14 +251,47 @@ apply_dev() {
         return 0
     fi
     log "dev: developer Wi-Fi did not connect; starting the hotspot (mode file unchanged; retried next boot)"
-    apply_product dev true keep-clients || true
+    apply_product dev true fallback || true
     return 1
+}
+
+# ---------- first product boot: revert if no phone joins ----------
+
+station_seen() { "$IW" dev "$IFACE" station dump 2>/dev/null | grep -q '^Station '; }
+
+start_watch() {
+    if [ -e "$CONFIRMED" ] || [ "$CONFIRM_MIN" = 0 ] || [ "$(active)" != "$HOTSPOT_CON" ]; then return 0; fi
+    if [ -z "$SYSTEMD_RUN" ]; then return 0; fi
+    log "product: first product boot; reverting to developer mode if no phone joins within $CONFIRM_MIN min"
+    "$SYSTEMD_RUN" --unit=memoryframe-product-watch --collect --quiet "$SELF" product-watch \
+        >/dev/null 2>&1 || log "could not start the product-watch timer"
+}
+
+product_watch() {
+    local secs end
+    secs="$(awk -v m="$CONFIRM_MIN" 'BEGIN { if (m + 0 <= 0) m = 10; printf "%d", m * 60 + 0.999 }')"
+    end=$(( $(date +%s) + secs ))
+    while :; do
+        if station_seen; then
+            mkdir -p "$VAR_DIR"; : > "$CONFIRMED"
+            log "product: a phone joined the hotspot; product mode confirmed"
+            return 0
+        fi
+        if [ "$(date +%s)" -ge "$end" ]; then break; fi
+        sleep "$CONFIRM_POLL"
+    done
+    if [ "$(requested_mode)" != product ]; then return 0; fi
+    take_lock
+    log "product: no phone joined the hotspot within $CONFIRM_MIN min; reverting to developer mode (home Wi-Fi)"
+    write_mode_file dev
+    hotspot_autoconnect no
+    apply_dev || true
 }
 
 apply() {
     case "$1" in
         dev) apply_dev ;;
-        product) apply_product product false ;;
+        product) apply_product product false && start_watch ;;
         *)  # unarmed: developer default, nothing touched (current behaviour before MF-36)
             log "no product mode armed (memoryframe-mode.txt missing/empty): developer default, network left as is"
             write_state dev none false false ;;
@@ -318,10 +359,14 @@ require_product() {
 
 wifi_rollback() {
     require_product
+    # Restore whatever was active before wifi-apply (recorded in $PENDING; default the hotspot).
+    local prev=""
+    if [ -s "$PENDING" ]; then prev="$(head -n1 "$PENDING")"; fi
+    if [ -z "$prev" ] || [ "$prev" = "$PENDING_CON" ] || ! profiles | grep -qxF "$prev"; then prev="$HOTSPOT_CON"; fi
     if [ "$(active)" = "$PENDING_CON" ]; then "$NMCLI" connection down "$PENDING_CON" >/dev/null 2>&1 || true; fi
     local ok=0
-    if [ "$(active)" != "$HOTSPOT_CON" ]; then
-        "$NMCLI" --wait 30 connection up "$HOTSPOT_CON" >/dev/null 2>&1 || ok=1
+    if [ "$(active)" != "$prev" ]; then
+        "$NMCLI" --wait 30 connection up "$prev" >/dev/null 2>&1 || ok=1
     fi
     delete_pending_profile
     rm -f "$PENDING"
@@ -339,7 +384,12 @@ wifi_apply() {
     require_product
     if ! valid_ssid "$ssid" || ! valid_psk "$psk"; then log "wifi change refused: invalid name or password"; exit 2; fi
     if ! profiles | grep -qxF "$HOTSPOT_CON"; then log "wifi change refused: no hotspot profile"; exit 1; fi
-    : > "$PENDING"
+    local prev
+    prev="$(active)"
+    if [ "$prev" != "$HOTSPOT_CON" ]; then
+        log "wifi change refused: wlan0 is not on $HOTSPOT_CON (active: ${prev:-none})"; exit 3
+    fi
+    printf '%s\n' "$prev" > "$PENDING"          # rollback restores exactly this
     delete_pending_profile
     f="$NM_DIR/$PENDING_CON.nmconnection"
     mkdir -p "$NM_DIR"
@@ -369,14 +419,31 @@ wifi_apply() {
     exit 4
 }
 
+recover_commit() {   # boot: finish or undo a wifi-commit cut short by a power loss
+    if ! profiles | grep -qxF "$OLD_CON"; then return 0; fi
+    if profiles | grep -qxF "$HOTSPOT_CON"; then
+        log "boot: interrupted Wi-Fi commit: new hotspot profile in place, removing the old one"
+        "$NMCLI" connection delete "$OLD_CON" >/dev/null 2>&1 || true
+    else
+        log "boot: interrupted Wi-Fi commit: restoring the old hotspot profile"
+        "$NMCLI" connection modify "$OLD_CON" connection.id "$HOTSPOT_CON" >/dev/null 2>&1 || true
+    fi
+}
+
 wifi_commit() {
     require_product
     if ! profiles | grep -qxF "$PENDING_CON" || [ "$(active)" != "$PENDING_CON" ]; then
         log "wifi commit refused: no active pending profile"; exit 4
     fi
-    "$NMCLI" connection delete "$HOTSPOT_CON" >/dev/null 2>&1 || true
+    # Power-cut safe: rename old -> OLD_CON, pending -> HOTSPOT_CON, and only then delete the old
+    # one. At every point a hotspot profile exists; boot (recover_commit) finishes or undoes it.
+    if profiles | grep -qxF "$HOTSPOT_CON"; then
+        "$NMCLI" connection modify "$HOTSPOT_CON" connection.id "$OLD_CON"
+    fi
     "$NMCLI" connection modify "$PENDING_CON" connection.id "$HOTSPOT_CON"
+    "$NMCLI" connection modify "$HOTSPOT_CON" connection.autoconnect yes connection.autoconnect-priority 100 >/dev/null 2>&1 || true
     rm -f "$PENDING"
+    if profiles | grep -qxF "$OLD_CON"; then "$NMCLI" connection delete "$OLD_CON" >/dev/null 2>&1 || true; fi
     write_state product product false false
     log "wifi change kept"
 }
@@ -388,8 +455,10 @@ case "${1:-}" in
     wifi-rollback) take_lock nopending; wifi_rollback ;;
     product|dev)
         take_lock
+        if [ "$1" = product ]; then rm -f "$CONFIRMED"; fi   # explicit arm: watch the first product boot
         write_mode_file "$1"
         apply "$1" ;;
+    product-watch) product_watch ;;
     boot)
         take_lock nopending                   # a pending change is rolled back below
         if [ -e "$RESET_FILE" ]; then
@@ -401,6 +470,7 @@ case "${1:-}" in
                 "$HOTSPOT_SH" </dev/null >/dev/null 2>&1 || log "hotspot profile reset failed"
             fi
         fi
+        recover_commit
         if [ -e "$PENDING" ] || profiles | grep -qxF "$PENDING_CON"; then
             log "unconfirmed Wi-Fi change found at boot: rolling back"
             delete_pending_profile; rm -f "$PENDING"
@@ -413,7 +483,7 @@ case "${1:-}" in
             apply product || true
         elif left_by_product; then
             log "boot: product mode was applied before and is no longer armed: back to developer Wi-Fi"
-            clients_autoconnect_on
+            hotspot_autoconnect no
             apply_dev || true
         else
             log "boot: product mode not armed; developer default, network left as is (no-op)"

@@ -465,3 +465,19 @@ Rollback: `sudo deploy/network-setup.sh --remove`, set `Environment=MEMORYFRAME_
 1. On a phone, read the tag with NFC Tools. The record must be **URI `http://10.42.0.1/`**: http, not https.
 2. If it shows https:// (or a bare host that the browser upgrades to https), rewrite it: Write → URL/URI → prefix `http://` → `10.42.0.1/`.
 3. During a `hotspot.sh --test` window, tap the tag on the S22 Ultra. The frame site must open, not "null is unreachable".
+
+## Display copy size (MF-15 / MF-26)
+
+- Default `MEMORYFRAME_DISPLAY_SIZE` is **1000x600**, exactly the 5:3 screen, so the copy is the visible picture.
+- The Pi has a systemd drop-in that sets `MEMORYFRAME_DISPLAY_SIZE`, and it overrides the EnvironmentFile. Find and remove it:
+  ```
+  systemctl cat memoryframe | grep -n DISPLAY_SIZE
+  sudo rm /etc/systemd/system/memoryframe.service.d/<that file>
+  sudo systemctl daemon-reload
+  ```
+- After deploying, regenerate the copies (originals are untouched), then restart the service:
+  ```
+  cd ~/Documents/GitHub/MemoryFrame && .venv/bin/python -m memoryframe display-copies --force
+  sudo systemctl restart memoryframe
+  ```
+- Check: `python3 -c "from PIL import Image; import glob as g; print({Image.open(p).size for p in g.glob('/var/lib/memoryframe/display/*.jpg')})"` should print `{(1000, 600)}`. Photos smaller than 1000x600 keep their native size.

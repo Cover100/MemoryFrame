@@ -66,6 +66,14 @@ chmod +x "$APP_DIR/deploy/netmode.sh"
 sudo systemctl daemon-reload
 # MF-36: applied at the NEXT boot (enabling does not switch the network now).
 sudo systemctl enable memoryframe-netmode.service
+# MF-49: narrow sudoers rule for the frame's "Shut down" menu item (only systemctl poweroff).
+sed -e "s#@USER@#$APP_USER#g" "$APP_DIR/deploy/memoryframe-poweroff-sudoers" > "/tmp/memoryframe-poweroff.$$"
+if sudo visudo -cf "/tmp/memoryframe-poweroff.$$" >/dev/null; then
+    sudo install -o root -g root -m 0440 "/tmp/memoryframe-poweroff.$$" /etc/sudoers.d/memoryframe-poweroff
+else
+    echo "WARNING: poweroff sudoers rule failed visudo; Shut down from the menu will not work." >&2
+fi
+rm -f "/tmp/memoryframe-poweroff.$$"
 sudo systemctl enable memoryframe.service
 sudo systemctl restart memoryframe.service
 

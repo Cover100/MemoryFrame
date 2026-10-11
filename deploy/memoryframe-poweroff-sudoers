@@ -1,0 +1,3 @@
+# MF-49: the frame's "Shut down" menu item. Installed by deploy/install.sh as
+# /etc/sudoers.d/memoryframe-poweroff (mode 0440, checked with visudo). Nothing else is allowed.
+@USER@ ALL=(root) NOPASSWD: /usr/bin/systemctl poweroff

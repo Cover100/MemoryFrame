@@ -169,6 +169,29 @@
         $(id).addEventListener("pointerdown", (e)=> e.stopPropagation());
     }
     button("menuClose", closeMenu);
+
+    // ---------- MF-49: shut down ----------
+    const shutdownOverlay = $("shutdownOverlay");
+    let shuttingDown = false;
+    button("menuShutdown", ()=>{
+        closeMenu();
+        $("shutdownAsk").hidden = false; $("shutdownDone").hidden = true; $("shutdownError").hidden = true;
+        shutdownOverlay.classList.add("visible");
+    });
+    button("shutdownCancel", ()=>{ if(!shuttingDown){ shutdownOverlay.classList.remove("visible"); } });
+    button("shutdownConfirm", async ()=>{
+        if(shuttingDown){ return; }
+        shuttingDown = true;
+        let ok = false;
+        try{
+            const meta = document.querySelector('meta[name="mf-frame-token"]');
+            ok = (await fetch("/frame/shutdown", {method: "POST",
+                headers: {"X-Frame-Token": meta ? meta.content : ""}})).ok;
+        }catch(e){ console.warn(e); }
+        if(!ok){ shuttingDown = false; $("shutdownError").hidden = false; return; }
+        $("shutdownAsk").hidden = true;
+        $("shutdownDone").hidden = false;
+    });
     button("menuPair", ()=>{ closeMenu(); onDemand = true; tick(); });
     button("menuSignOut", async ()=>{
         await fetch("/pairing/sign-out-all", {method: "POST"});

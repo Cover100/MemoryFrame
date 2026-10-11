@@ -4,6 +4,7 @@ Read routes are open (the kiosk and, later, the phone preview use them).
 Write routes are localhost-only (security.localhost_only): only the kiosk
 running on the frame itself may change display state.
 """
+import logging
 import os
 
 from flask import (Blueprint, abort, current_app, jsonify, redirect, render_template, request,
@@ -13,6 +14,8 @@ from . import brightness as bl
 from . import imaging, storage
 from .db import get_db
 from .security import is_local_request, localhost_only
+
+log = logging.getLogger(__name__)
 
 bp = Blueprint("display", __name__)
 
@@ -32,7 +35,7 @@ def index():
     # Decided by the TCP peer address (request.remote_addr), never by the Host header.
     if not is_local_request():
         return redirect("/admin/", code=302)
-    return render_template("index.html", media=get_media())
+    return render_template("index.html", media=get_media(), frame_token=frame_token())
 
 
 @bp.route("/media")
@@ -133,3 +136,44 @@ def set_brightness():
         return jsonify({"status": "error", "message": "Could not write backlight brightness."}), 503
     return jsonify({"status": "success", "supported": True, "brightness": value,
                     "minimum": minimum, "maximum": maximum})
+
+
+
+# ---------------- MF-49: shut down (kiosk only) ----------------
+
+POWEROFF_CMD = ["sudo", "-n", "/usr/bin/systemctl", "poweroff"]
+POWEROFF_DELAY = 3.0          # let the frame paint "Safe to unplug" first
+
+
+def frame_token():
+    """Per-process token embedded only in the kiosk page: CSRF protection for frame actions."""
+    import secrets
+    ext = current_app.extensions
+    if "mf_frame_token" not in ext:
+        ext["mf_frame_token"] = secrets.token_urlsafe(24)
+    return ext["mf_frame_token"]
+
+
+@bp.route("/frame/shutdown", methods=["POST"])
+@localhost_only
+def shutdown():
+    import hmac
+    import subprocess
+    import threading
+    sent = request.headers.get("X-Frame-Token", "")
+    if not sent or not hmac.compare_digest(sent.encode(), frame_token().encode()):
+        abort(403)
+    cmd = list(current_app.config.get("POWEROFF_CMD") or POWEROFF_CMD)
+    delay = float(current_app.config.get("POWEROFF_DELAY", POWEROFF_DELAY))
+
+    def run():
+        try:
+            subprocess.run(cmd, timeout=30, check=False)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            log.warning("poweroff failed: %s", type(e).__name__)
+
+    log.warning("shutdown requested from the frame menu")
+    t = threading.Timer(delay, run)
+    t.daemon = True
+    t.start()
+    return jsonify({"shutting_down": True})

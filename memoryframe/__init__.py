@@ -29,6 +29,9 @@ def create_app(config=None):
     storage.ensure_layout(app.config["DATA_DIR"])
     db.init_app(app)
     _sweep(app)
+    if not app.config.get("TESTING") or app.config.get("WIFI_STARTUP_CHECK"):
+        from . import wifi
+        wifi.startup_check(app)
     _refresh_copies_in_background(app)
     from . import websec
     websec.init_app(app)
@@ -40,6 +43,8 @@ def create_app(config=None):
 
     app.register_blueprint(display_bp)
     app.register_blueprint(admin_bp, url_prefix="/admin")
+    from .wifi import bp as wifi_bp
+    app.register_blueprint(wifi_bp, url_prefix="/admin/wifi")
     app.register_blueprint(api_bp, url_prefix="/api/v1")
     app.register_blueprint(pairing_bp)
 

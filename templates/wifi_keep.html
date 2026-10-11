@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<title>Keep new Wi-Fi?</title>
+<link rel="stylesheet" href="/static/pair.css">
+<link rel="stylesheet" href="/static/wifi.css">
+{% if result == "kept" %}<meta http-equiv="refresh" content="2;url=/admin/">{% elif not result or result == "wrongnet" %}<meta http-equiv="refresh" content="5">{% endif %}
+</head>
+<body>
+{% if result == "kept" %}
+<h1 id="kept">✓ Wi-Fi updated</h1>
+{% elif result == "late" %}
+<h1>Keep new Wi-Fi?</h1>
+<p class="err" role="alert">Too late, the old Wi-Fi is back. Join "{{ old }}" and try again.</p>
+<p><a href="/admin/">Back</a></p>
+{% elif result == "failed" %}
+<h1>Keep new Wi-Fi?</h1>
+<p class="err" role="alert">Couldn't start the new Wi-Fi. Nothing was changed.</p>
+<p><a href="/admin/">Back</a></p>
+{% else %}
+<h1>Keep new Wi-Fi?</h1>
+<p>You're connected to "{{ ssid }}". Tap to keep it. Other phones will need to join it too.</p>
+{% if result == "wrongnet" %}<p class="err" role="alert">Join "{{ ssid }}" first, then open http://10.42.0.1/ again.</p>{% endif %}
+<form method="post" action="/admin/wifi/keep">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button type="submit" id="keepBtn">Keep new Wi-Fi</button>
+</form>
+<p class="grey">Old Wi-Fi returns in <span id="remaining">{{ remaining }}</span></p>
+{% endif %}
+</body>
+</html>

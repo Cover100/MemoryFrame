@@ -19,7 +19,8 @@ bp = Blueprint("pairing", __name__)
 
 
 def ssid():
-    return frameinfo.hotspot_conf()[0]
+    from .wifi import current_wifi
+    return current_wifi(get_db())[0]
 
 
 QR_BORDER = 4
@@ -39,7 +40,8 @@ def _state():
     base = frameinfo._safe(current_app.config.get("PAIR_BASE_URL")) or urls["primary"]
     fallback = None if current_app.config.get("PAIR_BASE_URL") else urls["fallback"]
     conn = get_db()
-    name, password = frameinfo.hotspot_conf()
+    from . import wifi
+    name, password = wifi.current_wifi(conn)
     out = {"paired": auth.paired_count(conn), "ssid": name, "url": base + "/pair", "round": None,
            "network": urls["mode"], "url_fallback": fallback + "/pair" if fallback else None,
            "site_url": base + "/", "media": conn.execute("SELECT COUNT(*) FROM media WHERE hidden = 0").fetchone()[0],
@@ -49,6 +51,7 @@ def _state():
     if (out["paired"] == 0 and urls["mode"] == "hotspot" and name and password
             and frameinfo.show_wifi_qr(conn)):
         out["wifi_qr_svg"] = qr_svg(frameinfo.wifi_qr_payload(name, password))
+    out["wifi_change"] = wifi.frame_state(conn)
     nm = frameinfo.netmode_state()
     lan_ip = None
     if nm["mode"] == "dev":                     # the only place a LAN IP is shown (6a, dev only)
@@ -116,7 +119,8 @@ def pair():
 @bp.route("/frame/status")
 @localhost_only
 def frame_status():
-    name, _ = frameinfo.hotspot_conf()
+    from .wifi import current_wifi
+    name, _ = current_wifi(get_db())
     urls = frameinfo.site_urls()
     return jsonify({"ips": frameinfo.own_ips(), "ssid": name, "version": frameinfo.version(),
                     "network": urls["mode"], "site": urls["primary"] + "/", "site_fallback":

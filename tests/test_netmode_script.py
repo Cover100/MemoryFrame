@@ -17,6 +17,10 @@ SECRET = "hunter2-very-secret"
 # Profiles: $D/p/<name>/{type,mode,ssid,autoconnect}. Active: $D/active. Failing ups: $D/fail.
 FAKE_NMCLI = r'''#!/bin/bash
 D="$STUB_DIR"; echo "nmcli $*" >> "$D/log"
+if [ -f "$D/crash_at" ] && [[ "$*" == *" modify "* || "$*" == *" delete "* ]]; then   # power cut
+  n=$(( $(cat "$D/crash_at") - 1 )); echo "$n" > "$D/crash_at"
+  if [ "$n" -lt 0 ]; then rm -f "$D/crash_at"; kill -9 "$PPID"; exit 137; fi
+fi
 [ "$1" = --wait ] && shift 2
 case "$1 $2" in
   "-g NAME") ls "$D/p"; exit 0;;
@@ -28,10 +32,20 @@ if [ "$1" = -g ] && [ "$3 $4" = "connection show" ]; then
     connection.type) cat "$f/type";; 802-11-wireless.mode) cat "$f/mode";;
     802-11-wireless.ssid) cat "$f/ssid";; connection.autoconnect) cat "$f/autoconnect";;
     connection.timestamp) cat "$f/ts" 2>/dev/null || echo 0;;
+    connection.uuid) cat "$f/uuid" 2>/dev/null || echo "uuid-$5";;
   esac; exit 0
 fi
 case "$1 $2" in
-  "connection modify") echo "$5" > "$D/p/$3/autoconnect"; [ -n "$7" ] && echo "$7" > "$D/p/$3/prio";;
+  "connection modify")
+    if [ "$4" = connection.id ]; then
+      mv "$D/p/$3" "$D/p/$5"; [ "$(cat "$D/active")" = "$3" ] && echo "$5" > "$D/active"
+    else echo "$5" > "$D/p/$3/autoconnect"; [ -n "$7" ] && echo "$7" > "$D/p/$3/prio"; fi;;
+  "connection load")
+    n="$(sed -n 's/^id=//p' "$3")"; mkdir -p "$D/p/$n"
+    echo 802-11-wireless > "$D/p/$n/type"; echo ap > "$D/p/$n/mode"; echo no > "$D/p/$n/autoconnect"
+    echo "uuid-new-$RANDOM$RANDOM" > "$D/p/$n/uuid"
+    cp "$3" "$D/p/$n/keyfile";;
+  "connection delete") rm -rf "$D/p/$3"; [ "$(cat "$D/active")" = "$3" ] && : > "$D/active";;
   "connection up")
     [ -d "$D/p/$3" ] || exit 10
     grep -qxF "$3" "$D/fail" 2>/dev/null && { : > "$D/active"; exit 4; }   # NM drops the old one
@@ -70,7 +84,7 @@ def env(tmp_path):
     boot, state = tmp_path / "boot", tmp_path / "run"
     boot.mkdir()
     (tmp_path / "boot_id").write_text("boot-1\n")
-    e = dict(os.environ, STUB_DIR=str(d), NMCLI=str(nm), MEMORYFRAME_BOOT_DIR=str(boot),
+    e = dict(os.environ, STUB_DIR=str(d), MEMORYFRAME_NM_DIR=str(tmp_path / "nm"), NMCLI=str(nm), MEMORYFRAME_BOOT_DIR=str(boot),
              MEMORYFRAME_STATE_DIR=str(state), MEMORYFRAME_DEV_WAIT="1",
              MEMORYFRAME_BOOT_ID_FILE=str(tmp_path / "boot_id"),
              MEMORYFRAME_HOTSPOT_SH=str(tmp_path / "hotspot.sh"), IW=str(d / "iw"),
@@ -79,8 +93,9 @@ def env(tmp_path):
     return {"d": d, "boot": boot, "state": state, "env": e, "tmp": tmp_path}
 
 
-def run(env, *args):
-    return subprocess.run(["bash", str(SCRIPT), *args], env=env["env"], capture_output=True, text=True, timeout=30)
+def run(env, *args, input=None):
+    return subprocess.run(["bash", str(SCRIPT), *args], env=env["env"], capture_output=True, text=True,
+                          timeout=30, input=input)
 
 
 def active(env):
@@ -116,7 +131,8 @@ def test_product_mode_file_boots_product(env):
     assert ac(env, HOT) == "yes" and (env["d"] / "p" / HOT / "prio").read_text().strip() == "100"
     s = state(env)
     assert s == {"mode": "product", "requested": "product", "dev_fallback": False, "hotspot_error": False,
-                 "active": HOT, "boot_id": "boot-1"}
+                 "active": HOT, "boot_id": "boot-1", "reset": False, "reset": False,
+                 "hotspot_uuid": "uuid-MemoryFrame-hotspot", "wifi_profiles": False, "commit_recovered": False}
 
 
 # ---------- SAFETY: nothing but an explicit "product" arms product mode ----------
@@ -336,7 +352,129 @@ def test_shellcheck_clean():
 def test_service_unit():
     unit = (ROOT / "deploy" / "memoryframe-netmode.service").read_text()
     assert "Type=oneshot" in unit and "Before=memoryframe.service" in unit
-    assert "netmode.sh boot" in unit and "Restart=" not in unit
+    assert "memoryframe-netmode boot" in unit and "Restart=" not in unit
+
+
+def test_sudoers_only_the_three_wifi_commands():
+    rule = [l for l in (ROOT / "deploy" / "memoryframe-sudoers").read_text().splitlines()
+            if l.strip() and not l.startswith("#")]
+    assert len(rule) == 1
+    cmds = [c.strip() for c in rule[0].split("NOPASSWD:", 1)[1].split(",")]
+    assert cmds == [f"/usr/local/sbin/memoryframe-netmode {c}" for c in ("wifi-apply", "wifi-commit", "wifi-rollback")]
+    assert "ALL=(root)" in rule[0] and "*" not in rule[0]
+
+
+# ---------- MF-18 helper: wifi-apply / wifi-commit / wifi-rollback ----------
+
+PENDING = "MemoryFrame-AP-pending"
+NEWPW = "n3w pass\\word!"
+
+
+@pytest.fixture
+def on_hotspot(env):
+    (env["boot"] / "memoryframe-mode.txt").write_text("product\n")
+    run(env, "boot")
+    assert active(env) == HOT
+    return env
+
+
+def test_apply_reads_stdin_keeps_old_and_never_logs(on_hotspot):
+    env = on_hotspot
+    r = run(env, "wifi-apply", input=f"Café Frame\n{NEWPW}\n")
+    assert r.returncode == 0, r.stderr
+    assert active(env) == PENDING and HOT in os.listdir(env["d"] / "p")
+    kf = (env["tmp"] / "nm" / f"{PENDING}.nmconnection")
+    assert oct(kf.stat().st_mode & 0o777) == "0o600"
+    body = kf.read_text()
+    assert "psk=n3w pass\\\\word!" in body and "mode=ap" in body and "autoconnect=false" in body
+    assert "ssid=67;97;102;195;169;32;70;114;97;109;101;" in body          # UTF-8 bytes, no escaping issues
+    assert (env["state"] / "wifi-change-pending").exists()
+    logs = r.stderr + (env["d"] / "log").read_text() + (env["state"] / "netmode.json").read_text()
+    assert "n3w pass" not in logs and "Café" not in (env["d"] / "log").read_text()
+
+
+def test_mode_switch_refused_while_pending(on_hotspot):
+    env = on_hotspot
+    run(env, "wifi-apply", input=f"New\n{NEWPW}\n")
+    assert run(env, "dev").returncode == 3
+    assert run(env, "wifi-apply", input=f"Other\n{NEWPW}\n").returncode == 3      # second change
+
+
+def test_commit_leaves_exactly_one_ap_profile(on_hotspot):
+    env = on_hotspot
+    run(env, "wifi-apply", input=f"New\n{NEWPW}\n")
+    r = run(env, "wifi-commit")
+    assert r.returncode == 0, r.stderr
+    aps = [n for n in os.listdir(env["d"] / "p") if (env["d"] / "p" / n / "mode").read_text().strip() == "ap"]
+    assert aps == [HOT] and (env["d"] / "p" / HOT / "keyfile").exists()
+    assert not (env["state"] / "wifi-change-pending").exists()
+    assert run(env, "dev").returncode == 0                                  # switches allowed again
+
+
+def test_rollback_restores_old_and_deletes_pending(on_hotspot):
+    env = on_hotspot
+    run(env, "wifi-apply", input=f"New\n{NEWPW}\n")
+    assert run(env, "wifi-rollback").returncode == 0
+    assert active(env) == HOT and PENDING not in os.listdir(env["d"] / "p")
+    assert not (env["tmp"] / "nm" / f"{PENDING}.nmconnection").exists()
+    assert not (env["state"] / "wifi-change-pending").exists()
+
+
+def test_activation_failure_rolls_back(on_hotspot):
+    env = on_hotspot
+    (env["d"] / "fail").write_text(PENDING + "\n")
+    r = run(env, "wifi-apply", input=f"New\n{NEWPW}\n")
+    assert r.returncode == 4
+    assert active(env) == HOT and PENDING not in os.listdir(env["d"] / "p")
+
+
+@pytest.mark.parametrize("data", ["\nabcdefgh\n", "x" * 33 + "\nabcdefgh\n", "ok\nshort\n", "ok\n" + "a" * 64 + "\n",
+                                  "ok\npässwort1\n", "a\tb\nabcdefgh\n"])
+def test_apply_validates(on_hotspot, data):
+    env = on_hotspot
+    assert run(env, "wifi-apply", input=data).returncode == 2
+    assert active(env) == HOT and not (env["state"] / "wifi-change-pending").exists()
+
+
+def test_apply_refused_in_dev_mode(env):
+    run(env, "dev")
+    assert run(env, "wifi-apply", input=f"New\n{NEWPW}\n").returncode == 3
+
+
+def test_commit_without_pending_refused(on_hotspot):
+    assert run(on_hotspot, "wifi-commit").returncode == 4
+
+
+def test_boot_rolls_back_unconfirmed_change(on_hotspot):
+    env = on_hotspot
+    run(env, "wifi-apply", input=f"New\n{NEWPW}\n")
+    run(env, "boot")
+    assert active(env) == HOT and PENDING not in os.listdir(env["d"] / "p")
+    assert not (env["state"] / "wifi-change-pending").exists()
+
+
+@pytest.mark.parametrize("state_file", ["missing", "garbage", "dev"])
+def test_apply_refused_unless_product_applied(env, state_file):
+    """#41 SAFETY: a missing netmode.json means dev: the helper does nothing to home Wi-Fi."""
+    env["state"].mkdir(parents=True, exist_ok=True)
+    if state_file == "garbage":
+        (env["state"] / "netmode.json").write_text("{nope")
+    elif state_file == "dev":
+        run(env, "boot")                                     # no mode file -> dev, no-op
+    for cmd in ("wifi-apply", "wifi-rollback", "wifi-commit"):
+        r = run(env, cmd, input=f"New\n{NEWPW}\n")
+        assert r.returncode != 0
+    assert active(env) == HOME and mutations(env) == []
+    assert ac(env, HOME) == "yes" and PENDING not in os.listdir(env["d"] / "p")
+    assert not (env["state"] / "wifi-change-pending").exists()
+
+
+def test_reset_flag_in_state(env):
+    (env["boot"] / "memoryframe-reset").write_text("")
+    run(env, "boot")
+    assert state(env)["reset"] is True
+
+
 
 
 # ---------- SAFETY: the boot service is a strict no-op on a dev Pi ----------
@@ -446,3 +584,82 @@ def test_watch_disabled_with_zero(env):
     env["env"]["MEMORYFRAME_PRODUCT_CONFIRM_MIN"] = "0"
     run(env, "product")
     assert not (env["d"] / "sdrun").exists()
+
+
+
+# ---------- Tester #41 ----------
+
+def test_apply_requires_active_hotspot(on_hotspot):
+    env = on_hotspot
+    (env["d"] / "active").write_text(HOME + "\n")            # product applied, but wlan0 is on home Wi-Fi
+    r = run(env, "wifi-apply", input=f"New\n{NEWPW}\n")
+    assert r.returncode == 3 and "not on MemoryFrame-hotspot" in r.stderr
+    assert active(env) == HOME and PENDING not in os.listdir(env["d"] / "p")
+    assert not (env["state"] / "wifi-change-pending").exists()
+
+
+def test_rollback_restores_the_previously_active_connection(on_hotspot):
+    env = on_hotspot
+    run(env, "wifi-apply", input=f"New\n{NEWPW}\n")
+    assert (env["state"] / "wifi-change-pending").read_text().strip() == HOT
+    assert run(env, "wifi-rollback").returncode == 0
+    assert active(env) == HOT
+    # whatever was recorded is what comes back
+    run(env, "wifi-apply", input=f"New\n{NEWPW}\n")
+    (env["state"] / "wifi-change-pending").write_text(OTHER + "\n")
+    assert run(env, "wifi-rollback").returncode == 0
+    assert active(env) == OTHER
+
+
+def test_commit_renames_before_deleting(on_hotspot):
+    env = on_hotspot
+    run(env, "wifi-apply", input=f"New\n{NEWPW}\n")
+    before = len((env["d"] / "log").read_text().splitlines())
+    assert run(env, "wifi-commit").returncode == 0
+    steps = [l for l in (env["d"] / "log").read_text().splitlines()[before:] if " modify " in l or " delete " in l]
+    i_new = next(i for i, l in enumerate(steps) if f"modify {PENDING} connection.id {HOT}" in l)
+    i_del = next(i for i, l in enumerate(steps) if " delete " in l)
+    assert i_new < i_del and f"delete MemoryFrame-hotspot-old" in steps[i_del]
+    assert sorted(n for n in os.listdir(env["d"] / "p") if n.startswith("MemoryFrame")) == [HOT]
+
+
+@pytest.mark.parametrize("cut", [0, 1, 2, 3])
+def test_power_cut_during_commit_never_leaves_no_hotspot(on_hotspot, cut):
+    env = on_hotspot
+    run(env, "wifi-apply", input=f"New\n{NEWPW}\n")
+    (env["d"] / "crash_at").write_text(str(cut))
+    run(env, "wifi-commit")                                  # killed at the cut-th modify/delete
+    names = os.listdir(env["d"] / "p")
+    assert any(n in names for n in (HOT, "MemoryFrame-hotspot-old", PENDING))   # some AP profile survives
+    (env["d"] / "crash_at").unlink(missing_ok=True)
+    (env["d"] / "active").write_text("\n")                  # reboot
+    run(env, "boot")
+    aps = sorted(n for n in os.listdir(env["d"] / "p") if n.startswith("MemoryFrame"))
+    assert aps == [HOT] and active(env) == HOT
+
+
+
+def test_boot_finishing_a_commit_records_it_for_the_app(on_hotspot):
+    env = on_hotspot
+    r = run(env, "wifi-apply", input=f"New\n{NEWPW}\n")
+    uuid = r.stdout.strip().split("uuid=", 1)[1]
+    assert uuid.startswith("uuid-new-")
+    (env["d"] / "crash_at").write_text("2")                  # cut after pending -> hotspot rename
+    run(env, "wifi-commit")
+    (env["d"] / "crash_at").unlink(missing_ok=True)
+    (env["d"] / "active").write_text("\n")
+    run(env, "boot")
+    s = state(env)
+    assert s["commit_recovered"] is True and s["hotspot_uuid"] == uuid and s["wifi_profiles"] is False
+
+
+def test_boot_undoing_a_commit_is_not_recovered(on_hotspot):
+    env = on_hotspot
+    run(env, "wifi-apply", input=f"New\n{NEWPW}\n")
+    (env["d"] / "crash_at").write_text("1")                  # cut after old -> -old rename only
+    run(env, "wifi-commit")
+    (env["d"] / "crash_at").unlink(missing_ok=True)
+    (env["d"] / "active").write_text("\n")
+    run(env, "boot")
+    s = state(env)
+    assert s["commit_recovered"] is False and s["wifi_profiles"] is False

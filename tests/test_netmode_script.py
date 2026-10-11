@@ -543,48 +543,17 @@ def test_hotspot_verified_before_it_is_made_preferred(env):
     assert up < mod
 
 
-# ---------- Tester #40 (4): first product boot reverts if no phone joins ----------
+# ---------- MF-51: product mode never falls back (no no-phone timer) ----------
 
-def test_first_product_boot_starts_watch_once(env):
+def test_product_never_falls_back_without_phone(env):
     run(env, "product")
-    sd = (env["d"] / "sdrun").read_text()
-    assert "--unit=memoryframe-product-watch" in sd and sd.rstrip().endswith("product-watch")
-    (env["tmp"] / "var").mkdir(exist_ok=True)
-    (env["tmp"] / "var" / "netmode-product-confirmed").write_text("")
-    (env["d"] / "sdrun").unlink()
-    run(env, "boot")                                          # confirmed -> no watch on later boots
-    assert not (env["d"] / "sdrun").exists()
-    run(env, "product")                                       # explicit re-arm -> watched again
-    assert (env["d"] / "sdrun").exists()
-
-
-def test_no_phone_within_timeout_reverts_to_home_wifi(env):
-    run(env, "product")
-    assert active(env) == HOT
-    env["env"]["MEMORYFRAME_PRODUCT_CONFIRM_MIN"] = "0.005"   # 0.3 s
-    r = run(env, "product-watch")
-    assert r.returncode == 0, r.stderr
-    assert "no phone joined the hotspot" in r.stderr
-    assert active(env) == HOME and ac(env, HOT) == "no"
-    assert (env["boot"] / "memoryframe-mode.txt").read_text().strip() == "dev"
-    assert state(env)["mode"] == "dev" and foreign_modifies(env) == []
-
-
-def test_phone_joins_confirms_product(env):
-    run(env, "product")
-    (env["d"] / "stations").write_text("Station aa:bb:cc:dd:ee:ff (on wlan0)\n")
-    env["env"]["MEMORYFRAME_PRODUCT_CONFIRM_MIN"] = "0.005"
-    r = run(env, "product-watch")
-    assert r.returncode == 0 and active(env) == HOT
-    assert (env["tmp"] / "var" / "netmode-product-confirmed").exists()
+    for _ in range(2):
+        run(env, "boot")
+    assert active(env) == HOT and ac(env, HOT) == "yes"
+    assert not (env["d"] / "sdrun").exists()                 # no watch/timer is ever started
+    assert run(env, "product-watch").returncode == 2         # subcommand removed
     assert (env["boot"] / "memoryframe-mode.txt").read_text().strip() == "product"
-
-
-def test_watch_disabled_with_zero(env):
-    env["env"]["MEMORYFRAME_PRODUCT_CONFIRM_MIN"] = "0"
-    run(env, "product")
-    assert not (env["d"] / "sdrun").exists()
-
+    assert "CONFIRM_MIN" not in SCRIPT.read_text() and "product-watch" not in SCRIPT.read_text()
 
 
 # ---------- Tester #41 ----------

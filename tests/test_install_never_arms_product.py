@@ -59,7 +59,8 @@ def test_install_text_never_arms_product():
 
 def test_install_then_reboot_on_dev_pi_keeps_home_wifi(env, tmp_path):
     log = install(tmp_path, env)
-    assert "netmode.sh" not in log                           # helper never run by install
+    assert not re.search(r"^netmode\.sh ", log, re.M)        # helper never EXECUTED by install (copying is fine)
+    assert not re.search(r"memoryframe-netmode (product|dev|boot)", log)
     assert "systemctl enable memoryframe-netmode.service" in log
     assert not re.search(r"systemctl (start|restart) memoryframe-netmode", log)
     assert not (env["boot"] / "memoryframe-mode.txt").exists()

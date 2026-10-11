@@ -76,7 +76,7 @@ READ_ONLY_GET_ENDPOINTS = {
     "static", "display.index", "display.media", "display.uploads", "display.healthz",
     "display.get_brightness", "admin.home", "api.status",
     "pairing.state", "pairing.pair_page", "pairing.frame_status", "admin.upload_page", "api.storage",
-    "admin.library_page", "api.list_media", "api.thumb", "display.show_now_state",
+    "admin.library_page", "wifi.page", "wifi.keep_page", "api.list_media", "api.thumb", "display.show_now_state",
 }
 
 

@@ -267,14 +267,16 @@ delete_pending_profile() {
 }
 
 wifi_rollback() {
-    [ "$(active)" = "$PENDING_CON" ] && "$NMCLI" connection down "$PENDING_CON" >/dev/null 2>&1 || true
+    if [ "$(active)" = "$PENDING_CON" ]; then "$NMCLI" connection down "$PENDING_CON" >/dev/null 2>&1 || true; fi
     local ok=0
     if [ "$(active)" != "$HOTSPOT_CON" ]; then
         "$NMCLI" --wait 30 connection up "$HOTSPOT_CON" >/dev/null 2>&1 || ok=1
     fi
     delete_pending_profile
     rm -f "$PENDING"
-    write_state product product false "$([ "$ok" = 0 ] && echo false || echo true)"
+    local err=false
+    if [ "$ok" != 0 ]; then err=true; fi
+    write_state product product false "$err"
     log "wifi change rolled back"
     return "$ok"
 }

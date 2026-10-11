@@ -3,7 +3,7 @@
 Every route requires a paired session (MF-12); unauthenticated requests are
 redirected to /pair. Upload (MF-14) and the library (MF-16) add the real pages.
 """
-from flask import Blueprint, redirect, render_template
+from flask import Blueprint, redirect, render_template, request
 
 from . import auth
 from .db import get_db
@@ -14,7 +14,7 @@ bp.before_request(auth.require_session("admin"))
 
 @bp.route("/")
 def home():
-    return render_template("admin_home.html")
+    return render_template("admin_home.html", just_paired=request.args.get("paired") == "1")
 
 
 @bp.route("/sign-out-all", methods=["POST"])

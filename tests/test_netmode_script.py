@@ -96,7 +96,8 @@ def mutations(env):
 
 # ---------- product ----------
 
-def test_no_mode_file_boots_product(env):
+def test_product_mode_file_boots_product(env):
+    (env["boot"] / "memoryframe-mode.txt").write_text("product\n")
     r = run(env, "boot")
     assert r.returncode == 0, r.stderr
     assert active(env) == HOT
@@ -106,7 +107,47 @@ def test_no_mode_file_boots_product(env):
                  "active": HOT, "boot_id": "boot-1"}
 
 
+# ---------- SAFETY: nothing but an explicit "product" arms product mode ----------
+
+@pytest.mark.parametrize("text", [None, "", "\n\n", "   \n", "nonsense\n", "prod\n"])
+def test_missing_empty_or_unknown_mode_file_is_dev_and_touches_nothing(env, text):
+    if text is not None:
+        (env["boot"] / "memoryframe-mode.txt").write_text(text)
+    for _ in range(2):                                        # two simulated reboots
+        r = run(env, "boot")
+        assert r.returncode == 0, r.stderr
+    assert active(env) == HOME                                # home Wi-Fi kept
+    assert ac(env, HOME) == "yes" and ac(env, OTHER) == "yes"
+    assert mutations(env) == []                               # no up/down/modify at all
+    assert state(env)["mode"] == "dev" and state(env)["requested"] == "none"
+    after = (env["boot"] / "memoryframe-mode.txt")
+    assert (after.read_text() if after.exists() else None) == text   # never written by boot
+
+
+def test_status_shows_armed_vs_current(env):
+    out = run(env, "status").stdout
+    assert "armed for next boot: dev (no mode file" in out
+    run(env, "boot")
+    out = run(env, "status").stdout
+    assert "current mode: dev" in out and f"active: {HOME}" in out
+    (env["boot"] / "memoryframe-mode.txt").write_text("product\n")   # armed, not yet applied
+    out = run(env, "status").stdout
+    assert "armed for next boot: product" in out and "current mode: dev" in out
+    assert active(env) == HOME
+
+
+def test_dev_fallback_keeps_client_autoconnect(env):
+    (env["boot"] / "memoryframe-mode.txt").write_text("dev\n")
+    (env["d"] / "fail").write_text(HOME + "\n")
+    (env["d"] / "active").write_text("\n")                 # home Wi-Fi down at boot
+    run(env, "boot")
+    assert active(env) == HOT and state(env)["dev_fallback"] is True
+    assert ac(env, HOME) == "yes" and ac(env, OTHER) == "yes"   # next boot retries home Wi-Fi
+    assert (env["boot"] / "memoryframe-mode.txt").read_text() == "dev\n"
+
+
 def test_product_idempotent(env):
+    (env["boot"] / "memoryframe-mode.txt").write_text("product\n")
     run(env, "boot")
     before = len(mutations(env))
     r = run(env, "boot")
@@ -114,7 +155,7 @@ def test_product_idempotent(env):
     assert sorted(os.listdir(env["d"] / "p")) == sorted([HOT, HOME, OTHER, "Wired connection 1"])
 
 
-@pytest.mark.parametrize("text", ["", "\n\n", "nonsense\n", "PRODUCT\r\n", "  product  \n"])
+@pytest.mark.parametrize("text", ["product", "PRODUCT\r\n", "  product  \n", "\nproduct\n"])
 def test_mode_file_variants_mean_product(env, text):
     (env["boot"] / "memoryframe-mode.txt").write_text(text)
     run(env, "boot")
@@ -123,6 +164,7 @@ def test_mode_file_variants_mean_product(env, text):
 
 def test_hotspot_failure_recorded_no_error_exit_at_boot(env):
     (env["d"] / "fail").write_text(HOT + "\n")
+    (env["boot"] / "memoryframe-mode.txt").write_text("product\n")
     r = run(env, "boot")
     assert r.returncode == 0                               # never fails the unit / no reboot loop
     s = state(env)
@@ -132,6 +174,7 @@ def test_hotspot_failure_recorded_no_error_exit_at_boot(env):
 
 def test_missing_hotspot_profile_is_error_not_created(env):
     shutil.rmtree(env["d"] / "p" / HOT)
+    (env["boot"] / "memoryframe-mode.txt").write_text("product\n")
     run(env, "boot")
     assert state(env)["hotspot_error"] is True
     assert HOT not in os.listdir(env["d"] / "p")
@@ -212,9 +255,9 @@ def test_boot_file_returns_to_product_without_network(env):
     run(env, "boot")
     assert active(env) == HOT
     run(env, "dev")
-    (env["boot"] / "memoryframe-mode.txt").unlink()        # deleted on a PC
+    (env["boot"] / "memoryframe-mode.txt").unlink()        # deleted on a PC: developer default
     run(env, "boot")
-    assert active(env) == HOT
+    assert active(env) == HOME                             # left as is (dev)
 
 
 def test_reset_file_recreates_hotspot_and_forces_product(env):
@@ -256,7 +299,7 @@ def test_status_prints_mode_and_active(env):
     (env["boot"] / "memoryframe-mode.txt").write_text("dev\n")
     run(env, "boot")
     out = run(env, "status").stdout
-    assert "requested: dev" in out and "mode: product" in out and f"active: {HOT}" in out
+    assert "armed for next boot: dev" in out and "current mode: product" in out and f"active: {HOT}" in out
     assert "Developer Wi-Fi not found" in out or "developer Wi-Fi not found" in out
 
 

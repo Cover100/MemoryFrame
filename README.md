@@ -253,8 +253,12 @@ There is one owner (D6), who may pair several phones.
 
 ## Product mode and developer mode (MF-36)
 
-The frame boots into **product mode**: its own hotspot, phones at `http://10.42.0.1/`. Developer
-mode (home Wi-Fi) is only reachable from the boot partition (`memoryframe-mode.txt` = `dev`) or the
-shell (`sudo deploy/netmode.sh dev`). Dev Wi-Fi credentials stay in the existing NetworkManager
+**Product mode** (its own hotspot, phones at `http://10.42.0.1/`) is armed ONLY by an explicit
+`sudo deploy/netmode.sh product`, which writes `memoryframe-mode.txt` = `product` on the boot
+partition (or by the `memoryframe-reset` recovery file). `install.sh`, upgrades and reboots never
+arm it: with no mode file the frame stays in developer mode on home Wi-Fi and the boot service
+changes nothing. `deploy/netmode.sh status` shows `armed for next boot:` and `current mode:`.
+Switching to product cuts off Pi Connect: only do it with the user present and the way back tested.
+Back to developer mode: `sudo deploy/netmode.sh dev`, or `dev` in (or deleting) the mode file. Dev Wi-Fi credentials stay in the existing NetworkManager
 profile; boot-partition files never hold a password. See
 [docs/runbooks/MF-36-product-mode.md](docs/runbooks/MF-36-product-mode.md).

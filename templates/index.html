@@ -179,6 +179,28 @@
 
 <script src="/static/script.js"></script>
 
+<!-- MF-36 (frame only): dev-mode banner, dev Wi-Fi fallback toast, hotspot error screen -->
+<div id="devBanner" class="dev-banner" hidden></div>
+<div id="devToast" class="dev-toast" hidden>
+    <div class="dev-toast-title">Developer Wi-Fi not found, hotspot started</div>
+    <div class="dev-toast-sub">The saved developer Wi-Fi didn't connect. Fix it over SSH or a keyboard.</div>
+</div>
+<div id="hotspotError" class="hotspot-error" hidden>
+    <div class="hotspot-error-card">
+        <h2>Memory Frame Wi-Fi didn't start</h2>
+        <p>Phones can't connect right now. Photos already on the frame will keep showing.</p>
+        <p>To fix it:</p>
+        <ol>
+            <li>Turn the frame off and take out the SD card.</li>
+            <li>Put the card in a computer and open the drive called "bootfs".</li>
+            <li>Create an empty file named memoryframe-reset (no extension).</li>
+            <li>If there is a file named memoryframe-mode.txt, make sure it only says: product</li>
+            <li>Put the card back and turn the frame on. Wait 1 minute.</li>
+        </ol>
+        <p class="hotspot-error-foot">Still not working? Restart the frame once. If this screen comes back, ask for help.</p>
+        <button id="hotspotErrorClose" type="button">Close</button>
+    </div>
+</div>
 <script src="/static/pairing.js"></script>
 
 

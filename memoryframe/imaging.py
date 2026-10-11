@@ -88,12 +88,12 @@ def make_display_copy(src, dst, target, max_bytes=MAX_BYTES):
             im = bg
         # Crop first, in original pixels, where the framing rules say (MF-26 / Designer):
         # the visible 5:3 window, expanded to the target aspect. Then scale down only.
-        from . import framing
-        box = framing.crop_box(im.size, target)
+        from . import faces, framing
+        box = framing.crop_box(im.size, target, faces.detect(im))   # MF-26: [] -> no-face rules
         if box != (0, 0) + im.size:
             im = im.crop(box)
         if im.width > target[0] or im.height > target[1]:
-            im = im.resize(target, Image.LANCZOS)
+            im = im.resize(target, Image.LANCZOS)          # box has the target aspect: no distortion
         tmp = dst + ".tmp"
         while True:
             for q in QUALITIES:
@@ -106,7 +106,7 @@ def make_display_copy(src, dst, target, max_bytes=MAX_BYTES):
             im = im.resize((max(1, int(im.width * 0.9)), max(1, int(im.height * 0.9))), Image.LANCZOS)
 
 
-COPY_VERSION = "v2"     # bump when crop/size rules change: existing copies are then remade
+COPY_VERSION = "mf26c"  # bump when crop/size rules change: existing copies are then remade
 _current = {}           # path -> (mtime, target) known to be current (avoids re-reading headers)
 
 
@@ -124,6 +124,10 @@ def copy_is_current(path, target):
             return True
         with Image.open(path) as im:
             ok = im.info.get("comment") == copy_marker(target)
+        if ok:                                           # truncated write: no JPEG EOI marker
+            with open(path, "rb") as f:
+                f.seek(-2, os.SEEK_END)
+                ok = f.read(2) == b"\xff\xd9"
     except Exception:  # noqa: BLE001
         return False
     if ok:
@@ -150,22 +154,80 @@ def ensure_display_copy(data_dir, stored_name, target):
     return dst
 
 
+FAILURES_FILE = ".copy-failures.json"
+
+
+def _load_failures(data_dir):
+    import json
+    try:
+        with open(os.path.join(data_dir, "display", FAILURES_FILE)) as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_failures(data_dir, failures):
+    import json
+    path = os.path.join(data_dir, "display", FAILURES_FILE)
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path + ".tmp", "w") as f:
+            json.dump(failures, f)
+        os.replace(path + ".tmp", path)
+    except OSError as e:
+        log.warning("could not record display copy failures: %s", e)
+
+
+def _failure_key(original, target):
+    """Changes when the original appears/changes or the rules/size change -> retried then."""
+    try:
+        st = os.stat(original)
+        orig = f"{st.st_size}:{int(st.st_mtime)}"
+    except OSError:
+        orig = "missing"
+    return f"{orig}|{copy_marker(target).decode()}"
+
+
 def backfill(conn, data_dir, target, force=False):
-    """Create missing or stale display copies for every image. Returns (made, failed)."""
+    """Create missing or stale display copies for every image. Returns (made, failed).
+
+    A copy only counts as made if a current copy exists afterwards. A failure (missing or
+    unreadable original) is counted as failed and recorded in display/.copy-failures.json,
+    so later runs (every start-up) skip it until the original, the rules or the size change,
+    or --force is used."""
     made = failed = 0
+    failures = {} if force else _load_failures(data_dir)
+    before = dict(failures)
     rows = conn.execute("SELECT stored_name FROM media WHERE kind = 'image' ORDER BY id").fetchall()
     for (name,) in rows:
         if not needs_copy(name):
             continue
         dst = os.path.join(data_dir, "display", display_name(name))
+        original = os.path.join(data_dir, "originals", name)
         if force and os.path.exists(dst):
             os.remove(dst)
         if os.path.exists(dst) and copy_is_current(dst, target):
+            failures.pop(name, None)
             continue
-        if ensure_display_copy(data_dir, name, target) == dst:
+        key = _failure_key(original, target)
+        if failures.get(name) == key:
+            failed += 1                                  # known failure: skipped, not retried
+            continue
+        if not os.path.exists(original):
+            log.warning("display copy skipped for %s: original is missing", name)
+            ok = False
+        else:
+            ensure_display_copy(data_dir, name, target)
+            ok = os.path.exists(dst) and copy_is_current(dst, target)
+        if ok:
             made += 1
+            failures.pop(name, None)
         else:
             failed += 1
+            failures[name] = key
+    if failures != before:
+        _save_failures(data_dir, failures)
     return made, failed
 
 

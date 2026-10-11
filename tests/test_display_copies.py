@@ -173,30 +173,11 @@ def test_display_copy_never_exceeds_target(tmp_path, w, h):
     assert (w, h) != (1080, 2312) or im.size == (1000, 750)  # was 1000x2141
 
 
-def test_tall_portrait_crop_is_centred(tmp_path):
-    im = Image.new("RGB", (1000, 3000), (255, 0, 0))
-    im.paste((0, 255, 0), (0, 1200, 1000, 1800))                # green band in the middle
-    src, dst = tmp_path / "s.jpg", tmp_path / "d.jpg"
-    im.save(src, quality=95)
-    imaging.make_display_copy(str(src), str(dst), (1000, 750))
-    out = Image.open(dst).convert("RGB")
-    assert out.size == (1000, 750)
-    g = out.getpixel((500, 375))
-    assert g[1] > 200 and g[0] < 60
-
-
 def test_noisy_very_tall_portrait_under_300kb(tmp_path):
     src, dst = tmp_path / "s.jpg", tmp_path / "d.jpg"
     src.write_bytes(jpeg(1000, 5000, noise=True))
     w, h, n = imaging.make_display_copy(str(src), str(dst), (1000, 750))
     assert n <= imaging.MAX_BYTES and w <= 1000 and h <= 750
-
-
-def test_cover_crop_box():
-    assert imaging.cover_crop_box((1000, 1333), (1000, 750)) == (0, 291, 1000, 1041)
-    assert imaging.cover_crop_box((1333, 750), (1000, 750)) == (166, 0, 1166, 750)
-    assert imaging.cover_crop_box((500, 400), (1000, 750)) == (0, 0, 500, 400)
-    assert imaging.cover_crop_box((800, 1067), (800, 600)) == (0, 233, 800, 833)
 
 
 def test_default_display_size_is_1000x750(mf_app, monkeypatch):
@@ -213,3 +194,38 @@ def test_noisy_photos_under_300kb_at_1000x750(tmp_path, w, h):
     src.write_bytes(jpeg(w, h, noise=True))
     cw, ch, n = imaging.make_display_copy(str(src), str(dst), (1000, 750))
     assert n <= imaging.MAX_BYTES <= 300 * 1024 and cw <= 1000 and ch <= 750
+
+
+
+@pytest.mark.parametrize("value,expected", [("1000x750", (1000, 750)), ("320x320", (320, 320)),
+                                            ("4000x4000", (4000, 4000)), (" 800X600 ", (800, 600))])
+def test_parse_target_bounds_ok(value, expected):
+    assert imaging.parse_target(value) == expected
+
+
+@pytest.mark.parametrize("value", ["10x10", "319x750", "1000x319", "4001x750", "99999x99999", "0x0", "abc", ""])
+def test_parse_target_out_of_range_falls_back(value, caplog):
+    with pytest.raises(ValueError):
+        imaging.parse_target(value)
+    assert imaging.target_or_default(value) == (1000, 750)
+    assert "using 1000x750" in caplog.text
+
+
+def test_app_falls_back_on_bad_display_size(tmp_path, monkeypatch, caplog):
+    from memoryframe import create_app
+    monkeypatch.setenv("MEMORYFRAME_DISPLAY_SIZE", "99999x99999")
+    monkeypatch.setenv("MEMORYFRAME_DATA_DIR", str(tmp_path / "data"))
+    app = create_app({"TESTING": True})
+    assert app.config["DISPLAY_TARGET"] == (1000, 750) and "99999x99999" in caplog.text
+
+
+def test_force_regeneration_leaves_originals_unchanged(mf_app, lib, monkeypatch):
+    import hashlib
+    lib.add("a.jpg", jpeg(3000, 4000))
+    lib.add("b.jpg", jpeg(1600, 1200, exif=gps_exif()))
+    odir = os.path.join(mf_app.config["DATA_DIR"], "originals")
+    before = {f: hashlib.sha256(open(os.path.join(odir, f), "rb").read()).hexdigest() for f in os.listdir(odir)}
+    monkeypatch.setenv("MEMORYFRAME_DATA_DIR", mf_app.config["DATA_DIR"])
+    assert cli.main(["display-copies", "--force"]) in (0, None)
+    after = {f: hashlib.sha256(open(os.path.join(odir, f), "rb").read()).hexdigest() for f in os.listdir(odir)}
+    assert before == after and len(after) == 2

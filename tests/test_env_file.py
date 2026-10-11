@@ -77,3 +77,10 @@ def test_display_size_key(tmp_path):
         assert run(tmp_path, "MEMORYFRAME_DISPLAY_SIZE", bad).returncode == 2, bad
     assert run(tmp_path, "MEMORYFRAME_DISPLAY_SIZE", "").returncode == 0
     assert "DISPLAY_SIZE" not in content(tmp_path)
+
+
+@pytest.mark.parametrize("value,ok", [("320x320", True), ("4000x4000", True), ("1000x750", True),
+                                      ("319x750", False), ("1000x4001", False), ("10x10", False),
+                                      ("99999x99999", False), ("0320x320", False)])
+def test_display_size_bounds(tmp_path, value, ok):
+    assert (run(tmp_path, "MEMORYFRAME_DISPLAY_SIZE", value).returncode == 0) == ok

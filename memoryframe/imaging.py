@@ -34,14 +34,27 @@ except ImportError:            # pragma: no cover
 _lock = threading.Lock()
 
 
+MIN_SIDE, MAX_SIDE = 320, 4000
+
+
 def parse_target(value):
+    """'WxH' -> (w, h); each side must be 320-4000. Raises ValueError otherwise."""
     try:
-        w, h = (int(x) for x in str(value).lower().split("x"))
-        if w > 0 and h > 0:
+        w, h = (int(x) for x in str(value).strip().lower().split("x"))
+        if MIN_SIDE <= w <= MAX_SIDE and MIN_SIDE <= h <= MAX_SIDE:
             return w, h
     except ValueError:
         pass
-    raise ValueError(f"display size must look like 800x600, got {value!r}")
+    raise ValueError(f"display size must look like 1000x750 (each side {MIN_SIDE}-{MAX_SIDE}), got {value!r}")
+
+
+def target_or_default(value):
+    """parse_target, but an invalid/out-of-range value falls back to the default and is logged."""
+    try:
+        return parse_target(value)
+    except ValueError as e:
+        log.warning("%s; using %s", e, DEFAULT_TARGET)
+        return parse_target(DEFAULT_TARGET)
 
 
 def display_name(stored_name):
@@ -62,15 +75,6 @@ def cover_size(size, target):
     return max(tw, round(w * scale)), max(th, round(h * scale))
 
 
-def cover_crop_box(size, target):
-    """Centred crop to what object-fit: cover can actually show on a target-sized screen.
-    E.g. a portrait 800x1067 copy for 800x600 keeps only the middle 800x600; smaller sides stay."""
-    w, h = size
-    cw, ch = min(w, target[0]), min(h, target[1])
-    left, top = (w - cw) // 2, (h - ch) // 2
-    return (left, top, left + cw, top + ch)
-
-
 def make_display_copy(src, dst, target, max_bytes=MAX_BYTES):
     """Write the display copy atomically. Returns (width, height, bytes)."""
     if Image is None:
@@ -82,12 +86,14 @@ def make_display_copy(src, dst, target, max_bytes=MAX_BYTES):
             rgba = im.convert("RGBA")
             bg.paste(rgba, mask=rgba.getchannel("A"))
             im = bg
-        size = cover_size(im.size, target)
-        if size != im.size:
-            im = im.resize(size, Image.LANCZOS)
-        box = cover_crop_box(im.size, target)
+        # Crop first, in original pixels, where the framing rules say (MF-26 / Designer):
+        # the visible 5:3 window, expanded to the target aspect. Then scale down only.
+        from . import framing
+        box = framing.crop_box(im.size, target)
         if box != (0, 0) + im.size:
             im = im.crop(box)
+        if im.width > target[0] or im.height > target[1]:
+            im = im.resize(target, Image.LANCZOS)
         tmp = dst + ".tmp"
         while True:
             for q in QUALITIES:

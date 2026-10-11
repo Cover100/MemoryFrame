@@ -181,8 +181,8 @@ The slideshow never loads the original files. For every image, a JPEG **display 
 
 Originals in `originals/` are only read, never changed. Animated GIFs are served as originals.
 
-- **Target size:** `MEMORYFRAME_DISPLAY_SIZE`, default **`1000x750`** (U3 decided: size B). Set it with `deploy/env-file.sh MEMORYFRAME_DISPLAY_SIZE WxH`. After changing it, or after upgrading from an older version, run `python -m memoryframe display-copies --force`.
-- **Cover-crop cap:** copies are cut to what `object-fit: cover` actually shows. A portrait photo becomes a centred 1000x750 crop, not 1000x1333 or 1000x2141, and a panorama becomes 1000 wide. Each copy stays at or under 300 KB.
+- **Target size:** `MEMORYFRAME_DISPLAY_SIZE`, default **`1000x750`** (U3 decided: size B). Set it with `deploy/env-file.sh MEMORYFRAME_DISPLAY_SIZE WxH` (each side 320-4000; out-of-range values fall back to 1000x750 and are logged). After changing it, or after upgrading from an older version, run `python -m memoryframe display-copies --force`.
+- **Cover-crop cap:** copies are cut to what `object-fit: cover` actually shows. Copies are cropped with Designer's framing rules (`memoryframe/framing.py`). First the visible 5:3 window is chosen; with no face, portraits centre it at 30% of the height, 4:3/3:2 landscapes put 35% of the spare height above, very tall images (aspect ≤ 0.56) start 15% down, and panoramas (aspect ≥ 2.2) are centred. Then it is expanded to 4:3 around its centre, so CSS cover on 800x480 (rows 75-675 of 750) shows exactly that window. The screen aspect is one constant (`SCREEN_ASPECT`); a 1000x600 target makes the copy equal the window, not 1000x1333 or 1000x2141, and a panorama becomes 1000 wide. Each copy stays at or under 300 KB.
 - **New photos:** the copy is made when the photo is added, or on its first request.
 - **Existing photos:** `python -m memoryframe display-copies` creates the missing copies (`install.sh` runs it).
 - **HEIC/HEIF** from phones is accepted through `pillow-heif` (wheels exist for Pi aarch64 / Python 3.13). The original `.heic` is kept, and the display gets a JPEG copy.

@@ -21,7 +21,11 @@ case "$key" in
     MEMORYFRAME_MAX_MEGAPIXELS)
         [[ -z "$value" || "$value" =~ ^[1-9][0-9]{0,3}$ ]] || { echo "Invalid megapixels (1-9999): $value" >&2; exit 2; } ;;
     MEMORYFRAME_DISPLAY_SIZE)
-        [[ -z "$value" || "$value" =~ ^[1-9][0-9]{1,4}x[1-9][0-9]{1,4}$ ]] || { echo "Invalid display size (WxH, e.g. 800x600): $value" >&2; exit 2; } ;;
+        if [ -n "$value" ]; then
+            [[ "$value" =~ ^([1-9][0-9]{2,3})x([1-9][0-9]{2,3})$ ]] \
+                && (( BASH_REMATCH[1] >= 320 && BASH_REMATCH[1] <= 4000 && BASH_REMATCH[2] >= 320 && BASH_REMATCH[2] <= 4000 )) \
+                || { echo "Invalid display size (WxH, each side 320-4000, e.g. 1000x750): $value" >&2; exit 2; }
+        fi ;;
     *) echo "Unsupported key: $key" >&2; exit 2 ;;
 esac
 

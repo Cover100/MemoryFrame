@@ -141,7 +141,7 @@ def phone_pair(server, code):
     html = opener.open(server + "pair").read().decode()
     token = re.search(r'name="csrf_token" value="([^"]+)"', html).group(1)
     form = urllib.parse.urlencode({"code": code, "csrf_token": token}).encode()
-    assert opener.open(urllib.request.Request(server + "pair", data=form)).geturl().endswith("/admin/")
+    assert opener.open(urllib.request.Request(server + "pair", data=form)).geturl().endswith("/admin/?paired=1")
 
 
 def visible(page, el_id):
@@ -209,6 +209,8 @@ def test_state_a_no_photos_no_phone_full_onboarding_on_hotspot(page, server, mf_
 
     phone_pair(server, code)
     page.pump(2.5)
+    assert overlay(page)["visible"] and "Phone paired" in text(page, "pairSuccess")   # MF-33: 3 s
+    page.pump(3.5)
     assert not overlay(page)["visible"]
     assert visible(page, "emptyOverlay")                   # paired, still no photos -> state C
     assert page.exceptions() == [], fmt(page.exceptions())
@@ -270,7 +272,9 @@ def test_menu_pair_and_sign_out_with_phone(page, server, mf_app, net):
     page.pump(0.5)
     assert menu_info(page)["ssid"] == "Frame-WiFi (hotspot)"
     evaluate(page, "document.getElementById('menuSignOut').click()")
-    page.pump(2.5)
+    page.pump(0.3)
+    evaluate(page, "document.getElementById('confirmSignOut').click()")       # MF-31: confirm first
+    page.pump(4.5)
     assert not overlay(page)["visible"] and visible(page, "pairHint")   # photos exist -> hint only
     assert page.exceptions() == [], fmt(page.exceptions())
 

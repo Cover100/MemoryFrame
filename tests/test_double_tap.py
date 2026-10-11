@@ -21,6 +21,13 @@ def move(page, x, y):
 
 
 def tap(page, x=400, y=240, down=0.05):
+    """A finger tap (pointerType "touch"): only touch double taps open the menu."""
+    page.call("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": x, "y": y}]})
+    time.sleep(down)
+    page.call("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+
+
+def click(page, x=400, y=240, down=0.05):
     press(page, x, y)
     time.sleep(down)
     release(page, x, y)
@@ -128,9 +135,11 @@ def test_double_tap_while_menu_open_does_not_stack(ready):
     assert menu_open(ready)
     calls = evaluate(ready, "(()=>{window.__opens=0;const m=document.getElementById('menuOverlay');"
                             "new MutationObserver(()=>window.__opens++).observe(m,{attributes:true});return 0;})()")
-    tap(ready, 30, 30)                         # on the dimmed overlay, not a button
+    r = evaluate(ready, "(()=>{const b=document.querySelector('#menuBox .menuTitle').getBoundingClientRect();"
+                        "return [b.left+b.width/2,b.top+b.height/2];})()")
+    tap(ready, r[0], r[1])                     # inside the menu card (not a button)
     time.sleep(0.1)
-    tap(ready, 30, 30)
+    tap(ready, r[0], r[1])
     ready.pump(0.5)
     assert evaluate(ready, "window.__opens") == 0 and calls == 0
 
@@ -141,3 +150,17 @@ def test_hint_text(page, server, mf_app, net):
         assert text(page, "pairHint") == "Double-tap for menu to pair a phone"
     html = evaluate(page, "document.body.innerHTML")
     assert "Hold 3 s" not in html
+
+
+
+def test_mouse_double_click_does_not_open_menu(ready):
+    click(ready)
+    time.sleep(0.1)
+    click(ready)
+    ready.pump(0.5)
+    assert not menu_open(ready)
+    tap(ready)                                    # a touch double tap still works
+    time.sleep(0.1)
+    tap(ready)
+    ready.pump(0.5)
+    assert menu_open(ready)

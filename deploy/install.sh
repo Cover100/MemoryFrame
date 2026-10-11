@@ -60,9 +60,18 @@ fi
 echo "== systemd service"
 sed -e "s#@USER@#$APP_USER#g" -e "s#@APP_DIR@#$APP_DIR#g" \
     "$APP_DIR/deploy/memoryframe.service" | sudo tee /etc/systemd/system/memoryframe.service >/dev/null
+# MF-36/MF-18: root-owned copy of the network helper (the checkout is writable by the app user).
+sudo install -o root -g root -m 0755 "$APP_DIR/deploy/netmode.sh" /usr/local/sbin/memoryframe-netmode
 sed -e "s#@APP_DIR@#$APP_DIR#g" \
     "$APP_DIR/deploy/memoryframe-netmode.service" | sudo tee /etc/systemd/system/memoryframe-netmode.service >/dev/null
-chmod +x "$APP_DIR/deploy/netmode.sh"
+SUDOERS_TMP="$(mktemp)"
+sed -e "s#@USER@#$APP_USER#g" "$APP_DIR/deploy/memoryframe-sudoers" > "$SUDOERS_TMP"
+if sudo visudo -cf "$SUDOERS_TMP" >/dev/null; then
+    sudo install -o root -g root -m 0440 "$SUDOERS_TMP" /etc/sudoers.d/memoryframe
+else
+    echo "WARNING: sudoers rule failed visudo -c; Frame Wi-Fi changes will be unavailable" >&2
+fi
+rm -f "$SUDOERS_TMP"
 sudo systemctl daemon-reload
 # MF-36: applied at the NEXT boot (enabling does not switch the network now).
 sudo systemctl enable memoryframe-netmode.service

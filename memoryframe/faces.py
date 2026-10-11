@@ -21,6 +21,8 @@ CONF_MIN = 0.80
 BUDGET_S = 1.5          # slower than this -> treat as no faces (Designer 8.5)
 
 _lock = threading.Lock()
+STUCK_S = 60.0          # lock held longer than this -> a detector call is hung (warn once)
+_held_since = None      # monotonic time the current holder took _lock (None = free)
 _logged = set()
 
 
@@ -53,21 +55,34 @@ def _run_detector(arr):
     return rows
 
 
+def _check_stuck():
+    """Warn once per hung holder if the detector lock has been held for more than STUCK_S."""
+    since = _held_since
+    if since is not None and time.monotonic() - since > STUCK_S:
+        _once(("stuck", since), "face detector lock held for over %d s (detector call hung?); "
+              "using no-face framing until it returns", int(STUCK_S))
+
+
 def _run_with_budget(arr, budget):
     """Run the detector in a worker thread; give up after `budget` s (the worker finishes on
     its own and its result is discarded). Returns rows, or None on timeout/error/busy."""
     deadline = time.monotonic() + budget                # lock wait + detection share one budget
     if budget <= 0 or not _lock.acquire(timeout=budget):   # one detection at a time
+        _check_stuck()
         log.warning("face detection over its %.1f s budget; using no-face framing", BUDGET_S)
         return None
+    global _held_since
+    _held_since = time.monotonic()
     box = {}
 
     def work():
+        global _held_since
         try:
             box["rows"] = _run_detector(arr)
         except Exception as e:  # noqa: BLE001
             box["err"] = e
         finally:
+            _held_since = None
             _lock.release()
 
     th = threading.Thread(target=work, name="mf-face-detect", daemon=True)

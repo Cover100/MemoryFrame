@@ -85,7 +85,7 @@ log() {
     logger -t memoryframe-netmode -- "$*" 2>/dev/null || true
 }
 
-usage() { echo "usage: $0 product|dev|status|boot|wifi-apply|wifi-commit|wifi-rollback" >&2; exit 2; }
+usage() { echo "usage: $0 product|dev|dev-temp|status|boot|wifi-apply|wifi-commit|wifi-rollback" >&2; exit 2; }
 
 trim() { local s="${1//$'\r'/}"; s="${s#"${s%%[![:space:]]*}"}"; printf '%s' "${s%"${s##*[![:space:]]}"}"; }
 
@@ -100,12 +100,12 @@ requested_mode() {
         done < "$MODE_FILE"
     fi
     line="$(printf '%s' "$line" | tr '[:upper:]' '[:lower:]')"
-    # SAFETY (Delivery Lead/Tester): only an explicit "product" arms product mode. Missing, empty
-    # or unknown -> "none": developer default, the network is left exactly as it is.
+    # MF-51: every boot is product mode (the hotspot) unless the file explicitly says "dev"
+    # (the dev Pi's persistent guard and the offline recovery path). Missing/empty/unknown -> product.
     case "$line" in
         product|dev) echo "$line" ;;
-        "") echo none ;;
-        *) log "memoryframe-mode.txt: unknown mode, treating as developer default (network unchanged)"; echo none ;;
+        "") echo product ;;
+        *) log "memoryframe-mode.txt: unknown mode, using product (write 'dev' to force developer mode)"; echo product ;;
     esac
 }
 
@@ -239,28 +239,29 @@ dev_profile() {
     [ -n "$best" ] && printf '%s\n' "$best"
 }
 
-apply_dev() {
-    local ssid p
+apply_dev() {   # [temp]: MF-51 menu "Dev mode" until reboot (hotspot profile left untouched)
+    local ssid p temp="${1:-}" req=dev
+    if [ "$temp" = temp ]; then req=dev-temp; fi
     ssid="$(dev_ssid)"
     if ! p="$(dev_profile "$ssid")"; then
         log "dev: no matching NetworkManager Wi-Fi profile${ssid:+ for the configured ssid}; starting the hotspot"
-        apply_product dev true fallback || true
+        apply_product "$req" true fallback || true
         return 1
     fi
-    if profiles | grep -qxF "$HOTSPOT_CON"; then hotspot_autoconnect no; fi
+    if [ "$temp" != temp ] && profiles | grep -qxF "$HOTSPOT_CON"; then hotspot_autoconnect no; fi
     if [ "$(active)" = "$p" ]; then
         log "dev: already on $p"
-        write_state dev dev false false
+        write_state dev "$req" false false
         return 0
     fi
     if [ "$(active)" = "$HOTSPOT_CON" ]; then "$NMCLI" connection down "$HOTSPOT_CON" >/dev/null 2>&1 || true; fi
     if "$NMCLI" --wait "$DEV_WAIT" connection up "$p" >/dev/null 2>&1 && [ "$(active)" = "$p" ]; then
-        log "dev: connected ($p)"
-        write_state dev dev false false
+        log "dev: connected ($p)${temp:+ until the next reboot}"
+        write_state dev "$req" false false
         return 0
     fi
     log "dev: developer Wi-Fi did not connect; starting the hotspot (mode file unchanged; retried next boot)"
-    apply_product dev true fallback || true
+    apply_product "$req" true fallback || true
     return 1
 }
 
@@ -322,9 +323,10 @@ status() {
     local mode="unknown"
     [ -f "$STATE" ] && mode="$(sed -n 's/.*"mode": "\([a-z]*\)".*/\1/p' "$STATE")"
     case "$(requested_mode)" in
-        product) echo "armed for next boot: product (memoryframe-mode.txt = product; the hotspot replaces home Wi-Fi)" ;;
+        product) if [ -f "$MODE_FILE" ]; then echo "armed for next boot: product (memoryframe-mode.txt = product; the hotspot replaces home Wi-Fi)"
+                 else echo "armed for next boot: product (no mode file: product is the default; write 'dev' to $MODE_FILE to keep home Wi-Fi)"; fi ;;
         dev)     echo "armed for next boot: dev (memoryframe-mode.txt = dev)" ;;
-        *)       echo "armed for next boot: dev (no mode file: developer default, network left as is)" ;;
+        *)       echo "armed for next boot: product (no mode file: product default)" ;;
     esac
     echo "current mode: ${mode:-unknown}"
     echo "active: $(active)"
@@ -470,6 +472,9 @@ case "${1:-}" in
         write_mode_file "$1"
         apply "$1" ;;
     product-watch) product_watch ;;
+    dev-temp)   # MF-51: frame menu "Dev mode": home Wi-Fi until the next reboot. No file is written;
+        take_lock   # /run is tmpfs, so nothing survives a reboot and boot returns to product.
+        apply_dev temp || exit 1 ;;
     boot)
         take_lock nopending                   # a pending change is rolled back below
         if [ -e "$RESET_FILE" ]; then
@@ -489,16 +494,12 @@ case "${1:-}" in
         # Boot never fails the unit (no reboot loop); the state file carries the outcome.
         # SAFETY: the boot service is a strict no-op unless the mode file explicitly says product,
         # or product mode was applied before and must be undone (mode file dev/missing).
-        req="$(requested_mode)"
-        if [ "$req" = product ]; then
-            apply product || true
-        elif left_by_product; then
-            log "boot: product mode was applied before and is no longer armed: back to developer Wi-Fi"
-            hotspot_autoconnect no
+        # MF-51: product (hotspot) on every boot unless memoryframe-mode.txt says dev.
+        if [ "$(requested_mode)" = dev ]; then
+            log "boot: memoryframe-mode.txt = dev: developer Wi-Fi"
             apply_dev || true
         else
-            log "boot: product mode not armed; developer default, network left as is (no-op)"
-            write_state dev "$req" false false
+            apply_product product false || true
         fi ;;
     *) usage ;;
 esac

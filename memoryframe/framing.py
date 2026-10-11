@@ -7,8 +7,9 @@ Two stages:
    centre, clamped to the image. The frame shows copies with CSS object-fit: cover
    (centred), so on screen exactly the middle 5:3 band of the copy is visible - which is W
    unless clamping had to shift the box.
-With the default 1000x600 (5:3) target, stage 2 is a no-op and the copy IS the window;
-it stays generic for other sizes (e.g. a 4:3 1000x750 target).
+With the default 1000x600 target (5:3, the same aspect as the screen) stage 2 is a no-op:
+the copy IS the window and the screen only scales it. Stage 2 only matters for a
+non-default MEMORYFRAME_DISPLAY_SIZE with another aspect.
 
 All coordinates are original-image pixels after EXIF transpose. Boxes are (left, top, right, bottom).
 """

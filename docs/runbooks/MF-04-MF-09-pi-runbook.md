@@ -475,7 +475,7 @@ Rollback: `sudo deploy/network-setup.sh --remove`, set `Environment=MEMORYFRAME_
   sudo rm /etc/systemd/system/memoryframe.service.d/<that file>
   sudo systemctl daemon-reload
   ```
-- After deploying, regenerate the copies (originals are untouched), then restart the service:
+- After deploying, **remove the drop-in first (above)**. Stale copies (other size or older rules, detected by a marker in each copy) are then remade automatically: in the background when the service starts, and on demand when the slideshow requests one. To do it all at once by hand (originals are untouched):
   ```
   cd ~/Documents/GitHub/MemoryFrame && .venv/bin/python -m memoryframe display-copies --force
   sudo systemctl restart memoryframe

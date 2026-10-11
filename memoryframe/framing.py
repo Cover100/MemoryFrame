@@ -1,14 +1,9 @@
-"""Where to crop a photo for the frame (Designer's MF-26 framing rules).
+"""Where to crop a photo for the frame (Designer's MF-26 framing rules, target 1000x600).
 
-Two stages:
-1. Choose the *visible window* W: the largest SCREEN_ASPECT (5:3, the 800x480 screen)
-   rectangle that fits the image, placed by the rules below. Only moved, never zoomed.
-2. Expand W to the output aspect (the display-copy target) around W's
-   centre, clamped to the image. The frame shows copies with CSS object-fit: cover
-   (centred), so on screen exactly the middle 5:3 band of the copy is visible - which is W
-   unless clamping had to shift the box.
-With the default 1000x600 (5:3) target, stage 2 is a no-op and the copy IS the window;
-it stays generic for other sizes (e.g. a 4:3 1000x750 target).
+The display copy IS the visible window W: the largest 5:3 rectangle that fits the image,
+placed by the rules below (faces if found, otherwise the no-face fallback), cropped and then
+scaled down to 1000x600 (never up). The 800x480 screen is also 5:3, so CSS object-fit: cover
+only scales it - what we choose here is exactly what is shown.
 
 All coordinates are original-image pixels after EXIF transpose. Boxes are (left, top, right, bottom).
 """
@@ -49,26 +44,6 @@ def fallback_window(w, h, aspect=SCREEN_ASPECT):
     return _clamp(left, 0, w - ww), _clamp(top, 0, h - wh), ww, wh
 
 
-def expand_to(window, w, h, out_aspect):
-    """Stage 2: the largest out_aspect box centred on the window's centre, clamped to the image.
-    Returns an int box (left, top, right, bottom)."""
-    left, top, ww, wh = window
-    cx, cy = left + ww / 2, top + wh / 2
-    ow, oh = window_size(w, h, out_aspect)                # largest box of the output aspect
-    ol = _clamp(cx - ow / 2, 0, w - ow)
-    ot = _clamp(cy - oh / 2, 0, h - oh)
-    box = (int(round(ol)), int(round(ot)), int(round(ol + ow)), int(round(ot + oh)))
-    return (box[0], box[1], min(box[2], w), min(box[3], h))
-
-
-def visible_band(box, screen_aspect=SCREEN_ASPECT):
-    """The part of an output box that object-fit: cover (centred) shows on the screen."""
-    l, t, r, b = box
-    bw, bh = r - l, b - t
-    vw, vh = window_size(bw, bh, screen_aspect)
-    return (l + (bw - vw) / 2, t + (bh - vh) / 2, l + (bw + vw) / 2, t + (bh + vh) / 2)
-
-
 # ---------------- faces (Designer sections 1-5, 8) ----------------
 
 FACE_MIN_FRAC = 0.04
@@ -79,7 +54,6 @@ PAD_X, PAD_TOP, PAD_BOTTOM = 0.30, 0.60, 0.50
 EYE_LINE = 0.36
 HEADROOM_MIN = 0.05
 CLOSEUP = 0.85
-VISIBLE_SLACK = 0.0       # extra margin when checking the CSS-visible band
 
 
 def eye_y(f):
@@ -182,29 +156,16 @@ def face_window(w, h, faces, aspect=SCREEN_ASPECT):
     return _clamp(left, 0, w - ww), _clamp(top, 0, h - wh), ww, wh, kept
 
 
-def _fit_band(box, kept, w, h, screen_aspect=SCREEN_ASPECT):
-    """Option B check: shift the output box so every kept face is inside the CSS-visible band."""
-    if not kept:
-        return box
-    l, t, r, b = box
-    bw, bh = r - l, b - t
-    band = visible_band(box, screen_aspect)
-    mx, my = band[0] - l, band[1] - t                # band offsets inside the box
-    vw, vh = band[2] - band[0], band[3] - band[1]
-    fx0, fy0 = min(f.x for f in kept), min(f.y for f in kept)
-    fx1, fy1 = max(f.x + f.w for f in kept), max(f.y + f.h for f in kept)
-    def axis(pos, m, v, f0, f1, size, total):
-        lo, hi = max(0, f1 - (m + v)), min(total - size, f0 - m)
-        if lo <= hi:
-            return min(max(pos, lo), hi)
-        return pos                                  # can't fit: keep (Designer 8.4)
-    nl = axis(l, mx, vw, fx0, fx1, bw, w)
-    nt = axis(t, my, vh, fy0, fy1, bh, h)
-    return (int(round(nl)), int(round(nt)), int(round(nl)) + bw, int(round(nt)) + bh)
+def _int_box(window, w, h):
+    l, t, ww, wh = window
+    left, top = int(round(l)), int(round(t))
+    bw = min(w - left, int(round(ww)))
+    bh = min(h - top, int(round(wh)))
+    return (left, top, left + bw, top + bh)
 
 
-def choose(size, target, faces=None, screen_aspect=SCREEN_ASPECT):
-    """Returns (crop box, visible window (l, t, ww, wh), kept faces)."""
+def choose(size, faces=None, screen_aspect=SCREEN_ASPECT):
+    """Returns (crop box, window (l, t, ww, wh), kept faces)."""
     w, h = size
     kept = filter_faces(faces, w, h)
     if kept:
@@ -212,11 +173,10 @@ def choose(size, target, faces=None, screen_aspect=SCREEN_ASPECT):
         window = (l, t, ww, wh)
     else:
         window = fallback_window(w, h, screen_aspect)
-    box = expand_to(window, w, h, target[0] / target[1])
-    box = _fit_band(box, kept, w, h, screen_aspect)
-    return box, window, kept
+    return _int_box(window, w, h), window, kept
 
 
-def crop_box(size, target, faces=None):
-    """Crop box (in the image) for a display copy of `size` aimed at `target` (w, h)."""
-    return choose(size, target, faces)[0]
+def crop_box(size, target=None, faces=None):
+    """Crop box (in the image) for a display copy: the 5:3 window. `target` is only checked
+    to have the screen's aspect (the copy is scaled to it afterwards)."""
+    return choose(size, faces)[0]

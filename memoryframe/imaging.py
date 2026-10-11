@@ -93,11 +93,12 @@ def make_display_copy(src, dst, target, max_bytes=MAX_BYTES):
         if box != (0, 0) + im.size:
             im = im.crop(box)
         if im.width > target[0] or im.height > target[1]:
-            im = im.resize(target, Image.LANCZOS)
+            im = im.resize(target, Image.LANCZOS)          # exactly 1000x600; never upscaled
         tmp = dst + ".tmp"
         while True:
             for q in QUALITIES:
-                im.save(tmp, "JPEG", quality=q, optimize=True, progressive=True)  # no exif= -> stripped
+                im.save(tmp, "JPEG", quality=q, optimize=True, progressive=True,   # no exif= -> stripped
+                        comment=copy_marker(target))
                 if os.path.getsize(tmp) <= max_bytes:
                     os.replace(tmp, dst)
                     return im.size + (os.path.getsize(dst),)
@@ -123,15 +124,32 @@ def ensure_display_copy(data_dir, stored_name, target):
     return dst
 
 
+COPY_VERSION = "mf26"           # bump when the framing/crop rules change -> copies are remade
+
+
+def copy_marker(target):
+    return f"memoryframe-display {COPY_VERSION} {target[0]}x{target[1]}".encode()
+
+
+def copy_is_current(path, target):
+    """True if `path` was made by the current rules for `target` (JPEG comment marker).
+    Copies from before MF-26 (uncropped, 800x600, 1000x750, no face framing) are stale."""
+    try:
+        with Image.open(path) as im:
+            return im.info.get("comment") == copy_marker(target)
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def backfill(conn, data_dir, target, force=False):
-    """Create missing display copies for every image. Returns (made, failed)."""
+    """Create missing or stale display copies for every image. Returns (made, failed)."""
     made = failed = 0
     rows = conn.execute("SELECT stored_name FROM media WHERE kind = 'image' ORDER BY id").fetchall()
     for (name,) in rows:
         if not needs_copy(name):
             continue
         dst = os.path.join(data_dir, "display", display_name(name))
-        if force and os.path.exists(dst):
+        if os.path.exists(dst) and (force or not copy_is_current(dst, target)):
             os.remove(dst)
         if os.path.exists(dst):
             continue

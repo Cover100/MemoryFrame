@@ -14,7 +14,7 @@ HERE = os.path.dirname(__file__)
 
 
 def win(size, fs):
-    box, window, kept = framing.choose(size, T, fs)
+    box, window, kept = framing.choose(size, fs)
     return box, window, kept
 
 
@@ -28,13 +28,14 @@ def in_window(f, window):
 
 
 def in_band(f, box):
-    return inside(f, *framing.visible_band(box))
+    """At 1000x600 the whole copy is on screen: the box IS the visible area."""
+    return inside(f, *box)
 
 
 def check_visible(box, window, kept):
     for f in kept:
         assert in_window(f, window), (f, window)
-        assert in_band(f, box), (f, framing.visible_band(box))
+        assert in_band(f, box), (f, box)
 
 
 # 1
@@ -53,17 +54,6 @@ def test_2_face_touching_top_edge_clamps():
     box, window, kept = win((4000, 3000), [f])
     assert window[1] == 0 and box == (0, 0, 4000, 2400) and kept == [f]
     check_visible(box, window, kept)                 # at 1000x600 the copy is the window
-
-
-def test_generic_4x3_target_option_b_limit():
-    """Non-default 4:3 target: a 4:3 source's copy is the whole photo and CSS hides its
-    top/bottom 10 %, so a face at the very top can't be in the visible band (documented)."""
-    f = Face(1800, 0, 400, 500)
-    box, window, kept = framing.choose((4000, 3000), (1000, 750), [f])
-    assert box == (0, 0, 4000, 3000) and in_window(f, window)
-    f2 = Face(1300, 3200, 400, 480)                  # feasible case: shifted into the band
-    box, window, kept = framing.choose((3000, 4000), (1000, 750), [f2])
-    assert in_band(f2, box)
 
 
 # 3
@@ -193,7 +183,7 @@ def test_16_kept_faces_inside_rows_75_675(tmp_path, size, f):
     box, window, kept = win(size, [f])
     assert kept
     for k in kept:
-        assert in_band(k, box), (k, box, framing.visible_band(box))
+        assert in_band(k, box), (k, box)
     # and in copy pixels: at 1000x600 the whole copy (rows 0..600) is on screen
     assert (box[2] - box[0]) / (box[3] - box[1]) == pytest.approx(5 / 3, rel=0.01)
     sy = 600 / (box[3] - box[1])

@@ -106,39 +106,48 @@ def make_display_copy(src, dst, target, max_bytes=MAX_BYTES):
             im = im.resize((max(1, int(im.width * 0.9)), max(1, int(im.height * 0.9))), Image.LANCZOS)
 
 
-def ensure_display_copy(data_dir, stored_name, target):
-    """Path of the file the display should show (copy if possible, else the original)."""
-    original = os.path.join(data_dir, "originals", stored_name)
-    if not needs_copy(stored_name):
-        return original
-    dst = os.path.join(data_dir, "display", display_name(stored_name))
-    if os.path.exists(dst):
-        return dst
-    with _lock:
-        if not os.path.exists(dst):
-            try:
-                make_display_copy(original, dst, target)
-            except Exception as e:  # noqa: BLE001 - never break the slideshow
-                log.warning("display copy failed for %s: %s", stored_name, e)
-                return original
-    return dst
-
-
-COPY_VERSION = "mf26"           # bump when the framing/crop rules change -> copies are remade
+COPY_VERSION = "mf26"   # bump when crop/size rules change: existing copies are then remade
+_current = {}           # path -> (mtime, target) known to be current (avoids re-reading headers)
 
 
 def copy_marker(target):
+    """Written as the JPEG comment of every copy: rules version + target size."""
     return f"memoryframe-display {COPY_VERSION} {target[0]}x{target[1]}".encode()
 
 
 def copy_is_current(path, target):
-    """True if `path` was made by the current rules for `target` (JPEG comment marker).
-    Copies from before MF-26 (uncropped, 800x600, 1000x750, no face framing) are stale."""
+    """True if `path` was made for this target by the current rules. Copies from older
+    versions (no marker: uncropped, 800x600, 1000x750) or for another size are stale."""
     try:
+        mtime = os.path.getmtime(path)
+        if _current.get(path) == (mtime, tuple(target)):
+            return True
         with Image.open(path) as im:
-            return im.info.get("comment") == copy_marker(target)
+            ok = im.info.get("comment") == copy_marker(target)
     except Exception:  # noqa: BLE001
         return False
+    if ok:
+        _current[path] = (mtime, tuple(target))
+    return ok
+
+
+def ensure_display_copy(data_dir, stored_name, target):
+    """Path of the file the display should show (copy if possible, else the original).
+    A missing or stale copy (other size / older rules) is (re)made here, lazily on serve."""
+    original = os.path.join(data_dir, "originals", stored_name)
+    if not needs_copy(stored_name):
+        return original
+    dst = os.path.join(data_dir, "display", display_name(stored_name))
+    if os.path.exists(dst) and copy_is_current(dst, target):
+        return dst
+    with _lock:
+        if not (os.path.exists(dst) and copy_is_current(dst, target)):
+            try:
+                make_display_copy(original, dst, target)
+            except Exception as e:  # noqa: BLE001 - never break the slideshow
+                log.warning("display copy failed for %s: %s", stored_name, e)
+                return dst if os.path.exists(dst) else original     # old copy beats nothing
+    return dst
 
 
 def backfill(conn, data_dir, target, force=False):
@@ -149,9 +158,9 @@ def backfill(conn, data_dir, target, force=False):
         if not needs_copy(name):
             continue
         dst = os.path.join(data_dir, "display", display_name(name))
-        if os.path.exists(dst) and (force or not copy_is_current(dst, target)):
+        if force and os.path.exists(dst):
             os.remove(dst)
-        if os.path.exists(dst):
+        if os.path.exists(dst) and copy_is_current(dst, target):
             continue
         if ensure_display_copy(data_dir, name, target) == dst:
             made += 1

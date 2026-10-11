@@ -117,3 +117,72 @@ def _jpeg(w, h):
     b = io.BytesIO()
     Image.new("RGB", (w, h), (90, 30, 30)).save(b, "JPEG")
     return b.getvalue()
+
+
+# ---------- stale copies (other size / older rules) are remade automatically ----------
+
+def _photo(lib, mf_app, name="p.jpg", size=(3000, 4000)):
+    import io
+    b = io.BytesIO()
+    Image.new("RGB", size, (90, 30, 30)).save(b, "JPEG")
+    lib.add(name, b.getvalue())
+    from memoryframe import db as mfdb
+    conn = mfdb.connect(mf_app.config["DB_PATH"])
+    stored = conn.execute("SELECT stored_name FROM media WHERE original_name = ?", (name,)).fetchone()[0]
+    conn.close()
+    return stored, os.path.join(mf_app.config["DATA_DIR"], "display", imaging.display_name(stored))
+
+
+def test_copies_carry_marker(mf_app, lib):
+    _, dst = _photo(lib, mf_app)
+    imaging.ensure_display_copy(mf_app.config["DATA_DIR"], os.path.basename(dst), T)
+    assert imaging.copy_is_current(dst, T) and not imaging.copy_is_current(dst, (1000, 750))
+
+
+@pytest.mark.parametrize("old", [(1000, 1333), (1000, 750), (800, 600)])
+def test_stale_copy_remade_lazily_on_serve(mf_app, lib, client, old):
+    stored, dst = _photo(lib, mf_app)
+    Image.new("RGB", old).save(dst)                         # pre-#37 copy, no marker
+    r = client.get(f"/uploads/{stored}")
+    assert r.status_code == 200
+    assert Image.open(dst).size == T and imaging.copy_is_current(dst, T)
+
+
+def test_copy_for_other_target_is_stale(mf_app, lib):
+    stored, dst = _photo(lib, mf_app)
+    d = mf_app.config["DATA_DIR"]
+    imaging.ensure_display_copy(d, stored, (1000, 750))
+    assert Image.open(dst).size == (1000, 750)
+    imaging.ensure_display_copy(d, stored, T)               # target changed -> remade
+    assert Image.open(dst).size == T
+
+
+def test_backfill_remakes_only_stale(mf_app, lib):
+    from memoryframe import db as mfdb
+    _, dst = _photo(lib, mf_app)
+    Image.new("RGB", (1000, 750)).save(dst)
+    conn = mfdb.connect(mf_app.config["DB_PATH"])
+    d = mf_app.config["DATA_DIR"]
+    assert imaging.backfill(conn, d, T) == (1, 0)
+    assert imaging.backfill(conn, d, T) == (0, 0)           # now current: untouched
+    conn.close()
+
+
+def test_startup_refresh_thread(mf_app, lib):
+    import time
+    from memoryframe import create_app
+    _, dst = _photo(lib, mf_app)
+    Image.new("RGB", (1000, 750)).save(dst)
+    create_app({"TESTING": True, "REFRESH_COPIES_AT_START": True,
+                "DATA_DIR": mf_app.config["DATA_DIR"], "DB_PATH": mf_app.config["DB_PATH"]})
+    end = time.monotonic() + 10
+    while time.monotonic() < end and not imaging.copy_is_current(dst, T):
+        time.sleep(0.1)
+    assert Image.open(dst).size == T
+
+
+def test_failed_remake_keeps_old_copy(mf_app, lib, monkeypatch):
+    stored, dst = _photo(lib, mf_app)
+    Image.new("RGB", (1000, 750)).save(dst)
+    monkeypatch.setattr(imaging, "make_display_copy", lambda *a, **k: 1 / 0)
+    assert imaging.ensure_display_copy(mf_app.config["DATA_DIR"], stored, T) == dst

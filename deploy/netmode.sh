@@ -80,7 +80,7 @@ dev_ssid() {
     [ -f "$WIFI_FILE" ] || { echo ""; return; }
     while IFS= read -r line || [ -n "$line" ]; do
         line="$(trim "$line")"
-        [ -z "$line" ] || [ "${line:0:1}" = "#" ] && continue
+        if [ -z "$line" ] || [ "${line:0:1}" = "#" ]; then continue; fi
         key="$(trim "${line%%=*}")"; key="$(printf '%s' "$key" | tr '[:upper:]' '[:lower:]')"
         val="${line#*=}"
         if [ "$key" = ssid ] && [ "$line" != "$key" ]; then
@@ -112,9 +112,9 @@ active() { "$NMCLI" -g GENERAL.CONNECTION device show "$IFACE" 2>/dev/null || tr
 client_profiles() {
     local n
     while IFS= read -r n; do
-        [ -n "$n" ] && [ "$n" != "$HOTSPOT_CON" ] || continue
+        if [ -z "$n" ] || [ "$n" = "$HOTSPOT_CON" ]; then continue; fi
         [ "$(prop "$n" connection.type)" = 802-11-wireless ] || continue
-        [ "$(prop "$n" 802-11-wireless.mode)" = ap ] && continue
+        if [ "$(prop "$n" 802-11-wireless.mode)" = ap ]; then continue; fi
         printf '%s\n' "$n"
     done < <(profiles)
 }
@@ -197,7 +197,7 @@ apply_dev() {
         write_state dev dev false false
         return 0
     fi
-    [ "$(active)" = "$HOTSPOT_CON" ] && "$NMCLI" connection down "$HOTSPOT_CON" >/dev/null 2>&1 || true
+    if [ "$(active)" = "$HOTSPOT_CON" ]; then "$NMCLI" connection down "$HOTSPOT_CON" >/dev/null 2>&1 || true; fi
     if "$NMCLI" --wait "$DEV_WAIT" connection up "$p" >/dev/null 2>&1 && [ "$(active)" = "$p" ]; then
         log "dev: connected ($p)"
         write_state dev dev false false

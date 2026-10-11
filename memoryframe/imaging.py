@@ -15,7 +15,7 @@ import threading
 
 log = logging.getLogger("memoryframe.imaging")
 
-DEFAULT_TARGET = "800x600"     # U3 open: 800x600 (default) or 1000x750
+DEFAULT_TARGET = "1000x750"    # U3 decided: size B (1000x750)
 MAX_BYTES = 300 * 1024
 QUALITIES = (85, 80, 75, 70, 65, 60, 55, 50)
 
@@ -62,6 +62,15 @@ def cover_size(size, target):
     return max(tw, round(w * scale)), max(th, round(h * scale))
 
 
+def cover_crop_box(size, target):
+    """Centred crop to what object-fit: cover can actually show on a target-sized screen.
+    E.g. a portrait 800x1067 copy for 800x600 keeps only the middle 800x600; smaller sides stay."""
+    w, h = size
+    cw, ch = min(w, target[0]), min(h, target[1])
+    left, top = (w - cw) // 2, (h - ch) // 2
+    return (left, top, left + cw, top + ch)
+
+
 def make_display_copy(src, dst, target, max_bytes=MAX_BYTES):
     """Write the display copy atomically. Returns (width, height, bytes)."""
     if Image is None:
@@ -76,6 +85,9 @@ def make_display_copy(src, dst, target, max_bytes=MAX_BYTES):
         size = cover_size(im.size, target)
         if size != im.size:
             im = im.resize(size, Image.LANCZOS)
+        box = cover_crop_box(im.size, target)
+        if box != (0, 0) + im.size:
+            im = im.crop(box)
         tmp = dst + ".tmp"
         while True:
             for q in QUALITIES:

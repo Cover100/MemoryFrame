@@ -68,3 +68,12 @@ def test_max_megapixels_key(tmp_path):
         assert run(tmp_path, "MEMORYFRAME_MAX_MEGAPIXELS", bad).returncode == 2
     assert run(tmp_path, "MEMORYFRAME_MAX_MEGAPIXELS", "").returncode == 0
     assert "MAX_MEGAPIXELS" not in content(tmp_path)
+
+
+def test_display_size_key(tmp_path):
+    assert run(tmp_path, "MEMORYFRAME_DISPLAY_SIZE", "1024x600").returncode == 0
+    assert "MEMORYFRAME_DISPLAY_SIZE=1024x600\n" in content(tmp_path)
+    for bad in ("800", "800x", "x600", "800X600", "0x600", "800x600x2", "800 x600", "abc", "8x6", "800x600;id"):
+        assert run(tmp_path, "MEMORYFRAME_DISPLAY_SIZE", bad).returncode == 2, bad
+    assert run(tmp_path, "MEMORYFRAME_DISPLAY_SIZE", "").returncode == 0
+    assert "DISPLAY_SIZE" not in content(tmp_path)

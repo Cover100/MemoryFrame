@@ -78,6 +78,7 @@ PENDING_CON="${MEMORYFRAME_PENDING_CON:-MemoryFrame-AP-pending}"
 OLD_CON="${MEMORYFRAME_OLD_CON:-MemoryFrame-hotspot-old}"   # only during wifi-commit
 NM_DIR="${MEMORYFRAME_NM_DIR:-/etc/NetworkManager/system-connections}"
 RESET_DONE=false
+COMMIT_RECOVERED=false
 
 log() {
     echo "netmode: $*" >&2
@@ -173,7 +174,13 @@ write_state() {   # mode requested dev_fallback hotspot_error
     {
         printf '{"mode": %s, "requested": %s, "dev_fallback": %s, "hotspot_error": %s, ' \
             "$(json_str "$1")" "$(json_str "$2")" "$3" "$4"
-        printf '"active": %s, "boot_id": %s, "reset": %s}\n' "$(json_str "$(active)")" "$(json_str "$boot_id")" "$RESET_DONE"
+        printf '"active": %s, "boot_id": %s, "reset": %s, ' "$(json_str "$(active)")" "$(json_str "$boot_id")" "$RESET_DONE"
+        # MF-18 reconciliation for the app (no secrets): the hotspot profile's uuid, whether an
+        # MF-18 pending/old profile still exists, and whether boot finished an interrupted commit.
+        local wp=false
+        if profiles | grep -qxF -e "$PENDING_CON" -e "$OLD_CON"; then wp=true; fi
+        printf '"hotspot_uuid": %s, "wifi_profiles": %s, "commit_recovered": %s}\n' \
+            "$(json_str "$(prop "$HOTSPOT_CON" connection.uuid)")" "$wp" "$COMMIT_RECOVERED"
     } > "$STATE.tmp"
     chmod 0644 "$STATE.tmp"
     mv "$STATE.tmp" "$STATE"
@@ -414,6 +421,7 @@ wifi_apply() {
     if "$NMCLI" --wait 30 connection up "$PENDING_CON" >/dev/null 2>&1 && [ "$(active)" = "$PENDING_CON" ]; then
         log "wifi change: new hotspot up, waiting for confirmation"
         write_state product product false false
+        printf 'uuid=%s\n' "$(prop "$PENDING_CON" connection.uuid)"   # stdout -> app (not secret)
         return 0
     fi
     log "wifi change: the new hotspot did not start"
@@ -426,6 +434,7 @@ recover_commit() {   # boot: finish or undo a wifi-commit cut short by a power l
     if profiles | grep -qxF "$HOTSPOT_CON"; then
         log "boot: interrupted Wi-Fi commit: new hotspot profile in place, removing the old one"
         "$NMCLI" connection delete "$OLD_CON" >/dev/null 2>&1 || true
+        COMMIT_RECOVERED=true
     else
         log "boot: interrupted Wi-Fi commit: restoring the old hotspot profile"
         "$NMCLI" connection modify "$OLD_CON" connection.id "$HOTSPOT_CON" >/dev/null 2>&1 || true

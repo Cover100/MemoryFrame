@@ -11,6 +11,7 @@ import fcntl
 import ipaddress
 import logging
 import os
+import re
 import subprocess
 import threading
 import time
@@ -98,7 +99,7 @@ def unavailable():
 
 # ---------------- helper ----------------
 
-def _helper(app, cmd, stdin=None):
+def _helper(app, cmd, stdin=None, out=None):
     argv = list(app.config.get("NET_HELPER") or DEFAULT_HELPER) + [cmd]
     try:
         r = subprocess.run(argv, input=stdin, capture_output=True, text=True, timeout=120)
@@ -107,6 +108,10 @@ def _helper(app, cmd, stdin=None):
         return 99
     if r.returncode:
         log.warning("network helper %s exited %d", cmd, r.returncode)   # output not logged (may echo input)
+    if out is not None:
+        for line in (r.stdout or "").splitlines():
+            if line.startswith("uuid=") and re.fullmatch(r"[0-9A-Za-z-]{1,64}", line[5:]):
+                out["uuid"] = line[5:]
     return r.returncode
 
 
@@ -133,7 +138,15 @@ def rollback(app, reason):
 
 
 def _apply_after_response(app, ssid, password, deadline):
-    rc = _helper(app, "wifi-apply", stdin=f"{ssid}\n{password}\n")
+    got = {}
+    rc = _helper(app, "wifi-apply", stdin=f"{ssid}\n{password}\n", out=got)
+    if rc == 0 and got.get("uuid"):
+        conn = connect(app.config["DB_PATH"])
+        try:
+            conn.execute("UPDATE wifi_change SET new_uuid = ? WHERE id = 1 AND state = 'pending'", (got["uuid"],))
+            conn.commit()
+        finally:
+            conn.close()
     if rc != 0:
         rollback(app, "activation")
         return
@@ -143,9 +156,41 @@ def _apply_after_response(app, ssid, password, deadline):
     t.start()
 
 
+def _commit_row(conn, r, reason):
+    set_setting(conn, "wifi_ssid", r["new_ssid"])
+    set_setting(conn, "wifi_password", r["new_password"])
+    conn.commit()
+    conn.execute("UPDATE wifi_change SET state = 'committed', reason = ?, new_password = NULL, updated = ? "
+                 "WHERE id = 1 AND state = 'pending'", (reason, time.time()))
+    conn.commit()
+
+
+def reconcile(conn, nm):
+    """Startup: match a 'pending' row with the profiles that actually exist (netmode.json).
+    Returns "committed" | "cleared" | "rollback" | None (nothing pending)."""
+    r = pending(conn)
+    if r is None:
+        return None
+    new_uuid = r["new_uuid"] if "new_uuid" in r.keys() else None
+    if (nm.get("commit_recovered") or (new_uuid and nm.get("hotspot_uuid") == new_uuid)) and r["new_password"]:
+        _commit_row(conn, r, "recovered")             # the new profile IS the hotspot now
+        log.info("Wi-Fi change found committed at start-up; recorded as kept")
+        return "committed"
+    if not nm.get("wifi_profiles"):
+        # No pending/old profile left (e.g. the boot already cleaned up): nothing to roll back and
+        # nothing to announce. Clear silently.
+        conn.execute("UPDATE wifi_change SET state = 'cleared', reason = 'reconciled', new_password = NULL, "
+                     "updated = ?, notice_shown = 1 WHERE id = 1 AND state = 'pending'", (time.time(),))
+        conn.commit()
+        log.info("stale pending Wi-Fi change cleared at start-up (no pending profile)")
+        return "cleared"
+    return "rollback"
+
+
 def startup_check(app):
-    """Restart while pending -> roll back immediately (the countdown never resumes).
-    After a memoryframe-reset boot the hotspot.conf defaults are back: drop the override."""
+    """Reconcile a pending change with the real profiles (see reconcile); only a still-existing
+    pending profile is rolled back. After a memoryframe-reset boot the hotspot.conf defaults are
+    back: drop the override."""
     conn = connect(app.config["DB_PATH"])
     try:
         nm = frameinfo.netmode_state()
@@ -153,7 +198,7 @@ def startup_check(app):
             conn.execute("DELETE FROM settings WHERE key IN ('wifi_ssid', 'wifi_password')")
             set_setting(conn, "wifi_reset_boot", nm["boot_id"])
             conn.commit()
-        has_pending = pending(conn) is not None
+        has_pending = reconcile(conn, nm) == "rollback"
     finally:
         conn.close()
     if has_pending:
@@ -288,9 +333,6 @@ def keep():
         if _helper(app, "wifi-commit") != 0:
             rollback(app, "activation")
             return render_template("wifi_keep.html", ssid=r["new_ssid"], remaining="", result="failed"), 500
-        set_setting(conn, "wifi_ssid", r["new_ssid"])
-        set_setting(conn, "wifi_password", r["new_password"])
-        conn.commit()
-        _set_state(conn, "committed")
+        _commit_row(conn, r, None)
     log.info("Wi-Fi change kept")
     return render_template("wifi_keep.html", ssid=r["new_ssid"], remaining="", result="kept")

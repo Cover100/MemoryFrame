@@ -16,6 +16,7 @@ FAKE_HELPER = r'''#!/bin/bash
 D="$(dirname "$0")"
 in=""; if [ "$1" = wifi-apply ]; then in="$(cat)"; fi
 echo "$1 stdin_lines=$(printf '%s' "$in" | grep -c '')" >> "$D/calls"
+[ -f "$D/out-$1" ] && cat "$D/out-$1"
 [ -f "$D/rc-$1" ] && exit "$(cat "$D/rc-$1")"
 exit 0
 '''
@@ -249,8 +250,9 @@ def test_timeout_rolls_back(paired, helper, mf_app, client):
     assert "Wi-Fi change cancelled" not in htmlmod.unescape(paired.get("/admin/", environ_base=PHONE).get_data(as_text=True))
 
 
-def test_restart_while_pending_rolls_back(paired, helper, mf_app):
+def test_restart_while_pending_rolls_back(paired, helper, mf_app, tmp_path):
     start_pending(mf_app, paired)
+    (tmp_path / "netmode.json").write_text('{"mode": "product", "wifi_profiles": true}')   # pending profile up
     wifi.startup_check(mf_app)
     end = time.time() + 5
     while row(mf_app)["state"] == "pending" and time.time() < end:
@@ -293,3 +295,66 @@ def test_missing_netmode_state_means_dev_409_helper_never_called(paired, helper,
     assert "Wi-Fi can't be changed right now." in html and 'id="wifiForm"' not in html
     assert submit(paired).status_code == 409 and row(mf_app) is None
     assert helper.calls() == [] and helper.start == []
+
+
+
+# ---------- start-up reconciliation (power cut during commit) ----------
+
+def _restart(mf_app, tmp_path, **nm):
+    import json
+    (tmp_path / "netmode.json").write_text(json.dumps(dict({"mode": "product"}, **nm)))
+    wifi.startup_check(mf_app)
+    time.sleep(0.3)
+
+
+def _no_rollback_shown(mf_app, paired):
+    conn = mfdb.connect(mf_app.config["DB_PATH"])
+    try:
+        fs = wifi.frame_state(conn)
+        assert not fs or fs.get("state") != "rolled_back"
+    finally:
+        conn.close()
+    home = htmlmod.unescape(paired.get("/admin/", environ_base=PHONE).get_data(as_text=True))
+    assert "old Wi-Fi restored" not in home and "cancelled" not in home.lower()
+
+
+def test_boot_recovered_commit_is_recorded_as_kept(paired, helper, mf_app, tmp_path):
+    start_pending(mf_app, paired)
+    calls = len(helper.calls())
+    _restart(mf_app, tmp_path, commit_recovered=True, hotspot_uuid="whatever")
+    r = row(mf_app)
+    assert r["state"] == "committed" and r["reason"] == "recovered" and r["new_password"] is None
+    conn = mfdb.connect(mf_app.config["DB_PATH"])
+    assert wifi.current_wifi(conn) == ("Frame Home", "Brand new pw!")       # QR uses the new Wi-Fi
+    conn.close()
+    assert helper.calls()[calls:] == []                       # no rollback helper call
+    _no_rollback_shown(mf_app, paired)
+
+
+def test_hotspot_uuid_match_is_recorded_as_kept(paired, helper, mf_app, tmp_path):
+    start_pending(mf_app, paired)
+    conn = mfdb.connect(mf_app.config["DB_PATH"])
+    conn.execute("UPDATE wifi_change SET new_uuid = 'u-123' WHERE id = 1"); conn.commit(); conn.close()
+    _restart(mf_app, tmp_path, hotspot_uuid="u-123")          # commit finished, app never recorded it
+    assert row(mf_app)["state"] == "committed"
+    _no_rollback_shown(mf_app, paired)
+
+
+def test_no_pending_profile_left_clears_silently(paired, helper, mf_app, tmp_path):
+    start_pending(mf_app, paired)
+    calls = len(helper.calls())
+    _restart(mf_app, tmp_path, wifi_profiles=False, hotspot_uuid="old-uuid")
+    r = row(mf_app)
+    assert r["state"] == "cleared" and r["new_password"] is None
+    assert helper.calls()[calls:] == []
+    _no_rollback_shown(mf_app, paired)
+    conn = mfdb.connect(mf_app.config["DB_PATH"])
+    assert wifi.current_wifi(conn)[0] == "MemoryFrame-AP"   # unchanged
+    assert wifi.pending(conn) is None
+    conn.close()
+
+
+def test_apply_stores_pending_uuid(paired, helper, mf_app):
+    (helper.dir / "out-wifi-apply").write_text("uuid=abc-123\n")
+    start_pending(mf_app, paired)
+    assert row(mf_app)["new_uuid"] == "abc-123"

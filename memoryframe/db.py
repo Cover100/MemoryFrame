@@ -49,7 +49,8 @@ CREATE TABLE IF NOT EXISTS wifi_change (           -- MF-18: at most one row (id
     deadline     REAL NOT NULL,
     reason       TEXT,                             -- rollback: timeout | activation | restart
     updated      REAL NOT NULL,
-    notice_shown INTEGER NOT NULL DEFAULT 0
+    notice_shown INTEGER NOT NULL DEFAULT 0,
+    new_uuid     TEXT                              -- NM uuid of the pending profile (reconciliation)
 );
 
 CREATE TABLE IF NOT EXISTS settings (

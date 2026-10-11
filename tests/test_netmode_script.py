@@ -32,6 +32,7 @@ if [ "$1" = -g ] && [ "$3 $4" = "connection show" ]; then
     connection.type) cat "$f/type";; 802-11-wireless.mode) cat "$f/mode";;
     802-11-wireless.ssid) cat "$f/ssid";; connection.autoconnect) cat "$f/autoconnect";;
     connection.timestamp) cat "$f/ts" 2>/dev/null || echo 0;;
+    connection.uuid) cat "$f/uuid" 2>/dev/null || echo "uuid-$5";;
   esac; exit 0
 fi
 case "$1 $2" in
@@ -42,6 +43,7 @@ case "$1 $2" in
   "connection load")
     n="$(sed -n 's/^id=//p' "$3")"; mkdir -p "$D/p/$n"
     echo 802-11-wireless > "$D/p/$n/type"; echo ap > "$D/p/$n/mode"; echo no > "$D/p/$n/autoconnect"
+    echo "uuid-new-$RANDOM$RANDOM" > "$D/p/$n/uuid"
     cp "$3" "$D/p/$n/keyfile";;
   "connection delete") rm -rf "$D/p/$3"; [ "$(cat "$D/active")" = "$3" ] && : > "$D/active";;
   "connection up")
@@ -129,7 +131,8 @@ def test_product_mode_file_boots_product(env):
     assert ac(env, HOT) == "yes" and (env["d"] / "p" / HOT / "prio").read_text().strip() == "100"
     s = state(env)
     assert s == {"mode": "product", "requested": "product", "dev_fallback": False, "hotspot_error": False,
-                 "active": HOT, "boot_id": "boot-1", "reset": False}
+                 "active": HOT, "boot_id": "boot-1", "reset": False, "reset": False,
+                 "hotspot_uuid": "uuid-MemoryFrame-hotspot", "wifi_profiles": False, "commit_recovered": False}
 
 
 # ---------- SAFETY: nothing but an explicit "product" arms product mode ----------
@@ -633,3 +636,30 @@ def test_power_cut_during_commit_never_leaves_no_hotspot(on_hotspot, cut):
     run(env, "boot")
     aps = sorted(n for n in os.listdir(env["d"] / "p") if n.startswith("MemoryFrame"))
     assert aps == [HOT] and active(env) == HOT
+
+
+
+def test_boot_finishing_a_commit_records_it_for_the_app(on_hotspot):
+    env = on_hotspot
+    r = run(env, "wifi-apply", input=f"New\n{NEWPW}\n")
+    uuid = r.stdout.strip().split("uuid=", 1)[1]
+    assert uuid.startswith("uuid-new-")
+    (env["d"] / "crash_at").write_text("2")                  # cut after pending -> hotspot rename
+    run(env, "wifi-commit")
+    (env["d"] / "crash_at").unlink(missing_ok=True)
+    (env["d"] / "active").write_text("\n")
+    run(env, "boot")
+    s = state(env)
+    assert s["commit_recovered"] is True and s["hotspot_uuid"] == uuid and s["wifi_profiles"] is False
+
+
+def test_boot_undoing_a_commit_is_not_recovered(on_hotspot):
+    env = on_hotspot
+    run(env, "wifi-apply", input=f"New\n{NEWPW}\n")
+    (env["d"] / "crash_at").write_text("1")                  # cut after old -> -old rename only
+    run(env, "wifi-commit")
+    (env["d"] / "crash_at").unlink(missing_ok=True)
+    (env["d"] / "active").write_text("\n")
+    run(env, "boot")
+    s = state(env)
+    assert s["commit_recovered"] is False and s["wifi_profiles"] is False

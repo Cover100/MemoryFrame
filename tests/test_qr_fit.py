@@ -5,7 +5,8 @@ import os
 
 import pytest
 
-from test_frontend_browser import BROWSER, evaluate, net, page, server  # noqa: F401  (fixtures)
+from test_frontend_browser import BROWSER, evaluate, net, page, server, text  # noqa: F401  (fixtures)
+from memoryframe import frameinfo
 
 pytestmark = pytest.mark.skipif(BROWSER is None, reason="no headless Chrome")
 
@@ -104,14 +105,24 @@ def test_onboarding_both_qrs_fit_and_decode(page, server, mf_app, net):
 
 
 def test_pair_new_device_from_menu_fits_and_decodes(page, server, mf_app, net):
+    import time
     net.update(mode="lan", lan_ip="192.168.50.124", ips=["192.168.50.124"])
-    page.pump(2)
+    # Wait until the frame itself polled the new mode (no fixed sleeps: CI timing varies).
+    end = time.monotonic() + 15
+    while "memoryframe.local" not in (text(page, "pairUrl") or "") and time.monotonic() < end:
+        page.pump(0.25)
+    assert "memoryframe.local" in text(page, "pairUrl"), text(page, "pairUrl")
     evaluate(page, "memoryFramePairing.openMenu()")
     page.pump(0.5)
     evaluate(page, "document.getElementById('menuPair').click()")
-    page.pump(1.5)
-    d = check(page, "qr-pair-new-device-800x480.png", ["pairQr"])
-    assert d["pairQr"].startswith("http://memoryframe.local/pair")
+    expected = f"http://memoryframe.local{frameinfo.port_suffix()}/pair"
+    end = time.monotonic() + 15
+    while True:
+        page.pump(0.5)
+        d = check(page, "qr-pair-new-device-800x480.png", ["pairQr"])
+        if d["pairQr"].startswith(expected) or time.monotonic() > end:
+            break
+    assert d["pairQr"].startswith(expected), d
 
 
 def test_empty_library_overlay_fits(page, server, mf_app, net):

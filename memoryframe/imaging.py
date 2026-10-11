@@ -88,12 +88,12 @@ def make_display_copy(src, dst, target, max_bytes=MAX_BYTES):
             im = bg
         # Crop first, in original pixels, where the framing rules say (MF-26 / Designer):
         # the visible 5:3 window, expanded to the target aspect. Then scale down only.
-        from . import framing
-        box = framing.crop_box(im.size, target)
+        from . import faces, framing
+        box = framing.crop_box(im.size, target, faces.detect(im))   # MF-26: [] -> no-face rules
         if box != (0, 0) + im.size:
             im = im.crop(box)
         if im.width > target[0] or im.height > target[1]:
-            im = im.resize(target, Image.LANCZOS)
+            im = im.resize(target, Image.LANCZOS)          # box has the target aspect: no distortion
         tmp = dst + ".tmp"
         while True:
             for q in QUALITIES:
@@ -106,7 +106,7 @@ def make_display_copy(src, dst, target, max_bytes=MAX_BYTES):
             im = im.resize((max(1, int(im.width * 0.9)), max(1, int(im.height * 0.9))), Image.LANCZOS)
 
 
-COPY_VERSION = "v2"     # bump when crop/size rules change: existing copies are then remade
+COPY_VERSION = "mf26c"  # bump when crop/size rules change: existing copies are then remade
 _current = {}           # path -> (mtime, target) known to be current (avoids re-reading headers)
 
 

@@ -21,6 +21,13 @@ def move(page, x, y):
 
 
 def tap(page, x=400, y=240, down=0.05):
+    """A finger tap (pointerType "touch"): only touch double taps open the menu."""
+    page.call("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": x, "y": y}]})
+    time.sleep(down)
+    page.call("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+
+
+def click(page, x=400, y=240, down=0.05):
     press(page, x, y)
     time.sleep(down)
     release(page, x, y)
@@ -143,3 +150,17 @@ def test_hint_text(page, server, mf_app, net):
         assert text(page, "pairHint") == "Double-tap for menu to pair a phone"
     html = evaluate(page, "document.body.innerHTML")
     assert "Hold 3 s" not in html
+
+
+
+def test_mouse_double_click_does_not_open_menu(ready):
+    click(ready)
+    time.sleep(0.1)
+    click(ready)
+    ready.pump(0.5)
+    assert not menu_open(ready)
+    tap(ready)                                    # a touch double tap still works
+    time.sleep(0.1)
+    tap(ready)
+    ready.pump(0.5)
+    assert menu_open(ready)

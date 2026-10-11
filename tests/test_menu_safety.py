@@ -193,3 +193,43 @@ def test_phone_banner_once(client):
     assert "✓ You're paired!" in h and "This phone can now send photos to Memory Frame." in h
     assert h.index("Upload photos") < h.index("Library")
     assert "You're paired!" not in htmlmod.unescape(client.get("/admin/", environ_base=PHONE).get_data(as_text=True))
+
+
+
+def test_sign_out_failure_is_reported_and_dialog_stays(ready, mf_app):
+    evaluate(ready, "window.__realFetch = window.fetch; window.fetch = (u, o) => String(u).includes('sign-out-all')"
+                    " ? Promise.resolve(new Response('{}', {status: 500})) : window.__realFetch(u, o)")
+    open_confirm(ready)
+    evaluate(ready, "document.getElementById('confirmSignOut').click()")
+    ready.pump(0.6)
+    assert evaluate(ready, "!document.getElementById('confirmError').hidden")
+    assert text(ready, "confirmError") == "Couldn't sign out. Try again."
+    assert evaluate(ready, "document.getElementById('confirmDone').hidden")
+    assert visible(ready, "confirmOverlay") and paired_count(mf_app) == 1
+    box = evaluate(ready, "(()=>{const b=document.getElementById('confirmBox').getBoundingClientRect();"
+                          "const s=document.getElementById('confirmSignOut').getBoundingClientRect();"
+                          "return [b.bottom, s.bottom];})()")
+    assert box[1] <= box[0] + 0.5                                    # buttons still inside the card
+    evaluate(ready, "window.fetch = window.__realFetch")
+    evaluate(ready, "document.getElementById('confirmSignOut').click()")    # retry works
+    ready.pump(0.6)
+    assert text(ready, "confirmDone") == "All phones signed out" and paired_count(mf_app) == 0
+
+
+def test_success_card_has_no_code_behind_it(ready, mf_app):
+    evaluate(ready, "memoryFramePairing.openMenu()")
+    ready.pump(0.3)
+    evaluate(ready, "document.getElementById('menuPair').click()")
+    ready.pump(1.5)
+    with mf_app.app_context():
+        code = auth.pairing().current()["code"]
+    with mf_app.test_client() as c:
+        c.get("/healthz", environ_base=PHONE)
+        c.post("/pair", data={"code": code, "csrf_token": c.get_cookie("mf_csrf").value}, environ_base=PHONE)
+    end = time.time() + 5
+    while time.time() < end and evaluate(ready, "document.getElementById('pairSuccess').hidden"):
+        ready.pump(0.2)
+    assert not evaluate(ready, "document.getElementById('pairSuccess').hidden")
+    assert text(ready, "pairCode") == "" and evaluate(ready, "document.getElementById('pairQr').innerHTML") == ""
+    assert evaluate(ready, "getComputedStyle(document.getElementById('pairBox')).display") == "none"
+    assert code.replace(" ", "") not in evaluate(ready, "document.getElementById('pairOverlay').innerText").replace(" ", "")

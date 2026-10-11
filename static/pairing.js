@@ -98,6 +98,10 @@
             const success = Date.now() < successUntil;
             $("pairSuccess").hidden = !success;
             $("pairBox").hidden = success;
+            if(success){                              // nothing of the used code behind the card
+                $("pairCode").textContent = "";
+                $("pairQr").innerHTML = "";
+            }
             if(success){ setTimeout(tick, Math.max(50, successUntil - Date.now() + 20)); }
             const showPair = success || (st.paired === 0 && st.media === 0 && !dismissed) || onDemand;
             const showEmpty = !showPair && !dismissed && st.paired > 0 && st.media === 0;
@@ -146,14 +150,23 @@
         closeMenu();
         $("confirmAsk").hidden = false;
         $("confirmDone").hidden = true;
+        $("confirmError").hidden = true;
         showOverlay(confirmOverlay);
     }
     function closeConfirm(){ if(!confirmBusy){ confirmOverlay.classList.remove("visible"); } }
     button("menuSignOut", openConfirm);
     button("confirmCancel", closeConfirm);
     button("confirmSignOut", async ()=>{
+        if(confirmBusy){ return; }
         confirmBusy = true;
-        try{ await fetch("/pairing/sign-out-all", {method: "POST"}); }catch(e){ console.warn(e); }
+        let ok = false;
+        try{ ok = (await fetch("/pairing/sign-out-all", {method: "POST"})).ok; }catch(e){ console.warn(e); }
+        if(!ok){                                     // phones are still paired: say so, keep the dialog
+            confirmBusy = false;
+            $("confirmError").hidden = false;
+            return;
+        }
+        $("confirmError").hidden = true;
         $("confirmAsk").hidden = true;
         $("confirmDone").hidden = false;
         setTimeout(()=>{ confirmBusy = false; confirmOverlay.classList.remove("visible"); tick(); }, 2000);
@@ -212,7 +225,7 @@
         pointers = Math.max(0, pointers - 1);
         const d = tapDown;
         tapDown = null;
-        if(cancelled || !d || !e.isPrimary){ lastTap = null; return; }
+        if(cancelled || !d || !e.isPrimary || e.pointerType !== "touch"){ lastTap = null; return; }   // touch only
         const now = performance.now();
         const isTap = now - d.t < TAP_MAX_MS && Math.hypot(e.clientX - d.x, e.clientY - d.y) < TAP_MOVE;
         if(!isTap){ lastTap = null; return; }

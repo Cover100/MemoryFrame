@@ -625,3 +625,5 @@ video {
 #pairSuccess{text-align:center}
 .successTitle{font-size:40px;font-weight:700}
 .successText{font-size:26px;margin-top:10px}
+.confirmError{font-size:20px;color:#ff8a80;font-weight:600}
+.confirmError[hidden]{display:none}

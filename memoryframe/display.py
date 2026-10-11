@@ -6,12 +6,13 @@ running on the frame itself may change display state.
 """
 import os
 
-from flask import Blueprint, abort, current_app, jsonify, render_template, request, send_from_directory
+from flask import (Blueprint, abort, current_app, jsonify, redirect, render_template, request,
+                   send_from_directory)
 
 from . import brightness as bl
 from . import imaging, storage
 from .db import get_db
-from .security import localhost_only
+from .security import is_local_request, localhost_only
 
 bp = Blueprint("display", __name__)
 
@@ -26,6 +27,11 @@ def get_media():
 
 @bp.route("/")
 def index():
+    # The slideshow is for the frame's own kiosk browser only. Phones (NFC tag / QR /
+    # typing http://10.42.0.1/) go to the phone site, which sends unpaired phones to /pair.
+    # Decided by the TCP peer address (request.remote_addr), never by the Host header.
+    if not is_local_request():
+        return redirect("/admin/", code=302)
     return render_template("index.html", media=get_media())
 
 

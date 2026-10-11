@@ -3,7 +3,7 @@ from functools import wraps
 
 from flask import abort, request
 
-LOCAL_ADDRESSES = {"127.0.0.1", "::1"}
+LOCAL_ADDRESSES = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
 
 
 def is_local_request():

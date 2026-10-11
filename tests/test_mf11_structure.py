@@ -67,8 +67,10 @@ def test_display_write_routes_allowed_from_localhost(client, backlight, addr):
 
 
 def test_display_read_routes_open_to_network(client):
-    for path in ("/", "/media", "/healthz", "/brightness"):
+    for path in ("/media", "/healthz", "/brightness"):
         assert client.get(path, environ_base=REMOTE).status_code == 200, path
+    r = client.get("/", environ_base=REMOTE)          # phones are sent to pairing/admin
+    assert r.status_code == 302 and r.headers["Location"].endswith("/admin/")
 
 
 # Routes that are allowed to answer GET. All must be read-only.

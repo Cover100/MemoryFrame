@@ -93,6 +93,11 @@ cd ~/MemoryFrame
 sudo reboot
 ```
 
+**Case fan (Armor Lite):** `install.sh` adds `dtoverlay=gpio-fan,gpiopin=14,temp=60000` to
+`/boot/firmware/config.txt` once (fan on at 60 °C; backup `config.txt.memoryframe-bak.<time>`
+written first; an existing gpio-fan line is left alone). It takes effect after the next reboot.
+
+
 What it does:
 
 - `deploy/memoryframe.service` → `/etc/systemd/system/` (`Restart=always`, so a crash or

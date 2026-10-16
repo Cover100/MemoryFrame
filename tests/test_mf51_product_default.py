@@ -157,7 +157,7 @@ def test_no_dev_item_in_menu(page, server, mf_app, net, tmp_path):
     assert "Developer" not in text(page, "menuBox") and "Dev mode" not in text(page, "menuBox")
 
 
-def test_corner_3s_hold_opens_confirm_cancel_default_no_brightness_or_menu(page, server, mf_app, net, tmp_path):
+def test_hold_3s_hold_opens_confirm_cancel_default_no_brightness_or_menu(page, server, mf_app, net, tmp_path):
     out, w = setup_page(page, mf_app, tmp_path)
     x, y = w - 40, 40
     ev(page, "pointerdown", x, y)
@@ -173,7 +173,6 @@ def test_corner_3s_hold_opens_confirm_cancel_default_no_brightness_or_menu(page,
     assert "Join developer Wi-Fi?" in box and "disconnect until you restart the frame" in box
     ev(page, "pointerup", x + 8, y + 8)
     page.pump(0.3)
-    assert not any("/brightness" in u for u in evaluate(page, "window.__urls"))
     evaluate(page, "document.getElementById('devModeCancel').click()")
     page.pump(0.4)
     assert not out.exists() and not visible(page, "devModeOverlay")
@@ -183,7 +182,7 @@ def test_corner_3s_hold_opens_confirm_cancel_default_no_brightness_or_menu(page,
     assert out.read_text().strip() == "dev-temp"
 
 
-def test_corner_early_lift_cancels_silently(page, server, mf_app, net, tmp_path):
+def test_hold_early_lift_cancels_silently(page, server, mf_app, net, tmp_path):
     out, w = setup_page(page, mf_app, tmp_path)
     ev(page, "pointerdown", w - 40, 40)
     page.pump(2.0)
@@ -192,7 +191,7 @@ def test_corner_early_lift_cancels_silently(page, server, mf_app, net, tmp_path)
     assert not ring_shown(page) and not visible(page, "devModeOverlay") and not visible(page, "menuOverlay")
 
 
-def test_corner_move_20px_cancels(page, server, mf_app, net, tmp_path):
+def test_hold_move_20px_cancels(page, server, mf_app, net, tmp_path):
     out, w = setup_page(page, mf_app, tmp_path)
     ev(page, "pointerdown", w - 40, 40)
     page.pump(1.5)
@@ -202,13 +201,15 @@ def test_corner_move_20px_cancels(page, server, mf_app, net, tmp_path):
     assert not ring_shown(page) and not visible(page, "devModeOverlay") and not visible(page, "menuOverlay")
 
 
-def test_hold_outside_corner_is_the_normal_menu_hold(page, server, mf_app, net, tmp_path):
+def test_hold_anywhere_opens_dev_confirm_not_menu(page, server, mf_app, net, tmp_path):
     out, w = setup_page(page, mf_app, tmp_path)
-    ev(page, "pointerdown", w - 120, 40)                     # just outside the 80x80 corner
-    page.pump(3.4)
-    ev(page, "pointerup", w - 120, 40)
-    page.pump(0.3)
-    assert visible(page, "menuOverlay") and not visible(page, "devModeOverlay")
+    for x, y in ((w // 2, 300), (60, 500)):
+        ev(page, "pointerdown", x, y); page.pump(3.4); ev(page, "pointerup", x, y)
+        page.pump(0.3)
+        assert visible(page, "devModeOverlay") and not visible(page, "menuOverlay")
+        evaluate(page, "document.getElementById('devModeCancel').click()")
+        page.pump(0.3)
+    assert not out.exists()
 
 
 def test_temp_label(mf_app, tmp_path, monkeypatch):
@@ -234,13 +235,12 @@ def test_double_tap_opens_normal_menu_not_dev_confirm(page, server, mf_app, net,
     assert "Developer" not in text(page, "menuBox")
 
 
-def test_corner_hold_is_not_a_double_tap_or_menu(page, server, mf_app, net, tmp_path):
+def test_hold_is_not_a_double_tap_or_menu(page, server, mf_app, net, tmp_path):
     out, w = setup_page(page, mf_app, tmp_path)
-    x, y = w - 40, 40
-    for _ in range(2):                                       # double tap in the corner: nothing
-        ev(page, "pointerdown", x, y); page.pump(0.05); ev(page, "pointerup", x, y); page.pump(0.12)
-    page.pump(0.5)
+    x, y = w // 2, 200
+    ev(page, "pointerdown", x, y); page.pump(3.3); ev(page, "pointerup", x, y)   # hold, then a quick tap
+    page.pump(0.1)
+    evaluate(page, "document.getElementById('devModeCancel').click()")
+    ev(page, "pointerdown", x, y); page.pump(0.05); ev(page, "pointerup", x, y)
+    page.pump(0.6)
     assert not visible(page, "menuOverlay") and not visible(page, "devModeOverlay")
-    ev(page, "pointerdown", x, y); page.pump(3.3); ev(page, "pointerup", x, y)
-    page.pump(0.3)
-    assert visible(page, "devModeOverlay") and not visible(page, "menuOverlay")

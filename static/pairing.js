@@ -7,12 +7,10 @@
 // - Double tap opens the menu (IP, SSID, free storage, version, pair new device, sign out all).
 //   A tap: down->up < 250 ms, moved < 20 px. Double: 2nd down <= 300 ms after the 1st up, within
 //   40 px. Primary pointer only; multi-touch resets. Ignored while an overlay is open.
-//   Still long-press >= 3 s also opens it (kept as an unadvertised fallback).
+//   A still 3 s hold no longer opens the menu: it is the hidden Developer Wi-Fi confirm (MF-51).
 // Only localhost routes are used (/pairing/*, /frame/status).
 (function(){
-    const PAIR_HOLD = 3000;
     const POLL = 2000;
-    const MOVE_TOLERANCE = 20;
     const $ = (id)=>document.getElementById(id);
 
     const pairOverlay = $("pairOverlay"), emptyOverlay = $("emptyOverlay"), menuOverlay = $("menuOverlay");
@@ -33,8 +31,6 @@
     }
     let paired = 0;
     let starting = false;
-    let holdTimer = null;
-    let sx = 0, sy = 0;
 
     async function getJSON(url, opts){
         const r = await fetch(url, Object.assign({cache: "no-store"}, opts || {}));
@@ -241,11 +237,11 @@
         $("devModeCancel").focus();                     // Cancel is the default
     }
 
-    // Designer spec: hidden 3 s long press in the top-right 80x80 px corner only. A touch that
-    // starts there never reaches brightness, swipe, double tap or the 3 s menu hold. Nothing for
-    // 1 s, then a faint ring fills around the finger over 2 s; at 3 s (moved < 20 px) the confirm
-    // opens. Lifting early or moving >= 20 px cancels silently.
-    const CORNER = 80, CORNER_MS = 3000, RING_DELAY = 1000, CORNER_MOVE = 20;
+    // Hidden Developer Wi-Fi: a 3 s hold ANYWHERE (Tester #52). Nothing for 1 s, then a faint ring
+    // fills around the finger over 2 s; at 3 s (moved < 20 px) the confirm opens (Cancel default).
+    // Lifting early or moving >= 20 px (swipe, brightness drag) cancels silently. Events are not
+    // swallowed, so swipes, brightness and double tap work as before. Only double tap opens the menu.
+    const CORNER_MS = 3000, RING_DELAY = 1000, CORNER_MOVE = 20;
     const ring = $("devRing");
     let corner = null;
     function cornerStop(){
@@ -255,9 +251,7 @@
         corner = null;
     }
     window.addEventListener("pointerdown", (e)=>{
-        if(e.clientX < window.innerWidth - CORNER || e.clientY >= CORNER || overlayOpen()
-           || devOverlay.classList.contains("visible")){ return; }
-        e.stopImmediatePropagation(); e.preventDefault();
+        if(overlayOpen() || devOverlay.classList.contains("visible")){ return; }
         cornerStop();
         const c = corner = {id: e.pointerId, x: e.clientX, y: e.clientY};
         c.ringT = setTimeout(()=>{
@@ -269,13 +263,11 @@
     }, true);
     window.addEventListener("pointermove", (e)=>{
         if(!corner || e.pointerId !== corner.id){ return; }
-        e.stopImmediatePropagation();
         if(Math.hypot(e.clientX - corner.x, e.clientY - corner.y) >= CORNER_MOVE){ cornerStop(); }
     }, true);
     for(const t of ["pointerup", "pointercancel"]){
         window.addEventListener(t, (e)=>{
             if(!corner || e.pointerId !== corner.id){ return; }
-            e.stopImmediatePropagation();
             cornerStop();
         }, true);
     }
@@ -413,18 +405,6 @@
     document.addEventListener("pointerup", (e)=> pointerEnd(e, false), true);
     document.addEventListener("pointercancel", (e)=> pointerEnd(e, true), true);
 
-    document.addEventListener("pointerdown", (e)=>{
-        sx = e.clientX; sy = e.clientY;
-        clearTimeout(holdTimer);
-        holdTimer = setTimeout(openMenu, PAIR_HOLD);
-    });
-    document.addEventListener("pointermove", (e)=>{
-        if(Math.abs(e.clientX - sx) > MOVE_TOLERANCE || Math.abs(e.clientY - sy) > MOVE_TOLERANCE){
-            clearTimeout(holdTimer);
-        }
-    });
-    document.addEventListener("pointerup", ()=> clearTimeout(holdTimer));
-    document.addEventListener("pointercancel", ()=> clearTimeout(holdTimer));
 
     window.memoryFramePairing = {tick: tick, openMenu: openMenu, snoozeMs: ERROR_SNOOZE, toastMs: TOAST_MS,
         idleCloseMs: ()=> IDLE_CLOSE, setIdleCloseForTests: (ms)=>{ IDLE_CLOSE = ms; }};

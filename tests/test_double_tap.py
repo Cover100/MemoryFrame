@@ -121,10 +121,27 @@ def test_brightness_drag_never_opens_menu(ready, backlight):
     assert (backlight / "brightness").read_text().strip() != "100"
 
 
-def test_three_second_hold_still_opens(ready):
+def dev_confirm_open(page):
+    return evaluate(page, "document.getElementById('devModeOverlay').classList.contains('visible')")
+
+
+def test_three_second_hold_opens_dev_confirm_not_menu(ready):   # Tester #52: only double tap opens the menu
     hold(ready, 3.5)
     ready.pump(0.5)
-    assert menu_open(ready)
+    assert dev_confirm_open(ready) and not menu_open(ready)
+
+
+def test_brightness_drag_never_opens_dev_confirm(ready, backlight):
+    press(ready, 400, 300)
+    ready.pump(1.3)
+    for i in range(30):                        # slow vertical drag, longer than 3 s in total
+        move(ready, 400, 300 - i * 5)
+        time.sleep(0.08)
+    ready.pump(1.0)
+    release(ready, 400, 150)
+    ready.pump(0.5)
+    assert not dev_confirm_open(ready) and not menu_open(ready)
+    assert (backlight / "brightness").read_text().strip() != "100"
 
 
 def test_double_tap_while_menu_open_does_not_stack(ready):

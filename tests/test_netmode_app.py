@@ -46,7 +46,7 @@ def test_pairing_state_carries_netmode(client, nmstate, net):
     net.update(mode="lan", lan_ip="192.168.50.124", ips=["192.168.50.124"])
     nm = client.get("/pairing/state", environ_base=LOCAL).get_json()["netmode"]
     assert nm == {"dev": True, "lan_ip": "192.168.50.124", "dev_fallback": False, "hotspot_error": False,
-                  "boot_id": "b1"}
+                  "boot_id": "b1", "temp": False}
 
 
 def test_product_has_no_lan_ip(client, nmstate, net):

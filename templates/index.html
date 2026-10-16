@@ -146,6 +146,25 @@
     </div>
 
 
+    <!-- MF-51: Dev mode until reboot (confirm) -->
+    <div id="devModeOverlay" class="overlay">
+        <div id="devModeBox">
+            <div id="devModeAsk">
+                <div class="confirmTitle">Join developer Wi-Fi?</div>
+                <div class="confirmBody">Phones on the frame's Wi-Fi will disconnect until you restart the frame.</div>
+                <div class="shutdownButtons">
+                    <button id="devModeCancel" type="button">Cancel</button>
+                    <button id="devModeConfirm" type="button">Join</button>
+                </div>
+            </div>
+            <div id="devModeDone" hidden>
+                <div class="confirmTitle">Joining developer Wi-Fi…</div>
+                <div class="confirmBody">Restart the frame to go back to its own Wi-Fi.</div>
+            </div>
+            <div id="devModeError" hidden>Couldn't switch. Try again.</div>
+        </div>
+    </div>
+
     <!-- MF-49: shut down (confirm, then "Safe to unplug") -->
     <div id="shutdownOverlay" class="overlay">
         <div id="shutdownBox">
@@ -180,6 +199,8 @@
             <div id="confirmDone" hidden>All phones signed out</div>
         </div>
     </div>
+
+    <div id="devRing" hidden></div>
 
     <div id="clockOverlay">
 

@@ -73,6 +73,15 @@ else
 fi
 rm -f "$SUDOERS_TMP"
 sudo systemctl daemon-reload
+# MF-51 deploy guard: boot now defaults to product (hotspot). A Pi that is on a home Wi-Fi
+# client connection and has no mode file is a dev Pi: write "dev" so its next reboot keeps
+# home Wi-Fi (and Pi Connect). An existing mode file is never changed.
+MODE_FILE="${MEMORYFRAME_BOOT_DIR:-/boot/firmware}/memoryframe-mode.txt"
+CUR_WIFI="$("${NMCLI:-nmcli}" -g GENERAL.CONNECTION device show "${MEMORYFRAME_IFACE:-wlan0}" 2>/dev/null || true)"
+if [ ! -e "$MODE_FILE" ] && [ -n "$CUR_WIFI" ] && [ "$CUR_WIFI" != "MemoryFrame-hotspot" ]; then
+    echo "MF-51: on home Wi-Fi ($CUR_WIFI) with no mode file: writing 'dev' to $MODE_FILE so reboots keep home Wi-Fi"
+    printf 'dev\n' | sudo tee "$MODE_FILE" >/dev/null
+fi
 # MF-36: applied at the NEXT boot (enabling does not switch the network now).
 sudo systemctl enable memoryframe-netmode.service
 # MF-49: narrow sudoers rule for the frame's "Shut down" menu item (only systemctl poweroff).

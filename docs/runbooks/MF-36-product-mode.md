@@ -13,11 +13,8 @@ brought up and verified, and only then made the preferred boot connection (its o
 (netplan-generated profiles would be rewritten in /etc/netplan). If the hotspot fails, the previous
 connection is brought back. Phones reach `http://10.42.0.1/`.
 
-**First product boot safety net:** after arming, if no phone joins the hotspot within
-`MEMORYFRAME_PRODUCT_CONFIRM_MIN` minutes (default 10, `0` = off; set in the service's
-environment), the frame reverts to developer mode and home Wi-Fi by itself and logs
-`no phone joined the hotspot within … min` (`journalctl -t memoryframe-netmode`). Once a phone has
-joined, later boots are not watched until product is armed again.
+**Product mode keeps the hotspot on.** There is no "no phone joined" fallback: once the hotspot is
+up it stays up. Only a hotspot that fails to start falls back to the previous connection.
 
 There is **no** network-mode control in the frame menu or on the phone.
 

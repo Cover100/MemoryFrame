@@ -259,11 +259,11 @@
             ring.classList.remove("filling"); ring.hidden = false;
             void ring.offsetWidth; ring.classList.add("filling");
         }, RING_DELAY);
-        c.doneT = setTimeout(()=>{ cornerStop(); openDevConfirm(); }, CORNER_MS);
+        c.doneT = setTimeout(()=>{ cornerStop(); if(!window.mfBrightnessDragging){ openDevConfirm(); } }, CORNER_MS);
     }, true);
     window.addEventListener("pointermove", (e)=>{
         if(!corner || e.pointerId !== corner.id){ return; }
-        if(Math.hypot(e.clientX - corner.x, e.clientY - corner.y) >= CORNER_MOVE){ cornerStop(); }
+        if(window.mfBrightnessDragging || Math.hypot(e.clientX - corner.x, e.clientY - corner.y) >= CORNER_MOVE){ cornerStop(); }
     }, true);
     for(const t of ["pointerup", "pointercancel"]){
         window.addEventListener(t, (e)=>{
@@ -373,6 +373,7 @@
             || !!document.querySelector(".mf-modal:not([hidden])");
     }
     document.addEventListener("pointerdown", (e)=>{
+        console.debug("pointerdown pointerType=" + e.pointerType);   // on-device gesture debugging
         pointers += 1;
         if(!e.isPrimary || pointers > 1){ tapDown = null; lastTap = null; return; }   // multi-touch resets
         const now = performance.now();
@@ -391,7 +392,8 @@
         pointers = Math.max(0, pointers - 1);
         const d = tapDown;
         tapDown = null;
-        if(cancelled || !d || !e.isPrimary || e.pointerType !== "touch"){ lastTap = null; return; }   // touch only
+        // touch, mouse and pen alike (the labwc/Wayland panel reports taps as "mouse"; on-device #46 fail)
+        if(cancelled || !d || !e.isPrimary){ lastTap = null; return; }
         const now = performance.now();
         const isTap = now - d.t < TAP_MAX_MS && Math.hypot(e.clientX - d.x, e.clientY - d.y) < TAP_MOVE;
         if(!isTap){ lastTap = null; return; }

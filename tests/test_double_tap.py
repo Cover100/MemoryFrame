@@ -21,7 +21,7 @@ def move(page, x, y):
 
 
 def tap(page, x=400, y=240, down=0.05):
-    """A finger tap (pointerType "touch"): only touch double taps open the menu."""
+    """A finger tap (pointerType "touch")."""
     page.call("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": x, "y": y}]})
     time.sleep(down)
     page.call("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
@@ -170,14 +170,52 @@ def test_hint_text(page, server, mf_app, net):
 
 
 
-def test_mouse_double_click_does_not_open_menu(ready):
+def test_mouse_double_tap_opens_menu(ready):
+    """On-device: the labwc/Wayland panel reports taps as pointerType "mouse"."""
     click(ready)
     time.sleep(0.1)
-    click(ready)
+    click(ready, 405, 245)
     ready.pump(0.5)
-    assert not menu_open(ready)
-    tap(ready)                                    # a touch double tap still works
-    time.sleep(0.1)
-    tap(ready)
+    assert menu_open(ready) and not dev_confirm_open(ready)
+
+
+def test_brightness_starts_immediately_without_hold(ready, backlight):
+    press(ready, 400, 300)                     # no hold: move right away
+    for i in range(1, 30):
+        move(ready, 400, 300 - i * 5)
+        time.sleep(0.02)
+    release(ready, 400, 155)
+    ready.pump(1.0)
+    assert (backlight / "brightness").read_text().strip() != "100"
+    assert not menu_open(ready) and not dev_confirm_open(ready)
+    assert ready.exceptions() == []
+
+
+def test_small_vertical_wobble_is_not_brightness(ready, backlight):
+    press(ready, 400, 300)
+    move(ready, 400, 292)                      # 8 px < 12 px
+    release(ready, 400, 292)
+    ready.pump(0.8)
+    assert (backlight / "brightness").read_text().strip() == "100"
+
+
+def test_horizontal_swipe_never_changes_brightness(ready, backlight):
+    press(ready, 500, 240)
+    for i in range(1, 20):
+        move(ready, 500 - i * 15, 240 - i)     # mostly horizontal, some vertical drift
+        time.sleep(0.02)
+    release(ready, 215, 221)
+    ready.pump(0.8)
+    assert (backlight / "brightness").read_text().strip() == "100"
+    assert not menu_open(ready) and not dev_confirm_open(ready)
+
+
+def test_brightness_drag_then_still_hold_never_opens_dev_confirm(ready, backlight):
+    press(ready, 400, 300)
+    for i in range(1, 5):                      # 16 px up: brightness starts (still < the 20 px hold cancel)
+        move(ready, 400, 300 - i * 4)
+        time.sleep(0.02)
+    ready.pump(3.5)                            # then held still past 3 s
+    release(ready, 400, 284)
     ready.pump(0.5)
-    assert menu_open(ready)
+    assert not dev_confirm_open(ready) and not menu_open(ready)

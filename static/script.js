@@ -24,6 +24,7 @@ let libraryOrder = [];   // filenames in /media order (by name)
 const SWIPE_THRESHOLD = 80;
 
 const BRIGHTNESS_SPEED = 0.7;
+const BRIGHTNESS_START = 12;   // px of vertical movement that starts a brightness drag (no hold)
 
 const BRIGHTNESS_DISPLAY_TIME = 1500;
 
@@ -93,7 +94,7 @@ let lastY = 0;
 let brightnessDragging = false;
 
 // Hold-to-adjust brightness
-let brightnessHoldTimer = null;
+let swipeAxis = null;          // "x" (swipe) or "y" (brightness) once decided for this touch
 let brightnessMode = false;
 
 
@@ -915,21 +916,8 @@ document.addEventListener(
 
         brightnessDragging = false;
         brightnessMode = false;
-
-        clearTimeout(brightnessHoldTimer);
-
-        if(!brightnessSupported){
-
-            return;
-
-        }
-
-        brightnessHoldTimer =
-            setTimeout(()=>{
-
-                brightnessMode = true;
-
-            },1000); // Hold for 1 second
+        window.mfBrightnessDragging = false;
+        swipeAxis = null;
 
     }
 );
@@ -953,23 +941,20 @@ document.addEventListener(
             event.clientX -
             startX;
 
-        // If they've moved significantly before
-        // the hold time expires, cancel brightness mode.
-        if(
-            !brightnessMode &&
-            (
-                Math.abs(totalX) > 20 ||
-                Math.abs(totalY) > 20
-            )
-        ){
-
-            clearTimeout(brightnessHoldTimer);
-            return;
-
+        // Brightness starts as soon as the finger moves vertically past BRIGHTNESS_START px (no hold).
+        // A mainly horizontal move first is a swipe and never changes brightness.
+        if(!brightnessMode && swipeAxis === null){
+            if(brightnessSupported && Math.abs(totalY) > BRIGHTNESS_START && Math.abs(totalY) > Math.abs(totalX)){
+                swipeAxis = "y";
+                brightnessMode = true;
+                window.mfBrightnessDragging = true;     // cancels the 3 s still-hold (pairing.js)
+                deltaY = event.clientY - startY;        // include the first 12 px
+            }else if(Math.abs(totalX) > BRIGHTNESS_START){
+                swipeAxis = "x";
+            }
         }
 
-        // Only adjust brightness after
-        // the 1 second hold.
+        // Vertical drag: adjust brightness.
         if(brightnessMode){
 
             brightnessDragging = true;
@@ -1006,7 +991,7 @@ document.addEventListener(
     "pointerup",
     function(event){
 
-        clearTimeout(brightnessHoldTimer);
+        window.mfBrightnessDragging = false;
 
         if(
             brightnessDragging

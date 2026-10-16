@@ -86,15 +86,24 @@ class CDP:
                 if e.get("method") == "Runtime.exceptionThrown"]
 
 
-def page_ws_url(port, timeout=15):
+def page_ws_url(port, timeout=20, proc=None):
+    """Poll DevTools for a page target. If the browser endpoint is up but has no page yet
+    (seen on slow CI runners), ask it to open one. Fails fast if the browser process exited."""
     deadline = time.monotonic() + timeout
+    asked = False
     while True:
+        if proc is not None and proc.poll() is not None:
+            raise TimeoutError(f"no DevTools page target (browser exited with {proc.returncode})")
         try:
             targets = json.load(urllib.request.urlopen(f"http://127.0.0.1:{port}/json", timeout=2))
-            pages = [t for t in targets if t.get("type") == "page"]
+            pages = [t for t in targets if t.get("type") == "page" and t.get("webSocketDebuggerUrl")]
             if pages:
                 return pages[0]["webSocketDebuggerUrl"]
-        except OSError:
+            if not asked and time.monotonic() > deadline - timeout / 2:
+                asked = True
+                req = urllib.request.Request(f"http://127.0.0.1:{port}/json/new?about:blank", method="PUT")
+                urllib.request.urlopen(req, timeout=2).close()
+        except (OSError, ValueError):
             pass
         if time.monotonic() > deadline:
             raise TimeoutError("no DevTools page target")

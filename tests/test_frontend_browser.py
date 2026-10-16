@@ -44,8 +44,16 @@ def server(request, mf_app, lib, backlight):
     srv.shutdown()
 
 
-@pytest.fixture
-def page(server):
+def _stop(proc, profile):
+    proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+    shutil.rmtree(profile, ignore_errors=True)
+
+
+def _launch():
     port = free_port()
     profile = tempfile.mkdtemp(prefix="mf-chrome-")
     proc = subprocess.Popen(
@@ -54,8 +62,25 @@ def page(server):
          f"--remote-allow-origins=http://127.0.0.1:{port}", "--window-size=800,480",
          "--no-first-run", "--password-store=basic", "about:blank"],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return port, profile, proc
+
+
+def start_browser():
+    """Launch headless Chrome and connect; on 'no DevTools page target' retry the launch once."""
+    for attempt in (1, 2):
+        port, profile, proc = _launch()
+        try:
+            return CDP(page_ws_url(port, proc=proc)), proc, profile
+        except (TimeoutError, OSError):
+            _stop(proc, profile)
+            if attempt == 2:
+                raise
+
+
+@pytest.fixture
+def page(server):
+    cdp, proc, profile = start_browser()
     try:
-        cdp = CDP(page_ws_url(port))
         cdp.call("Runtime.enable")
         cdp.call("Log.enable")
         cdp.call("Page.enable")
@@ -65,12 +90,7 @@ def page(server):
         cdp.call("Page.navigate", {"url": server})
         yield cdp
     finally:
-        proc.terminate()
-        try:
-            proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-        shutil.rmtree(profile, ignore_errors=True)
+        _stop(proc, profile)
 
 
 def fmt(exc):

@@ -176,9 +176,13 @@
                     <button id="shutdownConfirm" type="button">Shut down</button>
                 </div>
             </div>
-            <div id="shutdownDone" hidden>
+            <div id="shutdownBusy" hidden>
                 <div class="confirmTitle">Shutting down…</div>
-                <div class="confirmBody">Safe to unplug when the screen goes dark (about 20 seconds).</div>
+                <div class="confirmBody">Saving photos. Don't unplug yet.</div>
+            </div>
+            <div id="shutdownDone" hidden>
+                <div class="confirmTitle">Safe to unplug</div>
+                <div class="confirmBody">The frame has shut down.</div>
             </div>
             <div id="shutdownError" hidden>Couldn't shut down. Try again.</div>
         </div>

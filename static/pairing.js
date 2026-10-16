@@ -298,15 +298,25 @@
     button("shutdownConfirm", async ()=>{
         if(shuttingDown){ return; }
         shuttingDown = true;
-        let ok = false;
+        $("shutdownAsk").hidden = true; $("shutdownError").hidden = true; $("shutdownBusy").hidden = false;
+        const meta = document.querySelector('meta[name="mf-frame-token"]');
+        const hdr = {"X-Frame-Token": meta ? meta.content : ""};
+        let safe = false;
         try{
-            const meta = document.querySelector('meta[name="mf-frame-token"]');
-            ok = (await fetch("/frame/shutdown", {method: "POST",
-                headers: {"X-Frame-Token": meta ? meta.content : ""}})).ok;
+            const r = await fetch("/frame/shutdown", {method: "POST", headers: hdr});
+            safe = r.ok && (await r.json()).safe === true;      // only after the server's sync
         }catch(e){ console.warn(e); }
-        if(!ok){ shuttingDown = false; $("shutdownError").hidden = false; return; }
-        $("shutdownAsk").hidden = true;
-        $("shutdownDone").hidden = false;
+        if(!safe){
+            shuttingDown = false;
+            $("shutdownBusy").hidden = true; $("shutdownAsk").hidden = false; $("shutdownError").hidden = false;
+            return;
+        }
+        // Final static screen: stays on the panel after halt. Stop everything that could repaint.
+        $("shutdownBusy").hidden = true; $("shutdownDone").hidden = false;
+        document.body.classList.add("mf-final");
+        window.mfShutdownFinal = true;
+        await new Promise((res)=> requestAnimationFrame(()=> requestAnimationFrame(()=> setTimeout(res, 300))));
+        try{ await fetch("/frame/poweroff", {method: "POST", headers: hdr}); }catch(e){ console.warn(e); }
     });
     button("menuPair", ()=>{ closeMenu(); onDemand = true; onDemandRound = false; tick(); });
     // ---------- MF-31: confirm "Sign out all phones" ----------

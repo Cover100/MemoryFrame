@@ -690,3 +690,8 @@ video {
   pointer-events:none;border:3px solid rgba(255,255,255,0);transform:scale(.6)}
 #devRing.filling{border-color:rgba(255,255,255,.35);transform:scale(1);transition:border-color 2s linear,transform 2s linear}
 #devRing[hidden]{display:none}
+
+/* MF-49 final "Safe to unplug" screen: nothing else visible or animating */
+body.mf-final > *:not(#frame), body.mf-final #frame > *:not(#shutdownOverlay){display:none!important}
+body.mf-final #shutdownOverlay{background:#000}
+#shutdownBusy[hidden]{display:none}

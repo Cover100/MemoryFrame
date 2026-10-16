@@ -61,7 +61,12 @@ def _state():
             lan_ip = None
     out["netmode"] = {"dev": nm["mode"] == "dev", "lan_ip": lan_ip if isinstance(lan_ip, str) and lan_ip else None,
                       "dev_fallback": nm["dev_fallback"], "hotspot_error": nm["hotspot_error"],
-                      "boot_id": nm["boot_id"]}
+                      "boot_id": nm["boot_id"], "temp": nm.get("temp", False)}
+    # MF-55 G3: in temporary Developer Wi-Fi phones can't reach the frame's site; pairing shows
+    # "Restart the frame to pair a phone" and the state carries no address, QR or code.
+    if nm.get("temp"):
+        out.update({"url": None, "url_fallback": None, "site_url": None, "wifi_qr_svg": None, "dev_temp": True})
+        return out
     if rnd:
         link = f"{base}/pair?t={rnd['token']}"
         out["round"] = {"code": rnd["code"], "expires_in": rnd["expires_in"], "qr_svg": qr_svg(link)}

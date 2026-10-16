@@ -57,6 +57,14 @@
 
     function render(st){
         paired = st.paired;
+        const devTemp = st.dev_temp === true;            // MF-55 G3: no QR, code or address
+        $("pairDevTemp").hidden = !devTemp;
+        $("pairBox").classList.toggle("mf-devtemp", devTemp);
+        if(devTemp){
+            for(const id of ["pairUrl", "pairUrlAlt", "pairSsid", "pairCode"]){ $(id).textContent = ""; }
+            $("pairQr").innerHTML = ""; $("wifiQr").innerHTML = "";
+            return;
+        }
         const base = fallbackBase(st);
         $("pairUrl").textContent = okUrl(st.url) ? st.url : base + "pair";
         $("pairUrlAlt").textContent = okUrl(st.url_fallback) ? "or " + st.url_fallback : "";

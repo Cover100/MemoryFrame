@@ -50,7 +50,9 @@ def install(tmp_path, envd):
 
 def test_install_text_never_arms_product():
     src = (ROOT / "deploy" / "install.sh").read_text()
-    assert "memoryframe-mode.txt" not in src and "/boot/firmware" not in src
+    # MF-51: the only mode-file write is the dev-Pi guard, and it only ever writes "dev"
+    writes = re.findall(r"printf '([a-z]+)\\n' \| sudo tee \"\$MODE_FILE\"", src)
+    assert writes == ["dev"] and 'if [ ! -e "$MODE_FILE" ]' in src
     assert not re.search(r"netmode(\.sh)?\s+(product|dev|boot)", src)
     assert not re.search(r"systemctl\s+(start|restart)\s+memoryframe-netmode", src)
     unit = (ROOT / "deploy" / "memoryframe-netmode.service").read_text()
@@ -63,8 +65,9 @@ def test_install_then_reboot_on_dev_pi_keeps_home_wifi(env, tmp_path):
     assert not re.search(r"memoryframe-netmode (product|dev|boot)", log)
     assert "systemctl enable memoryframe-netmode.service" in log
     assert not re.search(r"systemctl (start|restart) memoryframe-netmode", log)
-    assert not (env["boot"] / "memoryframe-mode.txt").exists()
+    assert re.search(r"tee \S*/memoryframe-mode\.txt", log)   # MF-51 guard (sudo is stubbed)
     assert mutations(env) == []
+    (env["boot"] / "memoryframe-mode.txt").write_text("dev\n")  # what the guard writes
     # simulated reboot: the boot service runs `netmode.sh boot`
     r = run(env, "boot")
     assert r.returncode == 0, r.stderr

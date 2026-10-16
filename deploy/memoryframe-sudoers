@@ -2,4 +2,4 @@
 # /etc/sudoers.d/memoryframe (0440, checked with visudo -c). @USER@ is replaced.
 # The helper is a root-owned copy (/usr/local/sbin), not the app-writable checkout.
 # The new password is passed on stdin, never on the command line (sudo logs argv).
-@USER@ ALL=(root) NOPASSWD: /usr/local/sbin/memoryframe-netmode wifi-apply, /usr/local/sbin/memoryframe-netmode wifi-commit, /usr/local/sbin/memoryframe-netmode wifi-rollback
+@USER@ ALL=(root) NOPASSWD: /usr/local/sbin/memoryframe-netmode wifi-apply, /usr/local/sbin/memoryframe-netmode wifi-commit, /usr/local/sbin/memoryframe-netmode wifi-rollback, /usr/local/sbin/memoryframe-netmode dev-temp

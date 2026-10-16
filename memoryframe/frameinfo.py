@@ -320,6 +320,7 @@ def netmode_state():
     out["dev_fallback"] = raw.get("dev_fallback") is True
     out["hotspot_error"] = raw.get("hotspot_error") is True and out["mode"] == "product"
     out["reset"] = raw.get("reset") is True
+    out["temp"] = out["mode"] == "dev" and raw.get("requested") == "dev-temp"   # MF-51 until reboot
     uid = raw.get("hotspot_uuid")
     out["hotspot_uuid"] = uid[:64] if isinstance(uid, str) else ""
     out["wifi_profiles"] = raw.get("wifi_profiles") is True

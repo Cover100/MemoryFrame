@@ -231,11 +231,8 @@ def test_state_b_photos_no_phone_slideshow_runs_on_home_wifi(page, server, mf_ap
     assert h["width"] * h["height"] < 800 * 480 * 0.05          # unobtrusive: < 5 % of the screen
     assert mf_app.extensions.get("mf_pairing") is None or mf_app.extensions["mf_pairing"].current() is None
 
-    # long-press menu -> site for the current network, then "Pair new device"
-    hold(page, 2.0)
-    page.pump(0.3)
-    assert not visible(page, "menuOverlay")                  # 2 s is not enough
-    hold(page, 3.5)
+    # menu (double tap; a 3 s hold is the hidden Developer Wi-Fi, not the menu) -> "Pair new device"
+    evaluate(page, "memoryFramePairing.openMenu()")
     page.pump(1.0)
     assert visible(page, "menuOverlay")
     m = menu_info(page)

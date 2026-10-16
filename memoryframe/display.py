@@ -145,8 +145,7 @@ def set_brightness():
 
 POWEROFF_CMD = ["sudo", "-n", "/usr/bin/systemctl", "poweroff"]
 SYNC_CMD = ["sync"]
-POWEROFF_DELAY = 1.0          # after the kiosk confirms "Safe to unplug" is on screen
-POWEROFF_FALLBACK = 15.0      # power off anyway if the kiosk never confirms
+POWEROFF_DELAY = 1.0          # let the kiosk paint "Shutting down…" first
 
 
 def frame_token():
@@ -201,16 +200,15 @@ def _schedule_poweroff(app, delay):
 @bp.before_app_request
 def _refuse_writes_while_shutting_down():
     st = current_app.extensions.get("mf_shutdown") or {}
-    if st.get("synced") and request.method not in ("GET", "HEAD", "OPTIONS") \
-            and request.path != "/frame/poweroff":
+    if st.get("synced") and request.method not in ("GET", "HEAD", "OPTIONS"):
         abort(503)
 
 
 @bp.route("/frame/shutdown", methods=["POST"])
 @localhost_only
 def shutdown():
-    """Step 1 (MF-49 fix): stop accepting writes, sync, and answer safe=true only after a
-    successful sync. Poweroff itself waits for step 2 (or the fallback timer)."""
+    """MF-49: stop accepting writes, sync, then power off. "Safe to unplug" is drawn later by the
+    systemd-shutdown hook (deploy/safe-screen), after filesystems are unmounted/read-only."""
     _check_token()
     app = current_app._get_current_object()
     st = app.extensions.setdefault("mf_shutdown", {})
@@ -218,23 +216,9 @@ def shutdown():
     log.warning("shutdown requested from the frame menu; syncing")
     if not _sync():
         st["synced"] = False
-        return jsonify({"safe": False}), 500
-    _schedule_poweroff(app, float(app.config.get("POWEROFF_FALLBACK", POWEROFF_FALLBACK)))
-    return jsonify({"safe": True})
-
-
-@bp.route("/frame/poweroff", methods=["POST"])
-@localhost_only
-def poweroff():
-    """Step 2: the kiosk has painted "Safe to unplug"; sync once more and power off."""
-    _check_token()
-    app = current_app._get_current_object()
-    st = app.extensions.get("mf_shutdown") or {}
-    if not st.get("synced"):
-        abort(409)
-    _sync()
+        return jsonify({"shutting_down": False}), 500
     _schedule_poweroff(app, float(app.config.get("POWEROFF_DELAY", POWEROFF_DELAY)))
-    return jsonify({"powering_off": True})
+    return jsonify({"shutting_down": True})
 
 
 # ---------------- MF-51: Dev mode until reboot (kiosk only) ----------------

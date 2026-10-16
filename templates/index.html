@@ -165,7 +165,15 @@
         </div>
     </div>
 
-    <!-- MF-49: shut down (confirm, then "Safe to unplug") -->
+    <!-- MF-49: full-screen "Shutting down" (Designer). "Safe to unplug" is drawn by the late
+         shutdown hook on fb0 once it is genuinely safe. -->
+    <div id="shuttingDown" hidden>
+        <div class="sdTitle">Shutting down…</div>
+        <div class="sdWarn">Don't unplug yet</div>
+        <div class="sdDots"><span></span><span></span><span></span></div>
+    </div>
+
+    <!-- MF-49: shut down (confirm) -->
     <div id="shutdownOverlay" class="overlay">
         <div id="shutdownBox">
             <div id="shutdownAsk">
@@ -175,14 +183,6 @@
                     <button id="shutdownCancel" type="button">Cancel</button>
                     <button id="shutdownConfirm" type="button">Shut down</button>
                 </div>
-            </div>
-            <div id="shutdownBusy" hidden>
-                <div class="confirmTitle">Shutting down…</div>
-                <div class="confirmBody">Saving photos. Don't unplug yet.</div>
-            </div>
-            <div id="shutdownDone" hidden>
-                <div class="confirmTitle">Safe to unplug</div>
-                <div class="confirmBody">The frame has shut down.</div>
             </div>
             <div id="shutdownError" hidden>Couldn't shut down. Try again.</div>
         </div>

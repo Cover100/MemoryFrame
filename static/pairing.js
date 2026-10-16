@@ -251,7 +251,7 @@
         corner = null;
     }
     window.addEventListener("pointerdown", (e)=>{
-        if(overlayOpen() || devOverlay.classList.contains("visible")){ return; }
+        if(window.mfShuttingDown || overlayOpen() || devOverlay.classList.contains("visible")){ return; }
         cornerStop();
         const c = corner = {id: e.pointerId, x: e.clientX, y: e.clientY};
         c.ringT = setTimeout(()=>{
@@ -291,33 +291,36 @@
     let shuttingDown = false;
     button("menuShutdown", ()=>{
         closeMenu();
-        $("shutdownAsk").hidden = false; $("shutdownDone").hidden = true; $("shutdownError").hidden = true;
+        $("shutdownAsk").hidden = false; $("shutdownError").hidden = true;
         shutdownOverlay.classList.add("visible");
     });
     button("shutdownCancel", ()=>{ if(!shuttingDown){ shutdownOverlay.classList.remove("visible"); } });
     button("shutdownConfirm", async ()=>{
         if(shuttingDown){ return; }
         shuttingDown = true;
-        $("shutdownAsk").hidden = true; $("shutdownError").hidden = true; $("shutdownBusy").hidden = false;
+        const cover = $("shuttingDown");
+        shutdownOverlay.classList.remove("visible");
+        cover.hidden = false;                              // immediately, covers everything
+        window.mfShuttingDown = true;
         const meta = document.querySelector('meta[name="mf-frame-token"]');
-        const hdr = {"X-Frame-Token": meta ? meta.content : ""};
-        let safe = false;
+        let ok = false;
         try{
-            const r = await fetch("/frame/shutdown", {method: "POST", headers: hdr});
-            safe = r.ok && (await r.json()).safe === true;      // only after the server's sync
+            ok = (await fetch("/frame/shutdown", {method: "POST",
+                headers: {"X-Frame-Token": meta ? meta.content : ""}})).ok;   // after the server's sync
         }catch(e){ console.warn(e); }
-        if(!safe){
-            shuttingDown = false;
-            $("shutdownBusy").hidden = true; $("shutdownAsk").hidden = false; $("shutdownError").hidden = false;
-            return;
+        if(!ok){
+            shuttingDown = false; window.mfShuttingDown = false; cover.hidden = true;
+            $("shutdownAsk").hidden = false; $("shutdownError").hidden = false;
+            shutdownOverlay.classList.add("visible");
         }
-        // Final static screen: stays on the panel after halt. Stop everything that could repaint.
-        $("shutdownBusy").hidden = true; $("shutdownDone").hidden = false;
-        document.body.classList.add("mf-final");
-        window.mfShutdownFinal = true;
-        await new Promise((res)=> requestAnimationFrame(()=> requestAnimationFrame(()=> setTimeout(res, 300))));
-        try{ await fetch("/frame/poweroff", {method: "POST", headers: hdr}); }catch(e){ console.warn(e); }
     });
+    // taps on the cover are ignored (no menu, no brightness, no swipe)
+    for(const t of ["pointerdown", "pointermove", "pointerup", "click"]){
+        window.addEventListener(t, (e)=>{
+            if(window.mfShuttingDown){ e.stopImmediatePropagation(); e.preventDefault(); }
+        }, true);
+    }
+
     button("menuPair", ()=>{ closeMenu(); onDemand = true; onDemandRound = false; tick(); });
     // ---------- MF-31: confirm "Sign out all phones" ----------
     const confirmOverlay = $("confirmOverlay");

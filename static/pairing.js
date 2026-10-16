@@ -7,12 +7,10 @@
 // - Double tap opens the menu (IP, SSID, free storage, version, pair new device, sign out all).
 //   A tap: down->up < 250 ms, moved < 20 px. Double: 2nd down <= 300 ms after the 1st up, within
 //   40 px. Primary pointer only; multi-touch resets. Ignored while an overlay is open.
-//   Still long-press >= 3 s also opens it (kept as an unadvertised fallback).
+//   A still 3 s hold no longer opens the menu: it is the hidden Developer Wi-Fi confirm (MF-51).
 // Only localhost routes are used (/pairing/*, /frame/status).
 (function(){
-    const PAIR_HOLD = 3000;
     const POLL = 2000;
-    const MOVE_TOLERANCE = 20;
     const $ = (id)=>document.getElementById(id);
 
     const pairOverlay = $("pairOverlay"), emptyOverlay = $("emptyOverlay"), menuOverlay = $("menuOverlay");
@@ -33,8 +31,6 @@
     }
     let paired = 0;
     let starting = false;
-    let holdTimer = null;
-    let sx = 0, sy = 0;
 
     async function getJSON(url, opts){
         const r = await fetch(url, Object.assign({cache: "no-store"}, opts || {}));
@@ -96,7 +92,8 @@
         banner.hidden = !nm.dev;
         if(nm.dev){
             const ip = typeof nm.lan_ip === "string" && /^[0-9.]+$/.test(nm.lan_ip) ? nm.lan_ip : null;
-            banner.textContent = "Developer mode \u00b7 " + (ip || "no network");
+            banner.textContent = nm.temp ? "Developer Wi-Fi \u00b7 " + (ip || "no network") + " \u00b7 restart to exit"
+                                         : "Developer mode \u00b7 " + (ip || "no network");
         }
         if(nm.dev_fallback){
             const key = "mf-devtoast-" + (nm.boot_id || "boot");
@@ -231,6 +228,64 @@
     }
     button("menuClose", closeMenu);
 
+    // ---------- MF-51: Dev mode until reboot ----------
+    const devOverlay = $("devModeOverlay");
+    let devBusy = false;
+    function openDevConfirm(){
+        $("devModeAsk").hidden = false; $("devModeDone").hidden = true; $("devModeError").hidden = true;
+        devOverlay.classList.add("visible");
+        $("devModeCancel").focus();                     // Cancel is the default
+    }
+
+    // Hidden Developer Wi-Fi: a 3 s hold ANYWHERE (Tester #52). Nothing for 1 s, then a faint ring
+    // fills around the finger over 2 s; at 3 s (moved < 20 px) the confirm opens (Cancel default).
+    // Lifting early or moving >= 20 px (swipe, brightness drag) cancels silently. Events are not
+    // swallowed, so swipes, brightness and double tap work as before. Only double tap opens the menu.
+    const CORNER_MS = 3000, RING_DELAY = 1000, CORNER_MOVE = 20;
+    const ring = $("devRing");
+    let corner = null;
+    function cornerStop(){
+        if(!corner){ return; }
+        clearTimeout(corner.ringT); clearTimeout(corner.doneT);
+        ring.hidden = true; ring.classList.remove("filling");
+        corner = null;
+    }
+    window.addEventListener("pointerdown", (e)=>{
+        if(overlayOpen() || devOverlay.classList.contains("visible")){ return; }
+        cornerStop();
+        const c = corner = {id: e.pointerId, x: e.clientX, y: e.clientY};
+        c.ringT = setTimeout(()=>{
+            ring.style.left = c.x + "px"; ring.style.top = c.y + "px";
+            ring.classList.remove("filling"); ring.hidden = false;
+            void ring.offsetWidth; ring.classList.add("filling");
+        }, RING_DELAY);
+        c.doneT = setTimeout(()=>{ cornerStop(); openDevConfirm(); }, CORNER_MS);
+    }, true);
+    window.addEventListener("pointermove", (e)=>{
+        if(!corner || e.pointerId !== corner.id){ return; }
+        if(Math.hypot(e.clientX - corner.x, e.clientY - corner.y) >= CORNER_MOVE){ cornerStop(); }
+    }, true);
+    for(const t of ["pointerup", "pointercancel"]){
+        window.addEventListener(t, (e)=>{
+            if(!corner || e.pointerId !== corner.id){ return; }
+            cornerStop();
+        }, true);
+    }
+    button("devModeCancel", ()=>{ if(!devBusy){ devOverlay.classList.remove("visible"); } });
+    button("devModeConfirm", async ()=>{
+        if(devBusy){ return; }
+        devBusy = true;
+        let ok = false;
+        try{
+            const meta = document.querySelector('meta[name="mf-frame-token"]');
+            ok = (await fetch("/frame/dev-mode", {method: "POST",
+                headers: {"X-Frame-Token": meta ? meta.content : ""}})).ok;
+        }catch(e){ console.warn(e); }
+        if(!ok){ devBusy = false; $("devModeError").hidden = false; return; }
+        $("devModeAsk").hidden = true; $("devModeDone").hidden = false;
+        setTimeout(()=>{ devBusy = false; devOverlay.classList.remove("visible"); }, 4000);
+    });
+
     // ---------- MF-49: shut down ----------
     const shutdownOverlay = $("shutdownOverlay");
     let shuttingDown = false;
@@ -350,18 +405,6 @@
     document.addEventListener("pointerup", (e)=> pointerEnd(e, false), true);
     document.addEventListener("pointercancel", (e)=> pointerEnd(e, true), true);
 
-    document.addEventListener("pointerdown", (e)=>{
-        sx = e.clientX; sy = e.clientY;
-        clearTimeout(holdTimer);
-        holdTimer = setTimeout(openMenu, PAIR_HOLD);
-    });
-    document.addEventListener("pointermove", (e)=>{
-        if(Math.abs(e.clientX - sx) > MOVE_TOLERANCE || Math.abs(e.clientY - sy) > MOVE_TOLERANCE){
-            clearTimeout(holdTimer);
-        }
-    });
-    document.addEventListener("pointerup", ()=> clearTimeout(holdTimer));
-    document.addEventListener("pointercancel", ()=> clearTimeout(holdTimer));
 
     window.memoryFramePairing = {tick: tick, openMenu: openMenu, snoozeMs: ERROR_SNOOZE, toastMs: TOAST_MS,
         idleCloseMs: ()=> IDLE_CLOSE, setIdleCloseForTests: (ms)=>{ IDLE_CLOSE = ms; }};

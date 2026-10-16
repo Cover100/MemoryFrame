@@ -138,30 +138,30 @@ def test_product_mode_file_boots_product(env):
 # ---------- SAFETY: nothing but an explicit "product" arms product mode ----------
 
 @pytest.mark.parametrize("text", [None, "", "\n\n", "   \n", "nonsense\n", "prod\n"])
-def test_missing_empty_or_unknown_mode_file_is_dev_and_touches_nothing(env, text):
+def test_missing_empty_or_unknown_mode_file_is_product(env, text):   # MF-51
     if text is not None:
         (env["boot"] / "memoryframe-mode.txt").write_text(text)
     for _ in range(2):                                        # two simulated reboots
         r = run(env, "boot")
         assert r.returncode == 0, r.stderr
-    assert active(env) == HOME                                # home Wi-Fi kept
+    assert active(env) == HOT                                 # MF-51: product by default
     assert ac(env, HOME) == "yes" and ac(env, OTHER) == "yes"
-    assert mutations(env) == []                               # no up/down/modify at all
-    assert state(env)["mode"] == "dev" and state(env)["requested"] == "none"
+    assert foreign_modifies(env) == []
+    assert state(env)["mode"] == "product"
     after = (env["boot"] / "memoryframe-mode.txt")
     assert (after.read_text() if after.exists() else None) == text   # never written by boot
 
 
 def test_status_shows_armed_vs_current(env):
     out = run(env, "status").stdout
-    assert "armed for next boot: dev (no mode file" in out
+    assert "armed for next boot: product (no mode file" in out
     run(env, "boot")
     out = run(env, "status").stdout
-    assert "current mode: dev" in out and f"active: {HOME}" in out
-    (env["boot"] / "memoryframe-mode.txt").write_text("product\n")   # armed, not yet applied
+    assert "current mode: product" in out and f"active: {HOT}" in out
+    (env["boot"] / "memoryframe-mode.txt").write_text("dev\n")   # armed, not yet applied
     out = run(env, "status").stdout
-    assert "armed for next boot: product" in out and "current mode: dev" in out
-    assert active(env) == HOME
+    assert "armed for next boot: dev" in out and "current mode: product" in out
+    assert active(env) == HOT
 
 
 def test_dev_fallback_keeps_client_autoconnect(env):
@@ -288,9 +288,9 @@ def test_boot_file_returns_to_product_without_network(env):
     run(env, "boot")
     assert active(env) == HOT
     run(env, "dev")
-    (env["boot"] / "memoryframe-mode.txt").unlink()        # deleted on a PC: developer default
+    (env["boot"] / "memoryframe-mode.txt").unlink()        # deleted on a PC: MF-51 product default
     run(env, "boot")
-    assert active(env) == HOME                             # left as is (dev)
+    assert active(env) == HOT
 
 
 def test_reset_file_recreates_hotspot_and_forces_product(env):
@@ -360,7 +360,7 @@ def test_sudoers_only_the_three_wifi_commands():
             if l.strip() and not l.startswith("#")]
     assert len(rule) == 1
     cmds = [c.strip() for c in rule[0].split("NOPASSWD:", 1)[1].split(",")]
-    assert cmds == [f"/usr/local/sbin/memoryframe-netmode {c}" for c in ("wifi-apply", "wifi-commit", "wifi-rollback")]
+    assert cmds == [f"/usr/local/sbin/memoryframe-netmode {c}" for c in ("wifi-apply", "wifi-commit", "wifi-rollback", "dev-temp")]
     assert "ALL=(root)" in rule[0] and "*" not in rule[0]
 
 
@@ -460,7 +460,8 @@ def test_apply_refused_unless_product_applied(env, state_file):
     if state_file == "garbage":
         (env["state"] / "netmode.json").write_text("{nope")
     elif state_file == "dev":
-        run(env, "boot")                                     # no mode file -> dev, no-op
+        (env["boot"] / "memoryframe-mode.txt").write_text("dev\n")
+        run(env, "boot")                                     # dev file -> home Wi-Fi
     for cmd in ("wifi-apply", "wifi-rollback", "wifi-commit"):
         r = run(env, cmd, input=f"New\n{NEWPW}\n")
         assert r.returncode != 0
@@ -479,14 +480,13 @@ def test_reset_flag_in_state(env):
 
 # ---------- SAFETY: the boot service is a strict no-op on a dev Pi ----------
 
-@pytest.mark.parametrize("text", [None, "dev\n", "", "junk\n"])
-def test_boot_service_strict_noop_unless_product(env, text):
+@pytest.mark.parametrize("text,want", [(None, HOT), ("dev\n", HOME), ("", HOT), ("junk\n", HOT)])
+def test_boot_service_dev_file_or_product(env, text, want):   # MF-51
     if text is not None:
         (env["boot"] / "memoryframe-mode.txt").write_text(text)
-    (env["boot"] / "memoryframe-dev-wifi.txt").write_text("ssid=OfficeNet\n")   # even with a dev ssid
     for _ in range(3):
         assert run(env, "boot").returncode == 0
-    assert mutations(env) == [] and active(env) == HOME
+    assert foreign_modifies(env) == [] and active(env) == want
     assert ac(env, HOME) == "yes" and ac(env, OTHER) == "yes"
 
 
@@ -543,48 +543,17 @@ def test_hotspot_verified_before_it_is_made_preferred(env):
     assert up < mod
 
 
-# ---------- Tester #40 (4): first product boot reverts if no phone joins ----------
+# ---------- MF-51: product mode never falls back (no no-phone timer) ----------
 
-def test_first_product_boot_starts_watch_once(env):
+def test_product_never_falls_back_without_phone(env):
     run(env, "product")
-    sd = (env["d"] / "sdrun").read_text()
-    assert "--unit=memoryframe-product-watch" in sd and sd.rstrip().endswith("product-watch")
-    (env["tmp"] / "var").mkdir(exist_ok=True)
-    (env["tmp"] / "var" / "netmode-product-confirmed").write_text("")
-    (env["d"] / "sdrun").unlink()
-    run(env, "boot")                                          # confirmed -> no watch on later boots
-    assert not (env["d"] / "sdrun").exists()
-    run(env, "product")                                       # explicit re-arm -> watched again
-    assert (env["d"] / "sdrun").exists()
-
-
-def test_no_phone_within_timeout_reverts_to_home_wifi(env):
-    run(env, "product")
-    assert active(env) == HOT
-    env["env"]["MEMORYFRAME_PRODUCT_CONFIRM_MIN"] = "0.005"   # 0.3 s
-    r = run(env, "product-watch")
-    assert r.returncode == 0, r.stderr
-    assert "no phone joined the hotspot" in r.stderr
-    assert active(env) == HOME and ac(env, HOT) == "no"
-    assert (env["boot"] / "memoryframe-mode.txt").read_text().strip() == "dev"
-    assert state(env)["mode"] == "dev" and foreign_modifies(env) == []
-
-
-def test_phone_joins_confirms_product(env):
-    run(env, "product")
-    (env["d"] / "stations").write_text("Station aa:bb:cc:dd:ee:ff (on wlan0)\n")
-    env["env"]["MEMORYFRAME_PRODUCT_CONFIRM_MIN"] = "0.005"
-    r = run(env, "product-watch")
-    assert r.returncode == 0 and active(env) == HOT
-    assert (env["tmp"] / "var" / "netmode-product-confirmed").exists()
+    for _ in range(2):
+        run(env, "boot")
+    assert active(env) == HOT and ac(env, HOT) == "yes"
+    assert not (env["d"] / "sdrun").exists()                 # no watch/timer is ever started
+    assert run(env, "product-watch").returncode == 2         # subcommand removed
     assert (env["boot"] / "memoryframe-mode.txt").read_text().strip() == "product"
-
-
-def test_watch_disabled_with_zero(env):
-    env["env"]["MEMORYFRAME_PRODUCT_CONFIRM_MIN"] = "0"
-    run(env, "product")
-    assert not (env["d"] / "sdrun").exists()
-
+    assert "CONFIRM_MIN" not in SCRIPT.read_text() and "product-watch" not in SCRIPT.read_text()
 
 
 # ---------- Tester #41 ----------

@@ -13,12 +13,13 @@
 #   netmode.sh wifi-rollback   # old hotspot back up, pending profile deleted
 #
 # Boot-partition files (editable from any PC, drive "bootfs"):
-#   memoryframe-mode.txt      one word: product | dev. Missing/empty/other -> developer default:
-#                             the boot service changes NOTHING (home Wi-Fi stays). Only an explicit
-#                             `sudo netmode.sh product` (or memoryframe-reset) writes product.
-#                             At boot the service is a strict no-op unless the file says product
-#                             (or product mode was applied before and has to be undone).
-#                             install.sh never writes this file.
+#   memoryframe-mode.txt      one word: product | dev. Missing/empty/other -> PRODUCT (hotspot)
+#                             at every boot (MF-51). "dev" forces developer Wi-Fi persistently on
+#                             every boot (the dev Pi's guard and the offline recovery path).
+#                             install.sh writes "dev" only when the Pi is on a home Wi-Fi client
+#                             connection and no mode file exists; it never changes an existing file.
+#                             `netmode.sh dev-temp` (frame's hidden Developer Wi-Fi) writes nothing:
+#                             home Wi-Fi until the next reboot only.
 #   memoryframe-dev-wifi.txt  optional, only  ssid=<name>: which EXISTING NetworkManager
 #                             profile to use in dev mode (default: the most recently used one). Never a password: dev Wi-Fi
 #                             credentials live only in that root-only NM profile. Any other
@@ -34,9 +35,7 @@
 #            boot connection (MemoryFrame-hotspot autoconnect=yes, autoconnect-priority 100).
 #            If it fails, the previous connection (home Wi-Fi) is brought back and the failure is
 #            recorded for the frame's error screen. Never reboots.
-#            First product boot after arming: if no phone associates with the hotspot within
-#            MEMORYFRAME_PRODUCT_CONFIRM_MIN minutes (default 10; 0 = off), the frame reverts to
-#            developer mode / home Wi-Fi and logs it (product-watch, run via systemd-run).
+#            Once up, the hotspot ALWAYS stays on (no "no phone joined" fallback; MF-51 decision).
 #   dev:     hotspot down, the dev profile up (waits up to MEMORYFRAME_DEV_WAIT s). If it
 #            doesn't connect: the hotspot is started for this boot only (the frame shows "Developer
 #            Wi-Fi not found"); client autoconnect and the mode file are left alone, so the next
@@ -47,8 +46,7 @@
 #
 # The frame app reads $STATE_DIR/netmode.json (no secrets in it).
 # Test hooks: NMCLI, MEMORYFRAME_BOOT_DIR, MEMORYFRAME_STATE_DIR, MEMORYFRAME_HOTSPOT_SH,
-# MEMORYFRAME_DEV_WAIT, MEMORYFRAME_BOOT_ID_FILE, MEMORYFRAME_VAR_DIR, SYSTEMD_RUN, IW,
-# MEMORYFRAME_PRODUCT_CONFIRM_MIN, MEMORYFRAME_CONFIRM_POLL.
+# MEMORYFRAME_DEV_WAIT, MEMORYFRAME_BOOT_ID_FILE.
 set -euo pipefail
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -60,13 +58,6 @@ HOTSPOT_SH="${MEMORYFRAME_HOTSPOT_SH:-$DIR/hotspot.sh}"
 DEV_WAIT="${MEMORYFRAME_DEV_WAIT:-45}"
 BOOT_ID_FILE="${MEMORYFRAME_BOOT_ID_FILE:-/proc/sys/kernel/random/boot_id}"
 IFACE="${MEMORYFRAME_IFACE:-wlan0}"
-VAR_DIR="${MEMORYFRAME_VAR_DIR:-/var/lib/memoryframe}"
-SYSTEMD_RUN="${SYSTEMD_RUN-systemd-run}"
-IW="${IW:-iw}"
-CONFIRM_MIN="${MEMORYFRAME_PRODUCT_CONFIRM_MIN:-10}"
-CONFIRM_POLL="${MEMORYFRAME_CONFIRM_POLL:-15}"
-SELF="$DIR/$(basename "$0")"
-CONFIRMED="$VAR_DIR/netmode-product-confirmed"   # a phone has joined the hotspot since product was armed
 
 MODE_FILE="$BOOT_DIR/memoryframe-mode.txt"
 WIFI_FILE="$BOOT_DIR/memoryframe-dev-wifi.txt"
@@ -85,7 +76,7 @@ log() {
     logger -t memoryframe-netmode -- "$*" 2>/dev/null || true
 }
 
-usage() { echo "usage: $0 product|dev|status|boot|wifi-apply|wifi-commit|wifi-rollback" >&2; exit 2; }
+usage() { echo "usage: $0 product|dev|dev-temp|status|boot|wifi-apply|wifi-commit|wifi-rollback" >&2; exit 2; }
 
 trim() { local s="${1//$'\r'/}"; s="${s#"${s%%[![:space:]]*}"}"; printf '%s' "${s%"${s##*[![:space:]]}"}"; }
 
@@ -100,12 +91,12 @@ requested_mode() {
         done < "$MODE_FILE"
     fi
     line="$(printf '%s' "$line" | tr '[:upper:]' '[:lower:]')"
-    # SAFETY (Delivery Lead/Tester): only an explicit "product" arms product mode. Missing, empty
-    # or unknown -> "none": developer default, the network is left exactly as it is.
+    # MF-51: every boot is product mode (the hotspot) unless the file explicitly says "dev"
+    # (the dev Pi's persistent guard and the offline recovery path). Missing/empty/unknown -> product.
     case "$line" in
         product|dev) echo "$line" ;;
-        "") echo none ;;
-        *) log "memoryframe-mode.txt: unknown mode, treating as developer default (network unchanged)"; echo none ;;
+        "") echo product ;;
+        *) log "memoryframe-mode.txt: unknown mode, using product (write 'dev' to force developer mode)"; echo product ;;
     esac
 }
 
@@ -239,71 +230,37 @@ dev_profile() {
     [ -n "$best" ] && printf '%s\n' "$best"
 }
 
-apply_dev() {
-    local ssid p
+apply_dev() {   # [temp]: MF-51 menu "Dev mode" until reboot (hotspot profile left untouched)
+    local ssid p temp="${1:-}" req=dev
+    if [ "$temp" = temp ]; then req=dev-temp; fi
     ssid="$(dev_ssid)"
     if ! p="$(dev_profile "$ssid")"; then
         log "dev: no matching NetworkManager Wi-Fi profile${ssid:+ for the configured ssid}; starting the hotspot"
-        apply_product dev true fallback || true
+        apply_product "$req" true fallback || true
         return 1
     fi
-    if profiles | grep -qxF "$HOTSPOT_CON"; then hotspot_autoconnect no; fi
+    if [ "$temp" != temp ] && profiles | grep -qxF "$HOTSPOT_CON"; then hotspot_autoconnect no; fi
     if [ "$(active)" = "$p" ]; then
         log "dev: already on $p"
-        write_state dev dev false false
+        write_state dev "$req" false false
         return 0
     fi
     if [ "$(active)" = "$HOTSPOT_CON" ]; then "$NMCLI" connection down "$HOTSPOT_CON" >/dev/null 2>&1 || true; fi
     if "$NMCLI" --wait "$DEV_WAIT" connection up "$p" >/dev/null 2>&1 && [ "$(active)" = "$p" ]; then
-        log "dev: connected ($p)"
-        write_state dev dev false false
+        log "dev: connected ($p)${temp:+ until the next reboot}"
+        write_state dev "$req" false false
         return 0
     fi
     log "dev: developer Wi-Fi did not connect; starting the hotspot (mode file unchanged; retried next boot)"
-    apply_product dev true fallback || true
+    apply_product "$req" true fallback || true
     return 1
-}
-
-# ---------- first product boot: revert if no phone joins ----------
-
-station_seen() { "$IW" dev "$IFACE" station dump 2>/dev/null | grep -q '^Station '; }
-
-start_watch() {
-    if [ -e "$CONFIRMED" ] || [ "$CONFIRM_MIN" = 0 ] || [ "$(active)" != "$HOTSPOT_CON" ]; then return 0; fi
-    if [ -z "$SYSTEMD_RUN" ]; then return 0; fi
-    log "product: first product boot; reverting to developer mode if no phone joins within $CONFIRM_MIN min"
-    "$SYSTEMD_RUN" --unit=memoryframe-product-watch --collect --quiet "$SELF" product-watch \
-        >/dev/null 2>&1 || log "could not start the product-watch timer"
-}
-
-product_watch() {
-    local secs end
-    secs="$(awk -v m="$CONFIRM_MIN" 'BEGIN { if (m + 0 <= 0) m = 10; printf "%d", m * 60 + 0.999 }')"
-    end=$(( $(date +%s) + secs ))
-    while :; do
-        if station_seen; then
-            mkdir -p "$VAR_DIR"; : > "$CONFIRMED"
-            log "product: a phone joined the hotspot; product mode confirmed"
-            return 0
-        fi
-        if [ "$(date +%s)" -ge "$end" ]; then break; fi
-        sleep "$CONFIRM_POLL"
-    done
-    if [ "$(requested_mode)" != product ]; then return 0; fi
-    take_lock
-    log "product: no phone joined the hotspot within $CONFIRM_MIN min; reverting to developer mode (home Wi-Fi)"
-    write_mode_file dev
-    hotspot_autoconnect no
-    apply_dev || true
 }
 
 apply() {
     case "$1" in
         dev) apply_dev ;;
-        product) apply_product product false && start_watch ;;
-        *)  # unarmed: developer default, nothing touched (current behaviour before MF-36)
-            log "no product mode armed (memoryframe-mode.txt missing/empty): developer default, network left as is"
-            write_state dev none false false ;;
+        product) apply_product product false ;;
+        *) apply_product product false ;;   # MF-51: anything else is product
     esac
 }
 
@@ -322,9 +279,10 @@ status() {
     local mode="unknown"
     [ -f "$STATE" ] && mode="$(sed -n 's/.*"mode": "\([a-z]*\)".*/\1/p' "$STATE")"
     case "$(requested_mode)" in
-        product) echo "armed for next boot: product (memoryframe-mode.txt = product; the hotspot replaces home Wi-Fi)" ;;
+        product) if [ -f "$MODE_FILE" ]; then echo "armed for next boot: product (memoryframe-mode.txt = product; the hotspot replaces home Wi-Fi)"
+                 else echo "armed for next boot: product (no mode file: product is the default; write 'dev' to $MODE_FILE to keep home Wi-Fi)"; fi ;;
         dev)     echo "armed for next boot: dev (memoryframe-mode.txt = dev)" ;;
-        *)       echo "armed for next boot: dev (no mode file: developer default, network left as is)" ;;
+        *)       echo "armed for next boot: product (no mode file: product default)" ;;
     esac
     echo "current mode: ${mode:-unknown}"
     echo "active: $(active)"
@@ -466,10 +424,11 @@ case "${1:-}" in
     wifi-rollback) take_lock nopending; wifi_rollback ;;
     product|dev)
         take_lock
-        if [ "$1" = product ]; then rm -f "$CONFIRMED"; fi   # explicit arm: watch the first product boot
         write_mode_file "$1"
         apply "$1" ;;
-    product-watch) product_watch ;;
+    dev-temp)   # MF-51: frame menu "Dev mode": home Wi-Fi until the next reboot. No file is written;
+        take_lock   # /run is tmpfs, so nothing survives a reboot and boot returns to product.
+        apply_dev temp || exit 1 ;;
     boot)
         take_lock nopending                   # a pending change is rolled back below
         if [ -e "$RESET_FILE" ]; then
@@ -487,18 +446,13 @@ case "${1:-}" in
             delete_pending_profile; rm -f "$PENDING"
         fi
         # Boot never fails the unit (no reboot loop); the state file carries the outcome.
-        # SAFETY: the boot service is a strict no-op unless the mode file explicitly says product,
-        # or product mode was applied before and must be undone (mode file dev/missing).
-        req="$(requested_mode)"
-        if [ "$req" = product ]; then
-            apply product || true
-        elif left_by_product; then
-            log "boot: product mode was applied before and is no longer armed: back to developer Wi-Fi"
-            hotspot_autoconnect no
+        # MF-51: product (hotspot) on every boot unless memoryframe-mode.txt says dev (persistent
+        # dev). A missing file means product; install.sh writes "dev" on a Pi found on home Wi-Fi.
+        if [ "$(requested_mode)" = dev ]; then
+            log "boot: memoryframe-mode.txt = dev: developer Wi-Fi"
             apply_dev || true
         else
-            log "boot: product mode not armed; developer default, network left as is (no-op)"
-            write_state dev "$req" false false
+            apply_product product false || true
         fi ;;
     *) usage ;;
 esac

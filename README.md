@@ -252,7 +252,7 @@ There is one owner (D6), who may pair several phones.
 - **Close:** every overlay has a Close button. It dismisses the onboarding and empty-library screens for the browser session, in every state including no photos, and a reboot or kiosk restart brings them back. While dismissed, only the small corner hint shows, and pairing stays in the menu (double tap).
 - **Photos but no phone paired:** the slideshow runs. Only a small "Double-tap for menu to pair a phone" hint shows in the corner. Double-tap the screen anywhere to open the menu.
 - **Paired but no photos:** a "No photos yet" screen.
-- **Double tap** (two quick taps on the same spot): a menu with Wi-Fi, address (`http://10.42.0.1/`), free storage, phones paired and version, plus **Pair new device** (always available), **Sign out all phones**, **Shut down** (MF-49) and **Close**. Text is at least 24 px at 800x480. Developer Wi-Fi is not part of the everyday menu (see Product mode below).
+- **Double tap** (two quick taps on the same spot): a menu with IP, Wi-Fi, site address, free storage, phones paired and version, plus **Pair new device** (always available), **Sign out all phones**, **Shut down** (MF-49) and **Close**. Text is at least 24 px at 800x480. Developer Wi-Fi is not in the menu (3 s hold, see Product mode below).
 - **Address shown to users:** `http://10.42.0.1/pair` (hotspot). Developer-only addresses used while on home Wi-Fi are described in the developer notes below.
   - The Host check accepts the frame's own current IP addresses automatically.
   - **Override:** `MEMORYFRAME_SITE_URL=http://frame.home` (no path) replaces the detected address. Set it on the Pi with `deploy/env-file.sh MEMORYFRAME_SITE_URL http://…` and restart the service. The `PAIR_BASE_URL` app config key still wins for tests and development.
@@ -270,15 +270,12 @@ There is one owner (D6), who may pair several phones.
 
 ## Product mode and developer mode (MF-36, MF-51)
 
-> Describes the behaviour of PR #52 (MF-51). Until #52 is merged, `main` still has the older
-> "developer by default" behaviour.
-
 - **Every boot is product mode** (the frame's own hotspot, phones at `http://10.42.0.1/`) unless
   `memoryframe-mode.txt` on the boot partition says `dev`. Missing, empty or unknown → product.
 - **The hotspot stays on** in product mode whether or not a phone is connected (there is no
   "no phone joined" fallback).
-- **Developer Wi-Fi until reboot:** on the frame, a **3-second long press** reveals **Developer Wi-Fi**
-  (pending in #52: the branch currently shows a visible "Dev mode" menu item; see MF-55), then confirm.
+- **Developer Wi-Fi until reboot:** on the frame, a still **3-second hold anywhere** opens the confirm
+  **"Join developer Wi-Fi?"** (Cancel is the default; **Join** switches). It is not in the menu.
   Or from the shell: `sudo deploy/netmode.sh dev-temp`. The frame joins home Wi-Fi until the next
   reboot; nothing is written to disk, so the next boot is product again. If home Wi-Fi fails, the
   hotspot comes back.

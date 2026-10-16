@@ -156,7 +156,7 @@ nano deploy/hotspot.conf                             # set SSID and PASSWORD
 
 - Security: WPA2-PSK (AES/CCMP). Password must be 8-63 characters, 12+ recommended; the old
   default `MemoryFrame123` is refused. Never commit `deploy/hotspot.conf`.
-- Address: while active, the frame is **10.42.0.1**: open **http://10.42.0.1/** (or **http://memoryframe.lan/**) from a phone
+- Address: while active, the frame is **10.42.0.1**: open **http://10.42.0.1/** from a phone
   (no internet needed).
 - `--test SECONDS` (30-1800) arms the revert first (`systemd-run --on-active=SECONDS`, runs as
   root and survives the session dropping), then brings the hotspot up. The revert takes the
@@ -167,12 +167,16 @@ nano deploy/hotspot.conf                             # set SSID and PASSWORD
   `sudo nmcli connection up <your Wi-Fi profile>`.
 - On-device runbook: `docs/runbooks/MF-04-MF-09-pi-runbook.md`.
 
-## Frame address: port 80, memoryframe.lan / .local (MF-10)
+## Frame address: port 80 (MF-10)
+
+The only address for users is **http://10.42.0.1/** (the frame's hotspot). The other names below
+exist for development; see [Developer notes: other addresses](#developer-notes-other-addresses).
+
 
 - The service listens on **port 80 and 5000** (`MEMORYFRAME_PORTS=80,5000` in `deploy/memoryframe.service`). It still runs as the normal user; only `CAP_NET_BIND_SERVICE` is granted. `MEMORYFRAME_PORT` (single port) still works for development.
 - `sudo deploy/network-setup.sh` (idempotent; `--remove` undoes its files) sets:
-  - the hostname `memoryframe` and avahi, so `http://memoryframe.local/` works on the home network and on Android 12+.
-  - a NetworkManager `dnsmasq-shared.d` drop-in for the hotspot: `memoryframe.lan` → `10.42.0.1`, and every other name gets an **immediate NXDOMAIN**. There is no upstream DNS and no captive-portal redirect.
+  - the hostname `memoryframe` and avahi (mDNS name for development, see developer notes).
+  - a NetworkManager `dnsmasq-shared.d` drop-in for the hotspot: one developer alias for `10.42.0.1`, and every other name gets an **immediate NXDOMAIN**. There is no upstream DNS and no captive-portal redirect.
   - Wi-Fi power save off (`wifi.powersave = 2`) and the Wi-Fi country (`AU` by default).
 - The script never brings a connection up or down. It only reloads NetworkManager's config, so it is safe to run over Pi Connect. The hotspot is still manual only (MF-09).
 
@@ -237,7 +241,7 @@ There is one owner (D6), who may pair several phones.
 
 ## NFC tag (MF-24)
 
-- Write the tag as an **http://** URI record: `http://10.42.0.1/` (or `http://memoryframe.lan/`). **Never use https://.** The frame serves plain HTTP only (ports 80/5000) and has no certificate, so an https:// tag fails on the phone (Samsung Internet shows "null is unreachable").
+- Write the tag as an **http://** URI record: `http://10.42.0.1/`. **Never use https://.** The frame serves plain HTTP only (ports 80/5000) and has no certificate, so an https:// tag fails on the phone (Samsung Internet shows "null is unreachable").
 - With NFC Tools: Write → Add a record → **URL/URI** → choose the `http://` prefix → `10.42.0.1/`.
 - The on-screen QR codes always encode http:// links. An https `MEMORYFRAME_SITE_URL` is downgraded to http and logged.
 - The frame never sends HSTS, so a phone never learns to force https for the frame.
@@ -248,11 +252,8 @@ There is one owner (D6), who may pair several phones.
 - **Close:** every overlay has a Close button. It dismisses the onboarding and empty-library screens for the browser session, in every state including no photos, and a reboot or kiosk restart brings them back. While dismissed, only the small corner hint shows, and pairing stays in the menu (double tap).
 - **Photos but no phone paired:** the slideshow runs. Only a small "Double-tap for menu to pair a phone" hint shows in the corner. Double-tap the screen anywhere to open the menu.
 - **Paired but no photos:** a "No photos yet" screen.
-- **Double tap** (two quick taps on the same spot): a menu with IP, Wi-Fi, site address, free storage, phones paired and version, plus **Pair new device** (always available), **Sign out all phones** and **Close**. Text is at least 24 px at 800x480.
-- **Addresses follow the current network** (checked on every request):
-  - **Hotspot** (the frame holds 10.42.0.1): `http://10.42.0.1/pair`, or `memoryframe.lan`.
-  - **Home Wi-Fi:** `http://memoryframe.local/pair`, plus the frame's own IP as a fallback (e.g. `http://192.168.50.124/pair`).
-  - `:5000` is added unless the app actually serves port 80 (`MEMORYFRAME_PORTS`).
+- **Double tap** (two quick taps on the same spot): a menu with Wi-Fi, address (`http://10.42.0.1/`), free storage, phones paired and version, plus **Pair new device** (always available), **Sign out all phones**, **Shut down** (MF-49) and **Close**. Text is at least 24 px at 800x480. Developer Wi-Fi is not part of the everyday menu (see Product mode below).
+- **Address shown to users:** `http://10.42.0.1/pair` (hotspot). Developer-only addresses used while on home Wi-Fi are described in the developer notes below.
   - The Host check accepts the frame's own current IP addresses automatically.
   - **Override:** `MEMORYFRAME_SITE_URL=http://frame.home` (no path) replaces the detected address. Set it on the Pi with `deploy/env-file.sh MEMORYFRAME_SITE_URL http://…` and restart the service. The `PAIR_BASE_URL` app config key still wins for tests and development.
 - **Wi-Fi QR:** shown only on the hotspot, and **on by default** (D3). Turn it off with `MEMORYFRAME_SHOW_WIFI_QR=0` or the database setting `show_wifi_qr=0` (the settings UI comes with MF-17). SSID and password come from `deploy/hotspot.conf`, or `MEMORYFRAME_SSID` / `MEMORYFRAME_WIFI_PASSWORD`.
@@ -267,14 +268,33 @@ There is one owner (D6), who may pair several phones.
 - **API** (session and CSRF): `GET /api/v1/media`, `GET /api/v1/media/<id>/thumb`, `PUT /api/v1/media/<id>/hidden {"hidden": bool}`, `DELETE /api/v1/media/<id>`, `POST /api/v1/media/<id>/show-now`.
 - **Frame:** it polls `GET /show-now` every 2 s. That response carries the show-now request and a library revision, so uploads, hides and deletes reach the frame fast.
 
-## Product mode and developer mode (MF-36)
+## Product mode and developer mode (MF-36, MF-51)
 
-**Product mode** (its own hotspot, phones at `http://10.42.0.1/`) is armed ONLY by an explicit
-`sudo deploy/netmode.sh product`, which writes `memoryframe-mode.txt` = `product` on the boot
-partition (or by the `memoryframe-reset` recovery file). `install.sh`, upgrades and reboots never
-arm it: with no mode file the frame stays in developer mode on home Wi-Fi and the boot service
-changes nothing. `deploy/netmode.sh status` shows `armed for next boot:` and `current mode:`.
-Switching to product cuts off Pi Connect: only do it with the user present and the way back tested.
-Back to developer mode: `sudo deploy/netmode.sh dev`, or `dev` in (or deleting) the mode file. Dev Wi-Fi credentials stay in the existing NetworkManager
-profile; boot-partition files never hold a password. See
-[docs/runbooks/MF-36-product-mode.md](docs/runbooks/MF-36-product-mode.md).
+> Describes the behaviour of PR #52 (MF-51). Until #52 is merged, `main` still has the older
+> "developer by default" behaviour.
+
+- **Every boot is product mode** (the frame's own hotspot, phones at `http://10.42.0.1/`) unless
+  `memoryframe-mode.txt` on the boot partition says `dev`. Missing, empty or unknown → product.
+- **The hotspot stays on** in product mode whether or not a phone is connected (there is no
+  "no phone joined" fallback).
+- **Developer Wi-Fi until reboot:** on the frame, a **3-second long press** reveals **Developer Wi-Fi**
+  (pending in #52: the branch currently shows a visible "Dev mode" menu item; see MF-55), then confirm.
+  Or from the shell: `sudo deploy/netmode.sh dev-temp`. The frame joins home Wi-Fi until the next
+  reboot; nothing is written to disk, so the next boot is product again. If home Wi-Fi fails, the
+  hotspot comes back.
+- **Persistent developer mode** (the developer's Pi only): `dev` in `/boot/firmware/memoryframe-mode.txt`
+  (or `sudo deploy/netmode.sh dev`). `install.sh` writes `dev` only when there is no mode file and
+  wlan0 is on a home connection; it never changes an existing file.
+- `deploy/netmode.sh status` shows `armed for next boot:` and `current mode:`.
+- Dev Wi-Fi credentials stay in the existing NetworkManager profile; boot-partition files never hold
+  a password. Full details and recovery: [docs/runbooks/MF-36-product-mode.md](docs/runbooks/MF-36-product-mode.md).
+
+## Developer notes: other addresses
+
+Not for users (they only ever see `http://10.42.0.1/`):
+- `http://memoryframe.lan/`: hotspot DNS alias for 10.42.0.1 (MF-10).
+- `http://memoryframe.local/`: mDNS (avahi) on home Wi-Fi in developer mode; Android 12+.
+- The frame's home-network IP (e.g. `http://192.168.50.124/`) in developer mode; add it with
+  `MEMORYFRAME_EXTRA_HOSTS` if needed (see Web security).
+- Port 5000 is also served (`MEMORYFRAME_PORTS=80,5000`) for the kiosk on `localhost:5000` and for
+  development; it is never shown to users.

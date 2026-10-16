@@ -686,3 +686,7 @@ video {
 #devModeConfirm{background:#1565c0;color:#fff}
 #devModeError{font-size:20px;color:#ff8a80;margin-top:10px}
 #devModeAsk[hidden],#devModeDone[hidden],#devModeError[hidden]{display:none}
+#devRing{position:fixed;z-index:9500;width:72px;height:72px;margin:-36px 0 0 -36px;border-radius:50%;
+  pointer-events:none;border:3px solid rgba(255,255,255,0);transform:scale(.6)}
+#devRing.filling{border-color:rgba(255,255,255,.35);transform:scale(1);transition:border-color 2s linear,transform 2s linear}
+#devRing[hidden]{display:none}

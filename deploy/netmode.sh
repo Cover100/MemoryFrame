@@ -13,12 +13,13 @@
 #   netmode.sh wifi-rollback   # old hotspot back up, pending profile deleted
 #
 # Boot-partition files (editable from any PC, drive "bootfs"):
-#   memoryframe-mode.txt      one word: product | dev. Missing/empty/other -> developer default:
-#                             the boot service changes NOTHING (home Wi-Fi stays). Only an explicit
-#                             `sudo netmode.sh product` (or memoryframe-reset) writes product.
-#                             At boot the service is a strict no-op unless the file says product
-#                             (or product mode was applied before and has to be undone).
-#                             install.sh never writes this file.
+#   memoryframe-mode.txt      one word: product | dev. Missing/empty/other -> PRODUCT (hotspot)
+#                             at every boot (MF-51). "dev" forces developer Wi-Fi persistently on
+#                             every boot (the dev Pi's guard and the offline recovery path).
+#                             install.sh writes "dev" only when the Pi is on a home Wi-Fi client
+#                             connection and no mode file exists; it never changes an existing file.
+#                             `netmode.sh dev-temp` (frame's hidden Developer Wi-Fi) writes nothing:
+#                             home Wi-Fi until the next reboot only.
 #   memoryframe-dev-wifi.txt  optional, only  ssid=<name>: which EXISTING NetworkManager
 #                             profile to use in dev mode (default: the most recently used one). Never a password: dev Wi-Fi
 #                             credentials live only in that root-only NM profile. Any other
@@ -259,9 +260,7 @@ apply() {
     case "$1" in
         dev) apply_dev ;;
         product) apply_product product false ;;
-        *)  # unarmed: developer default, nothing touched (current behaviour before MF-36)
-            log "no product mode armed (memoryframe-mode.txt missing/empty): developer default, network left as is"
-            write_state dev none false false ;;
+        *) apply_product product false ;;   # MF-51: anything else is product
     esac
 }
 
@@ -447,9 +446,8 @@ case "${1:-}" in
             delete_pending_profile; rm -f "$PENDING"
         fi
         # Boot never fails the unit (no reboot loop); the state file carries the outcome.
-        # SAFETY: the boot service is a strict no-op unless the mode file explicitly says product,
-        # or product mode was applied before and must be undone (mode file dev/missing).
-        # MF-51: product (hotspot) on every boot unless memoryframe-mode.txt says dev.
+        # MF-51: product (hotspot) on every boot unless memoryframe-mode.txt says dev (persistent
+        # dev). A missing file means product; install.sh writes "dev" on a Pi found on home Wi-Fi.
         if [ "$(requested_mode)" = dev ]; then
             log "boot: memoryframe-mode.txt = dev: developer Wi-Fi"
             apply_dev || true

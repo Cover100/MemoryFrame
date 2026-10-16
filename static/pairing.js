@@ -96,7 +96,8 @@
         banner.hidden = !nm.dev;
         if(nm.dev){
             const ip = typeof nm.lan_ip === "string" && /^[0-9.]+$/.test(nm.lan_ip) ? nm.lan_ip : null;
-            banner.textContent = "Developer mode \u00b7 " + (ip || "no network");
+            banner.textContent = nm.temp ? "Developer Wi-Fi \u00b7 " + (ip || "no network") + " \u00b7 restart to exit"
+                                         : "Developer mode \u00b7 " + (ip || "no network");
         }
         if(nm.dev_fallback){
             const key = "mf-devtoast-" + (nm.boot_id || "boot");
@@ -234,11 +235,50 @@
     // ---------- MF-51: Dev mode until reboot ----------
     const devOverlay = $("devModeOverlay");
     let devBusy = false;
-    button("menuDevMode", ()=>{
-        closeMenu();
+    function openDevConfirm(){
         $("devModeAsk").hidden = false; $("devModeDone").hidden = true; $("devModeError").hidden = true;
         devOverlay.classList.add("visible");
-    });
+        $("devModeCancel").focus();                     // Cancel is the default
+    }
+
+    // Designer spec: hidden 3 s long press in the top-right 80x80 px corner only. A touch that
+    // starts there never reaches brightness, swipe, double tap or the 3 s menu hold. Nothing for
+    // 1 s, then a faint ring fills around the finger over 2 s; at 3 s (moved < 20 px) the confirm
+    // opens. Lifting early or moving >= 20 px cancels silently.
+    const CORNER = 80, CORNER_MS = 3000, RING_DELAY = 1000, CORNER_MOVE = 20;
+    const ring = $("devRing");
+    let corner = null;
+    function cornerStop(){
+        if(!corner){ return; }
+        clearTimeout(corner.ringT); clearTimeout(corner.doneT);
+        ring.hidden = true; ring.classList.remove("filling");
+        corner = null;
+    }
+    window.addEventListener("pointerdown", (e)=>{
+        if(e.clientX < window.innerWidth - CORNER || e.clientY >= CORNER || overlayOpen()
+           || devOverlay.classList.contains("visible")){ return; }
+        e.stopImmediatePropagation(); e.preventDefault();
+        cornerStop();
+        const c = corner = {id: e.pointerId, x: e.clientX, y: e.clientY};
+        c.ringT = setTimeout(()=>{
+            ring.style.left = c.x + "px"; ring.style.top = c.y + "px";
+            ring.classList.remove("filling"); ring.hidden = false;
+            void ring.offsetWidth; ring.classList.add("filling");
+        }, RING_DELAY);
+        c.doneT = setTimeout(()=>{ cornerStop(); openDevConfirm(); }, CORNER_MS);
+    }, true);
+    window.addEventListener("pointermove", (e)=>{
+        if(!corner || e.pointerId !== corner.id){ return; }
+        e.stopImmediatePropagation();
+        if(Math.hypot(e.clientX - corner.x, e.clientY - corner.y) >= CORNER_MOVE){ cornerStop(); }
+    }, true);
+    for(const t of ["pointerup", "pointercancel"]){
+        window.addEventListener(t, (e)=>{
+            if(!corner || e.pointerId !== corner.id){ return; }
+            e.stopImmediatePropagation();
+            cornerStop();
+        }, true);
+    }
     button("devModeCancel", ()=>{ if(!devBusy){ devOverlay.classList.remove("visible"); } });
     button("devModeConfirm", async ()=>{
         if(devBusy){ return; }

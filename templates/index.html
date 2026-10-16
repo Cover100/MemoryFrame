@@ -139,7 +139,6 @@
             <div class="menuButtons">
                 <button id="menuPair" type="button">Pair new device</button>
                 <button id="menuSignOut" type="button">Sign out all phones</button>
-                <button id="menuDevMode" type="button">Dev mode</button>
                 <button id="menuShutdown" type="button">Shut down</button>
                 <button id="menuClose" type="button">Close</button>
             </div>
@@ -151,15 +150,15 @@
     <div id="devModeOverlay" class="overlay">
         <div id="devModeBox">
             <div id="devModeAsk">
-                <div class="confirmTitle">Switch to Dev mode?</div>
-                <div class="confirmBody">The frame leaves its own Wi-Fi and joins the home Wi-Fi until it is restarted. Phones can't send photos meanwhile.</div>
+                <div class="confirmTitle">Join developer Wi-Fi?</div>
+                <div class="confirmBody">Phones on the frame's Wi-Fi will disconnect until you restart the frame.</div>
                 <div class="shutdownButtons">
                     <button id="devModeCancel" type="button">Cancel</button>
-                    <button id="devModeConfirm" type="button">Dev mode</button>
+                    <button id="devModeConfirm" type="button">Join</button>
                 </div>
             </div>
             <div id="devModeDone" hidden>
-                <div class="confirmTitle">Switching to home Wi-Fi…</div>
+                <div class="confirmTitle">Joining developer Wi-Fi…</div>
                 <div class="confirmBody">Restart the frame to go back to its own Wi-Fi.</div>
             </div>
             <div id="devModeError" hidden>Couldn't switch. Try again.</div>
@@ -200,6 +199,8 @@
             <div id="confirmDone" hidden>All phones signed out</div>
         </div>
     </div>
+
+    <div id="devRing" hidden></div>
 
     <div id="clockOverlay">
 

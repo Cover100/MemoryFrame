@@ -222,3 +222,25 @@ def test_temp_label(mf_app, tmp_path, monkeypatch):
     assert frameinfo.netmode_state()["temp"] is False
     js = (Path(__file__).resolve().parents[1] / "static" / "pairing.js").read_text()
     assert '"Developer Wi-Fi \\u00b7 " + (ip || "no network") + " \\u00b7 restart to exit"' in js
+
+
+def test_double_tap_opens_normal_menu_not_dev_confirm(page, server, mf_app, net, tmp_path):
+    out, w = setup_page(page, mf_app, tmp_path)
+    x, y = w // 2, 200
+    for _ in range(2):
+        ev(page, "pointerdown", x, y); page.pump(0.05); ev(page, "pointerup", x, y); page.pump(0.12)
+    page.pump(3.5)                                           # well past the 3 s hold time
+    assert visible(page, "menuOverlay") and not visible(page, "devModeOverlay")
+    assert "Developer" not in text(page, "menuBox")
+
+
+def test_corner_hold_is_not_a_double_tap_or_menu(page, server, mf_app, net, tmp_path):
+    out, w = setup_page(page, mf_app, tmp_path)
+    x, y = w - 40, 40
+    for _ in range(2):                                       # double tap in the corner: nothing
+        ev(page, "pointerdown", x, y); page.pump(0.05); ev(page, "pointerup", x, y); page.pump(0.12)
+    page.pump(0.5)
+    assert not visible(page, "menuOverlay") and not visible(page, "devModeOverlay")
+    ev(page, "pointerdown", x, y); page.pump(3.3); ev(page, "pointerup", x, y)
+    page.pump(0.3)
+    assert visible(page, "devModeOverlay") and not visible(page, "menuOverlay")

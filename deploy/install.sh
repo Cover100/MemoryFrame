@@ -86,6 +86,11 @@ rm -f "/tmp/memoryframe-poweroff.$$"
 sudo systemctl enable memoryframe.service
 sudo systemctl restart memoryframe.service
 
+echo "== Case fan (gpio-fan overlay, GPIO 14, on at 60 C)"
+if ! sudo env MEMORYFRAME_BOOT_CONFIG="${MEMORYFRAME_BOOT_CONFIG:-}" bash "$APP_DIR/deploy/fan-overlay.sh"; then
+    echo "WARNING: fan overlay not added" >&2
+fi
+
 echo "== Kiosk autostart"
 chmod +x "$APP_DIR/deploy/kiosk.sh"
 mkdir -p "$HOME/.config/autostart"

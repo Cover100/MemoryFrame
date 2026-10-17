@@ -70,17 +70,11 @@
          ========================================== -->
 
 
-    <div id="brightnessOverlay">
-
-        <span id="brightnessIcon">
-            ☀
-        </span>
-
-
-        <span id="brightnessValue">
-            100%
-        </span>
-
+    <!-- #70 mock 02: brightness pill (brass sun, brass bar scaled with transform) -->
+    <div id="brightnessOverlay" role="status">
+        <span id="brightnessIcon"><svg class="mf-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><g stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M4.6 19.4l2.1-2.1M17.3 6.7l2.1-2.1"/></g></svg></span>
+        <span class="brightTrack"><span id="brightnessFill"></span></span>
+        <span id="brightnessValue">100%</span>
     </div>
 
 
@@ -104,20 +98,23 @@
             <div class="successTitle">Restart the frame to pair a phone</div>
         </div>
         <div id="pairBox">
-            <div class="step" id="wifiStep" hidden>
-                <div class="stepTitle">1. Join Wi-Fi</div>
-                <div id="wifiQr" class="qr"></div>
-                <div id="pairSsid" class="stepText"></div>
-            </div>
-            <div class="step">
-                <div class="stepTitle" id="siteTitle">Pair your phone</div>
-                <div id="pairQr" class="qr"></div>
-                <div class="stepText">or open <span id="pairUrl"></span><span id="pairUrlAlt"></span></div>
-            </div>
-            <div class="step" id="codeStep">
-                <div class="stepText">Code</div>
-                <div id="pairCode">--- ---</div>
-                <button id="pairClose" type="button" hidden>Close</button>
+            <div class="pairHead">Pair a phone <button id="pairClose" class="mf-btn mf-btn-secondary" type="button" hidden>Close</button></div>
+            <div class="pairCols">
+                <div class="step" id="wifiStep" hidden>
+                    <div class="stepTitle"><span class="stepBadge">1</span>Join Wi-Fi</div>
+                    <div id="wifiQr" class="qr"></div>
+                    <div class="stepText">Wi-Fi name<b id="pairSsid"></b></div>
+                </div>
+                <div class="step">
+                    <div class="stepTitle"><span class="stepBadge" id="siteBadge">1</span><span id="siteTitle">Open site</span></div>
+                    <div id="pairQr" class="qr"></div>
+                    <div class="stepText">or open<b id="pairUrl"></b><span id="pairUrlAlt"></span></div>
+                </div>
+                <div class="step" id="codeStep">
+                    <div class="stepTitle"><span class="stepBadge" id="codeBadge">2</span>Enter code</div>
+                    <div class="codeWrap"><div id="pairCode">--- ---</div>
+                    <div class="stepText">Type this on your phone if it asks for a code</div></div>
+                </div>
             </div>
         </div>
     </div>
@@ -130,7 +127,7 @@
         <div class="emptyText">
             <div class="emptyTitle">No photos yet</div>
             <div>Open <b id="emptyUrl">10.42.0.1</b> on your paired phone and tap "Upload photos".</div>
-            <button id="emptyClose" type="button">Close</button>
+            <button id="emptyClose" class="mf-btn mf-btn-secondary" type="button">Close</button>
         </div>
     </div>
 
@@ -170,10 +167,10 @@
                 </div>
             </div>
             <div id="devModeDone" hidden>
-                <div class="confirmTitle" id="devModeStatus">Joining home Wi-Fi…</div>
+                <div class="confirmTitle" id="devModeStatus">Switching to dev mode…</div>
                 <div class="confirmBody" id="devModeDetail">This can take up to 30 seconds.</div>
                 <div class="shutdownButtons" id="devModeAfter" hidden>
-                    <button id="devModeOk" type="button">OK</button>
+                    <button id="devModeOk" class="mf-btn mf-btn-secondary" type="button">OK</button>
                 </div>
             </div>
             <div id="devModeError" hidden>Couldn't switch. Try again.</div>
@@ -255,28 +252,36 @@
 </div>
 <div id="hotspotError" class="hotspot-error" hidden>
     <div class="hotspot-error-card">
-        <h2>Memory Frame Wi-Fi didn't start</h2>
-        <p>Phones can't connect right now. Photos already on the frame will keep showing.</p>
-        <p>To fix it:</p>
-        <ol>
-            <li>Turn the frame off and take out the SD card.</li>
-            <li>Put the card in a computer and open the drive called "bootfs".</li>
-            <li>Create an empty file named memoryframe-reset (no extension).</li>
-            <li>If there is a file named memoryframe-mode.txt, make sure it only says: product</li>
-            <li>Put the card back and turn the frame on. Wait 1 minute.</li>
-        </ol>
-        <p class="hotspot-error-foot">Still not working? Restart the frame once. If this screen comes back, ask for help.</p>
-        <button id="hotspotErrorClose" type="button">Close</button>
+        <div class="herrLeft">
+            <div class="herrIcon" aria-hidden="true">!</div>
+            <h2>Memory Frame Wi-Fi didn't start</h2>
+            <p>Phones can't connect right now. Photos already on the frame will keep showing.</p>
+            <button id="hotspotErrorClose" class="mf-btn mf-btn-secondary" type="button">Close</button>
+        </div>
+        <div>
+            <h3>To fix it</h3>
+            <ol>
+                <li><span>Turn the frame off and take out the SD card.</span></li>
+                <li><span>Put the card in a computer and open the drive called <code>bootfs</code>.</span></li>
+                <li><span>Create an empty file named <code>memoryframe-reset</code> (no extension).</span></li>
+                <li><span>If there is a file named <code>memoryframe-mode.txt</code>, make sure it only says: <code>product</code></span></li>
+                <li><span>Put the card back and turn the frame on. Wait 1 minute.</span></li>
+            </ol>
+            <p class="hotspot-error-foot">Still not working? Restart the frame once. If this screen comes back, ask for help.</p>
+        </div>
     </div>
 </div>
 <!-- MF-18: hotspot change (rejoin countdown, updated, cancelled) -->
 <div id="wifiRejoin" class="wifi-overlay" hidden>
-    <div class="wifi-card">
-        <h2>Wi-Fi changed: scan to rejoin</h2>
+    <div class="wifi-card wifi-rj">
         <div class="wifi-qr" id="wifiRejoinQr"></div>
-        <p>Wi-Fi: <span id="wifiRejoinName"></span></p>
-        <p>Then open http://10.42.0.1/ and tap "Keep new Wi-Fi"</p>
-        <p class="wifi-countdown">Old Wi-Fi returns in <span id="wifiCountdown">5:00</span></p>
+        <div>
+            <h2>Wi-Fi changed: scan to rejoin</h2>
+            <p>Wi-Fi: <b id="wifiRejoinName"></b></p>
+            <p>Then open <b>http://10.42.0.1/</b> and tap <b class="nowrap">"Keep new Wi-Fi"</b></p>
+            <p class="wifi-countdown">Old Wi-Fi returns in <b id="wifiCountdown">5:00</b></p>
+            <div class="wifi-bar"><div id="wifiBar"></div></div>
+        </div>
     </div>
 </div>
 <div id="wifiUpdated" class="wifi-overlay" hidden>

@@ -1246,6 +1246,7 @@ function showBrightness(){
 
     brightnessValue.innerText =
         percent + "%";
+    document.getElementById("brightnessFill").style.transform = "scaleX(" + (percent / 100) + ")";
 
     brightnessOverlay.style.display =
         "flex";

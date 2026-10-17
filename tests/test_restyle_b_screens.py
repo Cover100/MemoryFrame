@@ -38,7 +38,7 @@ def test_overlays_use_frame_theme():
 
 
 def test_safe_screen_is_static():
-    assert "animation:none" in rule("#safeScreen .safeSpin")
+    assert "safeSpin" not in CSS and "safeSpin" not in HTML              # mock 14: spinner removed
     assert "var(--mf-ink)" in rule("#safeScreen")
 
 

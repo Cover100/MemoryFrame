@@ -1250,6 +1250,7 @@ function showBrightness(){
 
     brightnessOverlay.style.display =
         "flex";
+    document.body.classList.add("mf-brightness-active");    // hides #pairHint (no overlap at the bottom)
 
     clearTimeout(
         brightnessTimer
@@ -1260,6 +1261,7 @@ function showBrightness(){
 
             brightnessOverlay.style.display =
                 "none";
+            document.body.classList.remove("mf-brightness-active");
 
         },
         BRIGHTNESS_DISPLAY_TIME);

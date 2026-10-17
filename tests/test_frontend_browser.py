@@ -223,6 +223,7 @@ def test_state_a_no_photos_no_phone_full_onboarding_on_hotspot(page, server, mf_
     assert left >= 0 and top >= 0 and right <= o["vw"] and bottom <= o["vh"], o   # fits 800x480
     # Wi-Fi join QR first, then the site QR for the hotspot address (port 80 is served)
     assert visible(page, "wifiStep") and evaluate(page, "!!document.querySelector('#wifiQr svg')")
+    assert text(page, "pairTitle") == "Pair a phone"                                   # mock 03
     assert text(page, "siteTitle") == "Open site" and text(page, "siteBadge") == "2" and text(page, "codeBadge") == "3"
     assert text(page, "pairUrl") == "http://10.42.0.1/pair"
     assert text(page, "pairUrlAlt") == "or http://memoryframe.lan/pair"
@@ -269,6 +270,8 @@ def test_state_b_photos_no_phone_slideshow_runs_on_home_wifi(page, server, mf_ap
     o = overlay(page)
     assert o["visible"] and not visible(page, "menuOverlay")
     assert not visible(page, "wifiStep")                    # no hotspot -> no Wi-Fi QR
+    assert text(page, "pairTitle") == "Pair your phone" and text(page, "siteTitle") == "Scan with your phone"  # mock 04
+    assert text(page, "siteBadge") == "1" and text(page, "codeBadge") == "2"
     assert text(page, "pairUrl") == "http://memoryframe.local:5000/pair"
     assert text(page, "pairUrlAlt") == "or http://192.168.50.124:5000/pair"
     assert o["code"].replace(" ", "") == mf_app.extensions["mf_pairing"].code

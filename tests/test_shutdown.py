@@ -120,9 +120,10 @@ def test_menu_shutdown_safe_only_after_synced(page, server, mf_app, net, tmp_pat
     assert "Safe to unplug" not in s and "goes dark" not in s
     st = evaluate(page, "(()=>{const q=x=>getComputedStyle(document.querySelector('#safeScreen '+x));"
                         "return [q('.safeTitle').fontSize,q('.safeTitle').fontWeight,q('.safeSub').fontSize,"
-                        "q('.safeSub').color,q('.safeNote').color,q('.safeSpin').animationName,"
-                        "document.getAnimations().filter(a=>document.getElementById('safeScreen').contains(a.effect.target)).length];})()")
-    assert st == ["44px", "700", "32px", "rgb(214, 179, 106)", "rgb(201, 187, 168)", "none", 0]   # static last frame
+                        "q('.safeSub').color,q('.safeNote').color,q('.safeCard').backgroundColor,"
+                        "document.querySelectorAll('#safeScreen .mf-spinner').length,"
+                        "document.getAnimations().length];})()")
+    assert st == ["44px", "700", "30px", "rgb(214, 179, 106)", "rgb(201, 187, 168)", "rgb(58, 44, 34)", 0, 0]  # mock 14, static
     assert cover(page) is None
     assert out.read_text().split() == ["sync"]                 # poweroff ~delay after the response
     bg = evaluate(page, "getComputedStyle(document.getElementById('safeScreen')).backgroundColor")

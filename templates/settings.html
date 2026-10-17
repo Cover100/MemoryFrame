@@ -5,10 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="csrf-token" content="{{ csrf_token() }}">
 <title>Settings</title>
+<link rel="stylesheet" href="/static/tokens.css">
 <link rel="stylesheet" href="/static/pair.css">
 <link rel="stylesheet" href="/static/settings.css">
 </head>
-<body>
+<body class="mf-phone">
 <h1>Settings</h1>
 {% macro label(v) %}{% if v < 60 %}{{ v }} s{% elif v == 60 %}1 min{% else %}{{ v // 60 }} min{% endif %}{% endmacro %}
 <section>

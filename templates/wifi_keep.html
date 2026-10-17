@@ -5,11 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="csrf-token" content="{{ csrf_token() }}">
 <title>Keep new Wi-Fi?</title>
+<link rel="stylesheet" href="/static/tokens.css">
 <link rel="stylesheet" href="/static/pair.css">
 <link rel="stylesheet" href="/static/wifi.css">
 {% if result == "kept" %}<meta http-equiv="refresh" content="2;url=/admin/">{% elif not result or result == "wrongnet" %}<meta http-equiv="refresh" content="5">{% endif %}
 </head>
-<body>
+<body class="mf-phone">
 {% if result == "kept" %}
 <h1 id="kept">✓ Wi-Fi updated</h1>
 {% elif result == "late" %}

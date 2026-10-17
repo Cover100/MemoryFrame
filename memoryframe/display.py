@@ -35,7 +35,8 @@ def index():
     # Decided by the TCP peer address (request.remote_addr), never by the Host header.
     if not is_local_request():
         return redirect("/admin/", code=302)
-    return render_template("index.html", media=get_media(), frame_token=frame_token())
+    return render_template("index.html", media=get_media(), frame_token=frame_token(),
+                           safe_copy=SAFE_SCREEN_COPY)
 
 
 @bp.route("/media")
@@ -145,7 +146,11 @@ def set_brightness():
 
 POWEROFF_CMD = ["systemctl", "poweroff"]   # #62: logind via polkit (no sudo; the service keeps NoNewPrivileges)
 SYNC_CMD = ["sync"]
-POWEROFF_DELAY = 1.0          # let the kiosk paint "Shutting down…" first
+# Copy of the final shutdown screen (Wren confirmed): one place to change it.
+# Seconds the user is told to wait before unplugging. Keep >= 2x the measured worst-case screen-to-halt time.
+UNPLUG_WAIT_SECONDS = 15
+SAFE_SCREEN_COPY = {"title": "Photos saved", "sub": f"Wait {UNPLUG_WAIT_SECONDS} seconds, then unplug"}
+POWEROFF_DELAY = 1.2          # after the "synced" response: just long enough for the kiosk to paint
 
 
 def frame_token():
@@ -187,6 +192,8 @@ def _schedule_poweroff(app, delay):
         if st.get("done"):
             return
         st["done"] = True
+        with app.app_context():
+            _sync()                              # second sync right before poweroff
         try:
             rc = subprocess.run(cmd, timeout=30, check=False).returncode
             why = f"exit {rc}" if rc else ""
@@ -219,8 +226,11 @@ def shutdown_status():
 @bp.route("/frame/shutdown", methods=["POST"])
 @localhost_only
 def shutdown():
-    """MF-49: stop accepting writes, sync, then power off. "Safe to unplug" is drawn later by the
-    systemd-shutdown hook (deploy/safe-screen), after filesystems are unmounted/read-only."""
+    """MF-49: stop accepting writes and sync; answer synced=true only after a successful sync. The
+    kiosk then shows the green Safe screen, and poweroff runs POWEROFF_DELAY s after this response
+    The panel keeps its last frame after poweroff, so that green screen is what stays on it. Only sync
+    is done (the data dir is on the root filesystem, which can't safely be remounted read-only while
+    services run); systemd unmounts/remounts read-only during the poweroff that follows."""
     _check_token()
     app = current_app._get_current_object()
     st = app.extensions.setdefault("mf_shutdown", {})
@@ -229,9 +239,11 @@ def shutdown():
     log.warning("shutdown requested from the frame menu; syncing")
     if not _sync():
         st["synced"] = False
-        return jsonify({"shutting_down": False}), 500
-    _schedule_poweroff(app, float(app.config.get("POWEROFF_DELAY", POWEROFF_DELAY)))
-    return jsonify({"shutting_down": True})
+        return jsonify({"synced": False}), 500
+    resp = jsonify({"synced": True})
+    # schedule only once the response has been sent, so the kiosk can paint the Safe screen first
+    resp.call_on_close(lambda: _schedule_poweroff(app, float(app.config.get("POWEROFF_DELAY", POWEROFF_DELAY))))
+    return resp
 
 
 # ---------------- MF-51: Dev mode until reboot (kiosk only) ----------------

@@ -327,10 +327,14 @@
         const meta = document.querySelector('meta[name="mf-frame-token"]');
         let ok = false;
         try{
-            ok = (await fetch("/frame/shutdown", {method: "POST",
-                headers: {"X-Frame-Token": meta ? meta.content : ""}})).ok;   // after the server's sync
+            const r = await fetch("/frame/shutdown", {method: "POST",
+                headers: {"X-Frame-Token": meta ? meta.content : ""}});
+            ok = r.ok && (await r.json()).synced === true;     // only after the server's sync
         }catch(e){ console.warn(e); }
-        if(!ok){
+        if(ok){
+            $("safeScreen").hidden = false;                  // final frame; poweroff follows ~1.2 s later
+            cover.hidden = true;
+        }else{
             shuttingDown = false; window.mfShuttingDown = false; cover.hidden = true;
             $("shutdownAsk").hidden = false; $("shutdownError").hidden = false;
             shutdownOverlay.classList.add("visible");

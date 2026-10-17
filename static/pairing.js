@@ -259,7 +259,7 @@
         corner = null;
     }
     window.addEventListener("pointerdown", (e)=>{
-        if(overlayOpen() || devOverlay.classList.contains("visible")){ return; }
+        if(window.mfShuttingDown || overlayOpen() || devOverlay.classList.contains("visible")){ return; }
         cornerStop();
         const c = corner = {id: e.pointerId, x: e.clientX, y: e.clientY};
         c.ringT = setTimeout(()=>{
@@ -299,23 +299,36 @@
     let shuttingDown = false;
     button("menuShutdown", ()=>{
         closeMenu();
-        $("shutdownAsk").hidden = false; $("shutdownDone").hidden = true; $("shutdownError").hidden = true;
+        $("shutdownAsk").hidden = false; $("shutdownError").hidden = true;
         shutdownOverlay.classList.add("visible");
     });
     button("shutdownCancel", ()=>{ if(!shuttingDown){ shutdownOverlay.classList.remove("visible"); } });
     button("shutdownConfirm", async ()=>{
         if(shuttingDown){ return; }
         shuttingDown = true;
+        const cover = $("shuttingDown");
+        shutdownOverlay.classList.remove("visible");
+        cover.hidden = false;                              // immediately, covers everything
+        window.mfShuttingDown = true;
+        const meta = document.querySelector('meta[name="mf-frame-token"]');
         let ok = false;
         try{
-            const meta = document.querySelector('meta[name="mf-frame-token"]');
             ok = (await fetch("/frame/shutdown", {method: "POST",
-                headers: {"X-Frame-Token": meta ? meta.content : ""}})).ok;
+                headers: {"X-Frame-Token": meta ? meta.content : ""}})).ok;   // after the server's sync
         }catch(e){ console.warn(e); }
-        if(!ok){ shuttingDown = false; $("shutdownError").hidden = false; return; }
-        $("shutdownAsk").hidden = true;
-        $("shutdownDone").hidden = false;
+        if(!ok){
+            shuttingDown = false; window.mfShuttingDown = false; cover.hidden = true;
+            $("shutdownAsk").hidden = false; $("shutdownError").hidden = false;
+            shutdownOverlay.classList.add("visible");
+        }
     });
+    // taps on the cover are ignored (no menu, no brightness, no swipe)
+    for(const t of ["pointerdown", "pointermove", "pointerup", "click"]){
+        window.addEventListener(t, (e)=>{
+            if(window.mfShuttingDown){ e.stopImmediatePropagation(); e.preventDefault(); }
+        }, true);
+    }
+
     button("menuPair", ()=>{ closeMenu(); onDemand = true; onDemandRound = false; tick(); });
     // ---------- MF-31: confirm "Sign out all phones" ----------
     const confirmOverlay = $("confirmOverlay");

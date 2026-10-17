@@ -11,3 +11,5 @@ rm -f "$HOME/.config/autostart/memoryframe-kiosk.desktop"
 pkill -f deploy/kiosk.sh || true
 echo "Memory Frame service and kiosk autostart removed."
 sudo rm -f /etc/sudoers.d/memoryframe-poweroff
+sudo rm -f /usr/lib/systemd/system-shutdown/memoryframe-safe-screen
+sudo rm -rf /usr/lib/memoryframe

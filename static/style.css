@@ -691,6 +691,18 @@ video {
 #devRing.filling{border-color:rgba(255,255,255,.35);transform:scale(1);transition:border-color 2s linear,transform 2s linear}
 #devRing[hidden]{display:none}
 
+/* MF-49 "Shutting down" cover (Designer spec) */
+#shuttingDown{position:fixed;inset:0;z-index:99999;background:#111111;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;font-family:system-ui,sans-serif;touch-action:none}
+#shuttingDown[hidden]{display:none}
+#shuttingDown .sdTitle{font-size:48px;font-weight:700;color:#fff}
+#shuttingDown .sdWarn{font-size:32px;color:#FFB000;margin-top:16px}
+#shuttingDown .sdDots{margin-top:28px;display:flex;gap:14px}
+#shuttingDown .sdDots span{width:14px;height:14px;border-radius:50%;background:#fff;opacity:.5;
+  animation:sdPulse 1s infinite ease-in-out}
+#shuttingDown .sdDots span:nth-child(2){animation-delay:.2s}
+#shuttingDown .sdDots span:nth-child(3){animation-delay:.4s}
+@keyframes sdPulse{0%,100%{opacity:.15}50%{opacity:.5}}
 /* MF-55 G3 */
 #pairBox.mf-devtemp{display:none!important}
 #pairDevTemp{text-align:center}

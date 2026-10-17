@@ -143,7 +143,7 @@ def set_brightness():
 
 # ---------------- MF-49: shut down (kiosk only) ----------------
 
-POWEROFF_CMD = ["sudo", "-n", "/usr/bin/systemctl", "poweroff"]
+POWEROFF_CMD = ["systemctl", "poweroff"]   # #62: logind via polkit (no sudo; the service keeps NoNewPrivileges)
 SYNC_CMD = ["sync"]
 POWEROFF_DELAY = 1.0          # let the kiosk paint "Shutting down…" first
 
@@ -188,9 +188,13 @@ def _schedule_poweroff(app, delay):
             return
         st["done"] = True
         try:
-            subprocess.run(cmd, timeout=30, check=False)
+            rc = subprocess.run(cmd, timeout=30, check=False).returncode
+            why = f"exit {rc}" if rc else ""
         except (OSError, subprocess.TimeoutExpired) as e:
-            log.warning("poweroff failed: %s", type(e).__name__)
+            why = type(e).__name__
+        if why:                                    # e.g. polkit rule missing: tell the kiosk, accept writes again
+            log.warning("poweroff failed: %s", why)
+            st.update(poweroff_failed=True, synced=False, done=False)
     t = threading.Timer(delay, run)
     t.daemon = True
     st["timer"] = t
@@ -204,6 +208,14 @@ def _refuse_writes_while_shutting_down():
         abort(503)
 
 
+@bp.route("/frame/shutdown-status")
+@localhost_only
+def shutdown_status():
+    """#62: the kiosk polls this while its shutdown cover is up; failed=true -> "Couldn't shut down"."""
+    st = current_app.extensions.get("mf_shutdown") or {}
+    return jsonify({"failed": bool(st.get("poweroff_failed"))})
+
+
 @bp.route("/frame/shutdown", methods=["POST"])
 @localhost_only
 def shutdown():
@@ -213,6 +225,7 @@ def shutdown():
     app = current_app._get_current_object()
     st = app.extensions.setdefault("mf_shutdown", {})
     st["synced"] = True                       # refuse further writes from now on
+    st["poweroff_failed"] = False
     log.warning("shutdown requested from the frame menu; syncing")
     if not _sync():
         st["synced"] = False
@@ -223,30 +236,45 @@ def shutdown():
 
 # ---------------- MF-51: Dev mode until reboot (kiosk only) ----------------
 
-DEV_MODE_CMD = ["sudo", "-n", "/usr/local/sbin/memoryframe-netmode", "dev-temp"]
+DEV_MODE_UNIT = "memoryframe-devtemp.service"   # #62: root oneshot started via polkit
 
 
 @bp.route("/frame/dev-mode", methods=["POST"])
 @localhost_only
 def dev_mode():
-    import hmac
-    import subprocess
-    import threading
-    sent = request.headers.get("X-Frame-Token", "")
-    if not sent or not hmac.compare_digest(sent.encode(), frame_token().encode()):
-        abort(403)
-    cmd = list(current_app.config.get("DEV_MODE_CMD") or DEV_MODE_CMD)
-
-    def run():
-        try:
-            r = subprocess.run(cmd, timeout=120, check=False, capture_output=True)
-            if r.returncode:
-                log.warning("dev mode switch failed (exit %s)", r.returncode)
-        except (OSError, subprocess.TimeoutExpired) as e:
-            log.warning("dev mode switch failed: %s", type(e).__name__)
-
+    """Run the helper now and report the result as JSON: {"ok": bool, "reason": str}.
+    The kiosk is on localhost, so switching Wi-Fi doesn't cut this request."""
+    from . import privileged
+    _check_token()
     log.warning("dev mode (until reboot) requested from the frame menu")
-    t = threading.Timer(float(current_app.config.get("DEV_MODE_DELAY", 1.0)), run)
-    t.daemon = True
-    t.start()
-    return jsonify({"dev_mode": True})
+    cfg = current_app.config
+    timeout = float(cfg.get("DEV_MODE_TIMEOUT", 120))
+    if cfg.get("DEV_MODE_CMD"):                    # tests: a stub argv instead of the unit
+        import subprocess
+        try:
+            p = subprocess.run(list(current_app.config["DEV_MODE_CMD"]), timeout=timeout, check=False,
+                               capture_output=True, text=True)
+            rc, text = p.returncode, p.stdout + "\n" + p.stderr
+        except subprocess.TimeoutExpired:
+            rc, text = 124, ""
+        except OSError:
+            rc, text = 99, ""
+    else:
+        rc, text = privileged.run(cfg, "dev-temp", timeout=timeout)
+    if rc == 124:
+        return jsonify({"ok": False, "reason": "timed out"}), 502
+    if rc == 99:
+        return jsonify({"ok": False, "reason": "could not run the helper"}), 502
+    if rc == 0:
+        return jsonify({"ok": True, "reason": ""})
+    text = text.lower()
+    if "access denied" in text or "interactive authentication" in text or "not authorized" in text:
+        reason = "not permitted (polkit rule missing)"
+    elif rc == 3 or "busy" in text:
+        reason = "busy (another network change is in progress)"
+    elif "no matching networkmanager wi-fi profile" in text:
+        reason = "no saved home Wi-Fi on this frame"
+    else:
+        reason = "home Wi-Fi did not connect"
+    log.warning("dev mode switch failed (exit %s): %s", rc, reason)
+    return jsonify({"ok": False, "reason": reason}), 502

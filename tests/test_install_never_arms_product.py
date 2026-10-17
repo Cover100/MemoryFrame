@@ -32,7 +32,7 @@ def install(tmp_path, envd):
     bin_ = tmp_path / "bin"
     bin_.mkdir(exist_ok=True)
     for name, body in (("sudo", SUDO), ("python3", PY3), ("chromium", STUB + "exit 0\n"),
-                       ("crontab", STUB + "exit 1\n"), ("nmcli", STUB + "exit 0\n")):
+                       ("crontab", STUB + "exit 1\n"), ("nmcli", STUB + "exit 0\n"), ("pkaction", STUB + "exit 0\n")):
         (bin_ / name).write_text(body)
         (bin_ / name).chmod(0o755)
     home = tmp_path / "home"

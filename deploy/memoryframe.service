@@ -18,7 +18,16 @@ Environment=MEMORYFRAME_PORTS=80,5000
 # Allow binding port 80 without running as root; nothing else is granted.
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+# #62 hardening: no privilege gain at all (no sudo/setuid). Developer Wi-Fi, Wi-Fi change and Shut down
+# are root oneshot units / logind poweroff that polkit lets only this user start (memoryframe-polkit.rules).
 NoNewPrivileges=true
+RestrictSUIDSGID=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/memoryframe -@APP_DIR@/uploads
+# Wi-Fi apply input (ssid/password) is handed to the root unit through this 0700 directory.
+RuntimeDirectory=memoryframe-app
+RuntimeDirectoryMode=0700
 # MF-13: optional settings, e.g. MEMORYFRAME_EXTRA_HOSTS=192.168.50.124 to open the site
 # from the home network. Written by: deploy/install.sh --extra-hosts LIST
 # (or deploy/env-file.sh). The leading "-" means the file may be absent.

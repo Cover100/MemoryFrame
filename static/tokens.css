@@ -5,10 +5,10 @@
      walnut #554538 (grain dark #3A2D24, light #6E5C46) · black surround #151B20 · brass hand #716249
    ========================================================================== */
 
-/* Local font for the frame (offline). Atkinson Hyperlegible, SIL OFL, Regular + Bold only (~2 x 30 KB
-   woff2 when subset to Latin). Bundled in /static/fonts/ (subset to Latin, OFL.txt alongside). */
-@font-face { font-family: "MF Frame"; font-weight: 400; src: url("/static/fonts/atkinson-hyperlegible-400.woff2") format("woff2"); font-display: block; }
-@font-face { font-family: "MF Frame"; font-weight: 700; src: url("/static/fonts/atkinson-hyperlegible-700.woff2") format("woff2"); font-display: block; }
+/* Local font for the frame (offline): Atkinson Hyperlegible, SIL OFL, Regular + Bold, subset to Latin
+   (~16 KB woff2 each, /static/fonts/, OFL.txt alongside). Its @font-face rules are templated in
+   templates/frame_fonts.css (served at /frame-fonts.css, linked by index.html) so their src URLs use
+   static() and match the preload URLs (same ?v= hash). Phone pages use --mf-font-phone (system font). */
 
 :root {
   /* ---- Frame palette (dark: the screen should melt into the black surround) ---- */

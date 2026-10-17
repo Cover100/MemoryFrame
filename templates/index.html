@@ -16,9 +16,12 @@
     </title>
 
 
-    <link rel="preload" href="/static/fonts/atkinson-hyperlegible-400.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="preload" href="/static/fonts/atkinson-hyperlegible-700.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="stylesheet" href="/static/tokens.css">
+    <!-- Frame font: the preloads and the @font-face rules in /frame-fonts.css (templates/frame_fonts.css)
+         both use static(), so the URLs match exactly (same ?v= hash) and each font downloads once. -->
+    <link rel="preload" href="{{ static('fonts/atkinson-hyperlegible-400.woff2') }}" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="{{ static('fonts/atkinson-hyperlegible-700.woff2') }}" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="{{ url_for('display.frame_fonts') }}">
+    <link rel="stylesheet" href="{{ static('tokens.css') }}">
     <link rel="stylesheet"
           href="{{ static('style.css') }}">
 

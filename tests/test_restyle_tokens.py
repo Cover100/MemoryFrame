@@ -10,6 +10,7 @@ from test_frontend_browser import evaluate, net, page, server  # noqa: F401  (fi
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "static"
 TOKENS = (STATIC / "tokens.css").read_text()
+FONTS_CSS = (ROOT / "templates" / "frame_fonts.css").read_text()
 LOCAL = {"REMOTE_ADDR": "127.0.0.1"}
 
 DIRECTION = {"--mf-ink": "#0E1311", "--mf-forest-900": "#16261D", "--mf-forest-800": "#24382C",
@@ -45,13 +46,13 @@ def test_font_files_local_small_and_licensed():
     for w in (400, 700):
         f = STATIC / "fonts" / f"atkinson-hyperlegible-{w}.woff2"
         assert f.read_bytes()[:4] == b"wOF2" and f.stat().st_size < 40_000
-        assert f'url("/static/fonts/atkinson-hyperlegible-{w}.woff2")' in TOKENS
+        assert f"static('fonts/atkinson-hyperlegible-{w}.woff2')" in FONTS_CSS
     lic = (STATIC / "fonts" / "OFL.txt").read_text()
     assert "SIL Open Font License" in lic and "Braille Institute" in lic
 
 
 def test_no_external_urls_in_css_or_templates():
-    for f in list(STATIC.glob("*.css")) + list((ROOT / "templates").glob("*.html")):
+    for f in list(STATIC.glob("*.css")) + list((ROOT / "templates").glob("*.html")) + [ROOT / "templates" / "frame_fonts.css"]:
         s = f.read_text()
         assert not re.search(r"url\(\s*['\"]?(https?:)?//", s), f.name
         assert not re.search(r"(href|src)=\"(https?:)?//", s), f.name
@@ -60,8 +61,23 @@ def test_no_external_urls_in_css_or_templates():
 
 def test_kiosk_preloads_font_and_links_tokens_first(client):
     html = client.get("/", environ_base=LOCAL).get_data(as_text=True)
-    assert 'rel="preload" href="/static/fonts/atkinson-hyperlegible-400.woff2" as="font"' in html
-    assert html.index("tokens.css") < html.index("style.css")
+    assert re.search(r'<link rel="stylesheet" href="/static/tokens\.css\?v=[0-9a-f]{10}">', html)
+    assert html.index("/frame-fonts.css") < html.index("tokens.css") < html.index("style.css")
+
+
+def test_font_preload_and_font_face_urls_match_and_are_hashed(client):
+    """#71: every /static/ URL carries ?v=<hash>, fonts too. The preload and the @font-face src must be the
+    same URL (same hash) or Chromium downloads each font twice and the preload is wasted."""
+    html = client.get("/", environ_base=LOCAL).get_data(as_text=True)
+    preloads = re.findall(r'<link rel="preload" href="([^"]+)" as="font" type="font/woff2" crossorigin>', html)
+    r = client.get("/frame-fonts.css", environ_base=LOCAL)
+    assert r.status_code == 200 and r.mimetype == "text/css" and r.headers["Cache-Control"] == "no-cache"
+    srcs = re.findall(r'src: url\("([^"]+)"\) format\("woff2"\)', r.get_data(as_text=True))
+    assert len(preloads) == 2 and preloads == srcs, (preloads, srcs)
+    for w, u in zip((400, 700), preloads):
+        assert re.fullmatch(rf"/static/fonts/atkinson-hyperlegible-{w}\.woff2\?v=[0-9a-f]{{10}}", u), u
+        assert client.get(u, environ_base=LOCAL).data[:4] == b"wOF2"
+    assert "@font-face" not in re.sub(r"/\*.*?\*/", "", TOKENS, flags=re.S)   # one source of truth for font URLs
 
 
 @pytest.mark.parametrize("w", [400, 700])
@@ -82,7 +98,7 @@ def _rules(sel_regex):
 
 
 def test_font_display_block():
-    assert TOKENS.count("font-display: block") == 2 and "swap" not in TOKENS
+    assert FONTS_CSS.count("font-display: block") == 2 and "swap" not in FONTS_CSS
 
 
 def test_shutdown_cover_and_errors_use_tokens_no_hex():
@@ -110,3 +126,16 @@ def test_menu_buttons_render_in_palette(page, server, net):
     got = evaluate(page, "['menuPair','menuSignOut','menuShutdown','menuClose'].map(i=>{const e=document.getElementById(i);"
                          "const c=getComputedStyle(e);return [c.backgroundColor, Math.round(e.getBoundingClientRect().height)>=56];})")
     assert got == [["rgb(42, 97, 64)", True], ["rgb(36, 56, 44)", True], ["rgb(168, 53, 42)", True], ["rgb(36, 56, 44)", True]]
+
+
+def test_kiosk_loads_frame_font_once_each(page, server, net):
+    page.pump(2.5)
+    evaluate(page, "memoryFramePairing.openMenu()")      # menu text uses the frame font
+    page.pump(1.0)
+    ok, fonts = evaluate(page, "[document.fonts.check('700 22px \"MF Frame\"'),"
+                               "performance.getEntriesByType('resource').map(e=>new URL(e.name).pathname)"
+                               ".filter(n=>n.endsWith('.woff2'))]")
+    assert ok
+    for w in (400, 700):   # preload and @font-face share one URL, so at most one fetch per font
+        assert fonts.count(f"/static/fonts/atkinson-hyperlegible-{w}.woff2") <= 1, fonts
+    assert "/static/fonts/atkinson-hyperlegible-700.woff2" in fonts

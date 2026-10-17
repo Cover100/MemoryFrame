@@ -715,6 +715,5 @@ video {
 #safeScreen[hidden]{display:none}
 #safeScreen .safeTitle{font-size:56px;font-weight:700;line-height:1.15;max-width:720px;max-height:2.3em;
   overflow:hidden;margin-top:24px}
-#safeScreen .safeTick{animation:safePulse 2.4s infinite ease-in-out}
-@keyframes safePulse{0%,100%{opacity:1}50%{opacity:.45}}
+#safeScreen .safeTick{animation:none}   /* static: the frame freezes after halt */
 #safeScreen .safeSub{font-size:28px;margin-top:16px}

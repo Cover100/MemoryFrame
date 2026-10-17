@@ -170,14 +170,14 @@
 
     <!-- MF-49: full-screen "Shutting down" cover (Designer), until the server confirms sync. -->
     <!-- Safe screen (Wren's layout), shown only after the server confirms sync; stays on the
-         panel through poweroff. Copy: Wren's final. -->
+         panel through poweroff. Copy: display.SAFE_SCREEN_COPY. -->
     <div id="safeScreen" hidden>
         <svg class="safeTick" viewBox="0 0 120 120" width="120" height="120" aria-hidden="true">
             <polyline points="22,64 50,92 100,28" fill="none" stroke="#fff" stroke-width="16"
                       stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
-        <div class="safeTitle">Unplug once the screen goes dark</div>
-        <div class="safeSub">Photos saved · Memory Frame is turning off</div>
+        <div class="safeTitle">{{ safe_copy.title }}</div>
+        <div class="safeSub">{{ safe_copy.sub }}</div>
     </div>
     <div id="shuttingDown" hidden>
         <div class="sdTitle">Shutting down…</div>

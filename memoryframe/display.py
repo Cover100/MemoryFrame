@@ -35,7 +35,8 @@ def index():
     # Decided by the TCP peer address (request.remote_addr), never by the Host header.
     if not is_local_request():
         return redirect("/admin/", code=302)
-    return render_template("index.html", media=get_media(), frame_token=frame_token())
+    return render_template("index.html", media=get_media(), frame_token=frame_token(),
+                           safe_copy=SAFE_SCREEN_COPY)
 
 
 @bp.route("/media")
@@ -145,7 +146,9 @@ def set_brightness():
 
 POWEROFF_CMD = ["sudo", "-n", "/usr/bin/systemctl", "poweroff"]
 SYNC_CMD = ["sync"]
-POWEROFF_DELAY = 3.0          # after the "synced" response: let the kiosk paint the Safe screen
+# Copy of the final shutdown screen (Wren confirmed): one place to change it.
+SAFE_SCREEN_COPY = {"title": "Safe to unplug", "sub": "Photos saved \u00b7 Memory Frame is off"}
+POWEROFF_DELAY = 1.2          # after the "synced" response: just long enough for the kiosk to paint
 
 
 def frame_token():
@@ -209,7 +212,9 @@ def _refuse_writes_while_shutting_down():
 def shutdown():
     """MF-49: stop accepting writes and sync; answer synced=true only after a successful sync. The
     kiosk then shows the green Safe screen, and poweroff runs POWEROFF_DELAY s after this response
-    (the fb0 late hook didn't work on vc4drmfb, so the last kiosk frame is what stays on the panel)."""
+    The panel keeps its last frame after poweroff, so that green screen is what stays on it. Only sync
+    is done (the data dir is on the root filesystem, which can't safely be remounted read-only while
+    services run); systemd unmounts/remounts read-only during the poweroff that follows."""
     _check_token()
     app = current_app._get_current_object()
     st = app.extensions.setdefault("mf_shutdown", {})

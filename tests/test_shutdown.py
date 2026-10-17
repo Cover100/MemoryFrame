@@ -119,13 +119,14 @@ def test_menu_shutdown_safe_only_after_synced(page, server, mf_app, net, tmp_pat
     gate.write_text("")
     page.pump(0.5)
     s = safe(page)
-    assert s and "Unplug once the screen goes dark" in s and "Photos saved · Memory Frame is turning off" in s
+    assert s and "Safe to unplug" in s and "Photos saved · Memory Frame is off" in s
+    assert "goes dark" not in s
     st = evaluate(page, "(()=>{const t=document.querySelector('#safeScreen .safeTitle');const c=getComputedStyle(t);"
                         "return [c.fontSize,c.fontWeight,Math.round(t.getBoundingClientRect().width)<=720,"
                         "Math.round(t.getBoundingClientRect().height/parseFloat(c.lineHeight))<=2,"
                         "getComputedStyle(document.querySelector('#safeScreen .safeSub')).fontSize,"
                         "getComputedStyle(document.querySelector('#safeScreen .safeTick')).animationName];})()")
-    assert st == ["56px", "700", True, True, "28px", "safePulse"]
+    assert st == ["56px", "700", True, True, "28px", "none"]
     assert cover(page) is None
     assert out.read_text().split() == ["sync"]                 # poweroff ~delay after the response
     bg = evaluate(page, "getComputedStyle(document.getElementById('safeScreen')).backgroundColor")
@@ -146,6 +147,26 @@ def test_menu_shutdown_sync_failure_shows_error(page, server, mf_app, net, tmp_p
     assert "Couldn't shut down" in evaluate(page, "document.getElementById('shutdownBox').innerText")
 
 
-def test_no_bare_safe_to_unplug_text_in_browser():
-    for f in ("templates/index.html", "static/pairing.js", "static/script.js"):
-        assert "Safe to unplug" not in (Path(__file__).resolve().parents[1] / f).read_text()
+def test_safe_copy_is_one_constant_and_not_shown_before_sync(client):
+    from memoryframe import display
+    assert display.SAFE_SCREEN_COPY == {"title": "Safe to unplug", "sub": "Photos saved \u00b7 Memory Frame is off"}
+    root = Path(__file__).resolve().parents[1]
+    for f in ("templates/index.html", "static/pairing.js"):
+        assert "Safe to unplug" not in (root / f).read_text() and "goes dark" not in (root / f).read_text()
+
+
+def test_order_writes_blocked_then_sync_then_response_then_poweroff(client, stub, mf_app, monkeypatch):
+    from memoryframe import display
+    order = []
+
+    def fake_sync():
+        order.append(("sync", mf_app.extensions["mf_shutdown"]["synced"]))   # writes already refused?
+        return True
+    monkeypatch.setattr(display, "_sync", fake_sync)
+    real = display._schedule_poweroff
+    monkeypatch.setattr(display, "_schedule_poweroff", lambda app, d: (order.append(("schedule", d)), real(app, d)))
+    r = client.post("/frame/shutdown", headers={"X-Frame-Token": token(client)}, environ_base=LOCAL, buffered=False)
+    order.append(("response", r.get_json()["synced"]))
+    r.close()
+    assert order == [("sync", True), ("response", True), ("schedule", 0.05)]
+    assert display.POWEROFF_DELAY <= 1.5

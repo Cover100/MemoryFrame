@@ -94,7 +94,7 @@
 
 /* ---- Phone (light paper) ---- */
 .mf-phone { background: var(--mf-paper); color: var(--mf-text); font-family: var(--mf-font-phone); }
-.mf-phone button { background: var(--mf-green); color: #fff; border: 0; border-radius: var(--mf-r-md);
+.mf-phone button { font: inherit; background: var(--mf-green); color: #fff; border: 0; border-radius: var(--mf-r-md);
   min-height: var(--mf-touch-phone); }
 .mf-phone button.secondary, .mf-phone .seg button { background: var(--mf-card); color: var(--mf-text);
   border: 1.5px solid var(--mf-line); }

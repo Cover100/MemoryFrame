@@ -2,6 +2,7 @@
 JS error (catches undefined globals such as a lost const after a bad merge).
 Skipped when no Chromium/Chrome is installed (CI runners have one)."""
 import base64
+import re
 import shutil
 import socket
 import subprocess
@@ -203,10 +204,10 @@ def hold(page, seconds):
 def menu_info(page):
     import json
     return json.loads(evaluate(page, """JSON.stringify((()=>{const b=document.getElementById('menuBox').getBoundingClientRect();
-      const f=[...document.querySelectorAll('#menuBox th,#menuBox td,#menuBox button')].map(e=>parseFloat(getComputedStyle(e).fontSize));
+      const f=[...document.querySelectorAll('#menuBox *')].filter(e=>e.childNodes.length&&[...e.childNodes].some(n=>n.nodeType===3&&n.textContent.trim())).map(e=>parseFloat(getComputedStyle(e).fontSize));
       const t=id=>document.getElementById(id).textContent;
-      return {box:[b.left,b.top,b.right,b.bottom], minFont:Math.min(...f), ssid:t('menuSsid'), site:t('menuSite'),
-              paired:t('menuPaired'), free:t('menuFree'), version:t('menuVersion'), ip:t('menuIp'),
+      return {box:[b.left,b.top,b.right,b.bottom], minFont:Math.min(...f), free:t('menuFree'), text:t('menuBox'),
+              used:document.getElementById('menuUsed').style.transform,
               buttons:[...document.querySelectorAll('#menuBox button')].map(b=>b.textContent)};})())"""))
 
 
@@ -216,13 +217,13 @@ def test_state_a_no_photos_no_phone_full_onboarding_on_hotspot(page, server, mf_
     o = overlay(page)
     assert o["visible"] and o["qr"]
     code = mf_app.extensions["mf_pairing"].code
-    assert o["code"].replace(" ", "") == code and o["font"] >= 72
+    assert o["code"].replace(" ", "") == code and o["font"] >= 56
     assert (o["vw"], o["vh"]) == (800, 480)
     left, top, right, bottom = o["box"]
     assert left >= 0 and top >= 0 and right <= o["vw"] and bottom <= o["vh"], o   # fits 800x480
     # Wi-Fi join QR first, then the site QR for the hotspot address (port 80 is served)
     assert visible(page, "wifiStep") and evaluate(page, "!!document.querySelector('#wifiQr svg')")
-    assert text(page, "siteTitle") == "2. Open site"
+    assert text(page, "siteTitle") == "Open site" and text(page, "siteBadge") == "2" and text(page, "codeBadge") == "3"
     assert text(page, "pairUrl") == "http://10.42.0.1/pair"
     assert text(page, "pairUrlAlt") == "or http://memoryframe.lan/pair"
     assert not visible(page, "pairHint")
@@ -257,11 +258,12 @@ def test_state_b_photos_no_phone_slideshow_runs_on_home_wifi(page, server, mf_ap
     assert visible(page, "menuOverlay")
     m = menu_info(page)
     assert m["box"][2] <= 800 and m["box"][3] <= 480 and m["box"][0] >= 0 and m["box"][1] >= 0, m
-    assert m["minFont"] >= 24, m
-    assert m["ssid"] == "home Wi-Fi" and m["paired"] == "0" and "GB" in m["free"]
-    assert m["site"] == "memoryframe.local:5000/  or  192.168.50.124:5000/"
-    assert m["version"].startswith("0.2.0") and m["ip"] != "-"
-    assert {"Pair new device", "Sign out all phones", "Close"} <= set(m["buttons"])
+    assert m["minFont"] >= 18, m                            # DIRECTION: nothing smaller on the frame
+    assert re.fullmatch(r"\d+\.\d GB free of \d+\.\d GB", m["free"]) and m["used"].startswith("scaleX("), m
+    for gone in ("192.168.50.124", "memoryframe.local", "Version", "Phones paired", "home Wi-Fi"):
+        assert gone not in m["text"], gone                  # menu v2: details live on the phone
+    assert "No message yet" in m["text"]                    # #73 not wired yet -> empty state
+    assert m["buttons"] == ["Pair new device", "Sign out all phones", "Close", "Shut down"]
     evaluate(page, "document.getElementById('menuPair').click()")
     page.pump(1.0)
     o = overlay(page)
@@ -287,7 +289,7 @@ def test_menu_pair_and_sign_out_with_phone(page, server, mf_app, net):
     assert not overlay(page)["visible"] and not visible(page, "pairHint")
     evaluate(page, "memoryFramePairing.openMenu()")
     page.pump(0.5)
-    assert menu_info(page)["ssid"] == "Frame-WiFi (hotspot)"
+    assert "GB free" in menu_info(page)["free"]
     evaluate(page, "document.getElementById('menuSignOut').click()")
     page.pump(0.3)
     evaluate(page, "document.getElementById('confirmSignOut').click()")       # MF-31: confirm first

@@ -36,7 +36,8 @@ def index():
     if not is_local_request():
         return redirect("/admin/", code=302)
     return render_template("index.html", media=get_media(), frame_token=frame_token(),
-                           safe_copy=SAFE_SCREEN_COPY)
+                           safe_copy=SAFE_SCREEN_COPY,
+                           frame_message=current_app.config.get("FRAME_MESSAGE"))   # #73 feeds this
 
 
 @bp.route("/frame-fonts.css")
@@ -157,8 +158,9 @@ POWEROFF_CMD = ["systemctl", "poweroff"]   # #62: logind via polkit (no sudo; th
 SYNC_CMD = ["sync"]
 # Copy of the final shutdown screen (Wren confirmed): one place to change it.
 # Seconds the user is told to wait before unplugging. Keep >= 2x the measured worst-case screen-to-halt time.
-UNPLUG_WAIT_SECONDS = 15
-SAFE_SCREEN_COPY = {"title": "Photos saved", "sub": f"Wait {UNPLUG_WAIT_SECONDS} seconds, then unplug"}
+UNPLUG_WAIT_SECONDS = 10     # #70 / #65 B (still 2x the measured worst case)
+SAFE_SCREEN_COPY = {"title": "Shutting down", "sub": f"Wait {UNPLUG_WAIT_SECONDS} seconds, then unplug",
+                    "note": "Photos are saved on the frame"}
 POWEROFF_DELAY = 1.2          # after the "synced" response: just long enough for the kiosk to paint
 
 

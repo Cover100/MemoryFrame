@@ -116,19 +116,17 @@ def test_menu_shutdown_safe_only_after_synced(page, server, mf_app, net, tmp_pat
     gate.write_text("")
     page.pump(0.5)
     s = safe(page)
-    assert s and "Photos saved" in s and "Wait 15 seconds, then unplug" in s and "Safe to unplug" not in s
-    assert "goes dark" not in s
-    st = evaluate(page, "(()=>{const t=document.querySelector('#safeScreen .safeTitle');const c=getComputedStyle(t);"
-                        "return [c.fontSize,c.fontWeight,Math.round(t.getBoundingClientRect().width)<=720,"
-                        "Math.round(t.getBoundingClientRect().height/parseFloat(c.lineHeight))<=2,"
-                        "getComputedStyle(document.querySelector('#safeScreen .safeSub')).fontSize,"
-                        "getComputedStyle(document.querySelector('#safeScreen .safeTick')).animationName];})()")
-    assert st == ["64px", "700", True, True, "32px", "none"]
-    assert evaluate(page, "getComputedStyle(document.querySelector('#safeScreen .safeSub')).color") == "rgb(255, 176, 0)"
+    assert s and "Shutting down" in s and "Wait 10 seconds, then unplug" in s and "Photos are saved on the frame" in s
+    assert "Safe to unplug" not in s and "goes dark" not in s
+    st = evaluate(page, "(()=>{const q=x=>getComputedStyle(document.querySelector('#safeScreen '+x));"
+                        "return [q('.safeTitle').fontSize,q('.safeTitle').fontWeight,q('.safeSub').fontSize,"
+                        "q('.safeSub').color,q('.safeNote').color,q('.safeSpin').animationName,"
+                        "document.getAnimations().filter(a=>document.getElementById('safeScreen').contains(a.effect.target)).length];})()")
+    assert st == ["44px", "700", "32px", "rgb(214, 179, 106)", "rgb(201, 187, 168)", "none", 0]   # static last frame
     assert cover(page) is None
     assert out.read_text().split() == ["sync"]                 # poweroff ~delay after the response
     bg = evaluate(page, "getComputedStyle(document.getElementById('safeScreen')).backgroundColor")
-    assert bg == "rgb(0, 107, 46)"
+    assert bg == "rgb(14, 19, 17)"                              # --mf-ink
     page.pump(1.2)
     assert out.read_text().split() == ["sync", "sync", "poweroff"]
 
@@ -147,11 +145,13 @@ def test_menu_shutdown_sync_failure_shows_error(page, server, mf_app, net, tmp_p
 
 def test_safe_copy_is_one_constant_and_not_shown_before_sync(client):
     from memoryframe import display
-    assert display.UNPLUG_WAIT_SECONDS == 15
-    assert display.SAFE_SCREEN_COPY == {"title": "Photos saved", "sub": "Wait 15 seconds, then unplug"}
+    assert display.UNPLUG_WAIT_SECONDS == 10
+    assert display.SAFE_SCREEN_COPY == {"title": "Shutting down", "sub": "Wait 10 seconds, then unplug",
+                                        "note": "Photos are saved on the frame"}
     root = Path(__file__).resolve().parents[1]
     for f in ("templates/index.html", "static/pairing.js"):
-        assert "Photos saved" not in (root / f).read_text() and "Wait 15" not in (root / f).read_text() and "goes dark" not in (root / f).read_text()
+        t = (root / f).read_text()
+        assert "Photos are saved" not in t and "Wait 10" not in t and "then unplug" not in t and "goes dark" not in t
 
 
 def test_order_writes_blocked_then_sync_then_response_then_poweroff(client, stub, mf_app, monkeypatch):

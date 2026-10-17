@@ -113,7 +113,7 @@ def test_shutdown_cover_and_errors_use_tokens_no_hex():
 def test_menu_buttons_use_shared_classes(client):
     html = client.get("/", environ_base=LOCAL).get_data(as_text=True)
     for i, c in (("menuPair", "mf-btn"), ("menuSignOut", "mf-btn mf-btn-secondary"),
-                 ("menuShutdown", "mf-btn mf-btn-danger"), ("menuClose", "mf-btn mf-btn-secondary")):
+                 ("menuShutdown", "mf-btn mf-btn-danger"), ("menuClose", "mf-btn mf-btn-secondary mf-btn-default")):
         assert f'id="{i}" class="{c}"' in html
     css = (STATIC / "style.css").read_text()
     assert ".overlay button.mf-btn{min-height:var(--mf-touch-frame)" in css

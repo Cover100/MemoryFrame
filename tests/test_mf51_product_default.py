@@ -163,7 +163,7 @@ def test_hold_3s_hold_opens_confirm_cancel_default_no_brightness_or_menu(page, s
     assert visible(page, "devModeOverlay") and not visible(page, "menuOverlay")
     assert evaluate(page, "document.activeElement.id") == "devModeCancel"
     box = text(page, "devModeBox")
-    assert "Join developer Wi-Fi?" in box and "disconnect until you restart the frame" in box
+    assert "Switch to dev mode?" in box and "disconnect until you restart the frame" in box
     ev(page, "pointerup", x + 8, y + 8)
     page.pump(0.3)
     evaluate(page, "document.getElementById('devModeCancel').click()")

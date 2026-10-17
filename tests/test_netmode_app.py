@@ -101,7 +101,14 @@ def test_dev_banner(page, server, mf_app, net, nmstate):
     assert visible(page, "devBanner")
     assert text(page, "devBanner") == "Developer mode \u00b7 192.168.50.124"
     l, t, r, b = rect(page, "#devBanner")
-    assert l == pytest.approx(12, abs=1) and b == pytest.approx(480 - 12, abs=1)
+    assert l == pytest.approx(12, abs=1) and t == pytest.approx(12, abs=1)          # #70 mock 12: top-left pill
+    assert evaluate(page, "getComputedStyle(document.getElementById('devBanner')).fontSize") == "18px"
+    evaluate(page, "memoryFramePairing.openMenu()")                                # hidden under any overlay
+    page.pump(0.5)
+    assert evaluate(page, "getComputedStyle(document.getElementById('devBanner')).opacity") == "0"
+    evaluate(page, "document.getElementById('menuClose').click()")
+    page.pump(0.5)
+    assert evaluate(page, "getComputedStyle(document.getElementById('devBanner')).opacity") == "1"
     assert evaluate(page, "getComputedStyle(document.getElementById('devBanner')).pointerEvents") == "none"
     net.update(mode="lan", lan_ip=None, ips=[])
     page.pump(2.5)
@@ -132,7 +139,7 @@ def test_hotspot_error_screen_fits_and_close_snoozes(page, server, mf_app, net, 
     page.pump(2.5)
     assert visible(page, "hotspotError")
     card = rect(page, ".hotspot-error-card")
-    assert (round(card[2] - card[0]), round(card[3] - card[1])) == (680, 400)
+    assert (round(card[2] - card[0]), round(card[3] - card[1])) == (800, 480)      # #70 mock 06: full screen
     assert card[0] >= 0 and card[1] >= 0 and card[2] <= 800 and card[3] <= 480
     # nothing inside the card is clipped
     assert evaluate(page, "(()=>{const c=document.querySelector('.hotspot-error-card');"
@@ -140,9 +147,10 @@ def test_hotspot_error_screen_fits_and_close_snoozes(page, server, mf_app, net, 
     btn = rect(page, "#hotspotErrorClose")
     assert round(btn[3] - btn[1]) == 64 and btn[2] <= card[2] and btn[3] <= card[3]
     foot = rect(page, ".hotspot-error-foot")
-    assert foot[3] <= btn[1] or foot[2] <= btn[0]             # footer doesn't run under the button
+    assert foot[3] <= btn[1] or foot[0] >= btn[2]             # footer doesn't run under the button
+    assert evaluate(page, "document.querySelectorAll('.hotspot-error-card code').length") == 4
     body = text(page, "hotspotError")
-    for line in ("Memory Frame Wi-Fi didn't start", 'open the drive called "bootfs"',
+    for line in ("Memory Frame Wi-Fi didn't start", "open the drive called bootfs",
                  "Create an empty file named memoryframe-reset (no extension).",
                  "make sure it only says: product", "Still not working? Restart the frame once."):
         assert line in body

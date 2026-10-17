@@ -319,190 +319,16 @@ video {
 
 
 
-/* ====================================================
-   Brightness Overlay
-   ==================================================== */
-
-
-#brightnessOverlay {
-
-
-    position: absolute;
-
-
-
-    left: 50%;
-
-
-
-    bottom: 35px;
-
-
-
-    transform:
-
-        translateX(-50%);
-
-
-
-    display: none;
-
-
-
-    align-items: center;
-
-
-
-    justify-content: center;
-
-
-
-    gap: 12px;
-
-
-
-    padding:
-
-        12px
-        25px;
-
-
-
-    border-radius:
-
-        30px;
-
-
-
-    background:
-
-        rgba(
-            0,
-            0,
-            0,
-            0.65
-        );
-
-
-
-    color: white;
-
-
-
-    font-family:
-
-        Arial,
-        sans-serif;
-
-
-
-    font-size:
-
-        30px;
-
-
-
-    z-index: 100;
-
-
-
-    pointer-events: none;
-
-
-
-    animation:
-
-        fadeBrightness
-        0.2s
-        ease;
-
-
-
-}
-
-
-
-
-
-#brightnessIcon {
-
-
-    font-size:
-
-        34px;
-
-
-}
-
-
-
-
-
-#brightnessValue {
-
-
-    min-width:
-
-        60px;
-
-
-    text-align:
-
-        center;
-
-
-}
-
-
-
-
-
-
-@keyframes fadeBrightness {
-
-
-    from {
-
-
-        opacity: 0;
-
-
-
-        transform:
-
-            translateX(-50%)
-            translateY(10px);
-
-
-
-    }
-
-
-    to {
-
-
-        opacity: 1;
-
-
-
-        transform:
-
-            translateX(-50%)
-            translateY(0);
-
-
-
-    }
-
-
-}
-
-
-
-
-
-
-
+/* #70 mock 02: brightness pill (brass sun, brass fill scaled with transform, bold linen value) */
+#brightnessOverlay{position:absolute;left:50%;bottom:32px;transform:translateX(-50%);display:none;align-items:center;gap:16px;
+  padding:14px 24px;border-radius:var(--mf-r-pill);background:var(--mf-pill);color:var(--mf-linen);font-family:var(--mf-font-frame);
+  font-size:var(--mf-f-body);z-index:100;pointer-events:none;animation:fadeBrightness .2s ease}
+#brightnessIcon{color:var(--mf-brass);line-height:0}
+.mf-sun{width:28px;height:28px}
+.brightTrack{width:240px;height:10px;border-radius:5px;background:var(--mf-forest-700);overflow:hidden}
+#brightnessFill{display:block;height:100%;background:var(--mf-brass);transform-origin:left}
+#brightnessValue{min-width:64px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+@keyframes fadeBrightness{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
 /* ====================================================
    Future Clock Overlay
    ==================================================== */
@@ -584,105 +410,166 @@ video {
   background:var(--mf-scrim);color:var(--mf-linen);font-family:var(--mf-font-frame)}
 .overlay.visible{display:flex}
 #menuOverlay{z-index:60}
-#pairBox{display:flex;gap:22px;align-items:center;max-width:790px;max-height:470px}
-.step{display:flex;flex-direction:column;align-items:center;text-align:center}
+/* #70 mocks 03/04: "Pair a phone" title bar with Close, step cards with numbered brass badges */
+#pairOverlay:not(.toast){background:var(--mf-ink)}
+#pairBox{position:absolute;inset:0;box-sizing:border-box;padding:22px 28px;display:flex;flex-direction:column}
+.pairHead{display:flex;justify-content:space-between;align-items:center;font-size:var(--mf-f-title);font-weight:700;margin-bottom:16px;min-height:56px}
+#pairClose{margin:0!important}
+.pairCols{flex:1;display:flex;gap:20px;min-height:0}
+.step{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;background:var(--mf-forest-900);
+  border:1px solid var(--mf-forest-700);border-radius:var(--mf-r-lg);padding:16px;box-sizing:border-box}
+#codeStep{flex:1.25}
+.stepBadge{flex:none;display:inline-grid;place-items:center;width:32px;height:32px;border-radius:50%;background:var(--mf-walnut-900);
+  border:2px solid var(--mf-brass);color:var(--mf-brass);font-size:18px;font-weight:700;box-sizing:border-box}
+.codeWrap{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:12px}
 .step[hidden]{display:none}
-.stepTitle{font-size:28px;font-weight:600;margin-bottom:8px}
-.stepText{font-size:22px;margin-top:6px;max-width:230px;overflow-wrap:anywhere}
+.stepTitle{align-self:flex-start;display:flex;gap:10px;align-items:center;font-size:var(--mf-f-body);font-weight:700}
+.stepText{font-size:var(--mf-f-small);color:var(--mf-oat);overflow-wrap:anywhere}
+.stepText b{display:block;color:var(--mf-linen)}
 /* MF-23: the SVG carries its own 4-module white quiet zone; scale the whole thing, never crop */
 .qr{flex:none;line-height:0;overflow:visible}
-.qr svg{display:block;width:min(200px,42vh);height:auto;aspect-ratio:1/1;max-width:100%;
+.qr svg{display:block;width:min(184px,40vh);height:auto;aspect-ratio:1/1;max-width:100%;
   background:#fff;shape-rendering:crispEdges;image-rendering:pixelated}
-#pairCode{font-size:80px;font-weight:700;letter-spacing:2px;font-variant-numeric:tabular-nums;white-space:nowrap}
+#pairCode{font-family:var(--mf-font-mono-digits);font-size:56px;line-height:1;font-weight:700;letter-spacing:2px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .overlay button{font-size:24px;margin:10px 8px 0 0;padding:10px 18px;border-radius:var(--mf-r-md);border:0;font-family:var(--mf-font-frame)}
 .emptyText{font-size:30px;text-align:center;max-width:720px;line-height:1.4}
 .emptyTitle{font-size:48px;font-weight:700;margin-bottom:16px}
-#menuBox{max-width:760px}
-.menuTitle{font-size:28px;font-weight:700;margin-bottom:4px}
-#menuInfo{font-size:24px;border-collapse:collapse;line-height:1.25}
-#menuInfo td{overflow-wrap:anywhere}
-#menuInfo th{text-align:left;font-weight:400;opacity:.8;padding:2px 20px 2px 0;white-space:nowrap}
-#menuInfo td{font-weight:600}
-.menuButtons{margin-top:8px;display:flex;gap:8px}
-.menuButtons button{margin:0!important;padding:8px 14px!important}
+/* menu v2 (MENU-V2.md, 07-menu-final): info left, Pair/Sign out right, Close + Shut down along the bottom */
+#menuBox{position:absolute;inset:16px;padding:22px 24px 20px;display:grid;grid-template-columns:1fr 280px;
+  grid-template-rows:auto 1fr auto;gap:0 28px;background:var(--mf-forest-900);border:1px solid var(--mf-forest-700);border-radius:var(--mf-r-lg)}
+.menuTitle{grid-column:1/-1;display:flex;align-items:center;gap:12px;font-size:28px;font-weight:700;margin-bottom:16px}
+.menuMark{width:14px;height:14px;border-radius:50%;background:var(--mf-brass);flex:none}
+.menuInfo{display:flex;flex-direction:column;min-width:0}
+.menuNote{margin:0;background:var(--mf-walnut-900);border:1px solid var(--mf-walnut);border-radius:var(--mf-r-lg);padding:14px 16px 16px}
+.menuNote .q{display:block;color:var(--mf-brass);font-size:44px;line-height:.6;height:22px;font-weight:700}
+.menuNote p{margin:0;font-size:20px;line-height:1.35;color:var(--mf-linen);display:-webkit-box;-webkit-box-orient:vertical;
+  -webkit-line-clamp:5;overflow:hidden;overflow-wrap:anywhere;white-space:pre-line}
+.menuNote.empty{background:transparent;border:1px dashed var(--mf-walnut);padding:16px}
+.menuNote.empty b{display:block;font-size:20px;color:var(--mf-oat);margin-bottom:4px}
+.menuNote.empty p{display:block;color:var(--mf-oat);font-size:var(--mf-f-small)}
+.menuStore{margin-top:auto;padding:12px 0 20px}
+.menuStoreVal{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px}
+.menuStoreVal>span{font-size:var(--mf-f-small);color:var(--mf-oat)}
+#menuFree{font-size:var(--mf-f-body);font-variant-numeric:tabular-nums}
+#menuFree span{font-weight:400;color:var(--mf-oat)}
+.menuTrack{height:8px;border-radius:4px;background:var(--mf-forest-700);overflow:hidden}
+#menuUsed{height:100%;background:var(--mf-leaf);transform-origin:left;transform:scaleX(0)}
+.menuSide{display:flex;flex-direction:column;gap:12px}
+.menuBottom{grid-column:1/-1;display:flex;justify-content:space-between;border-top:1px solid var(--mf-forest-700);padding-top:16px}
+#menuBox button{margin:0!important;min-height:64px}
+.menuSide button{width:280px}
+.menuBottom button{width:220px}
 .overlay button.mf-btn{min-height:var(--mf-touch-frame);font-weight:700}
 .overlay button.mf-btn-secondary{border:2px solid var(--mf-forest-700)}
 #confirmCancel,#shutdownCancel,#devModeCancel{outline:var(--mf-ring-width) solid var(--mf-brass);outline-offset:3px}   /* default button */
-#pairUrlAlt{display:block;font-size:20px;opacity:.85}
-#pairHint{position:fixed;right:12px;bottom:10px;z-index:40;display:none;padding:6px 12px;border-radius:8px;
-  background:rgba(0,0,0,.45);color:rgba(255,255,255,.85);font:18px var(--mf-font-frame);pointer-events:none}
-#pairHint.visible{display:block}
+#pairUrlAlt{display:block}
+#wifiStep[hidden]~.step .qr svg{width:min(236px,46vh)}   /* 04: two columns, bigger site QR */
+#wifiStep[hidden]~#codeStep{flex:1}
+#wifiStep[hidden]~#codeStep #pairCode{font-size:var(--mf-f-code)}
+#pairHint{position:fixed;right:16px;bottom:16px;z-index:40;display:none;align-items:center;gap:8px;padding:8px 16px;border-radius:var(--mf-r-pill);
+  background:var(--mf-pill);color:var(--mf-linen);font:var(--mf-f-small) var(--mf-font-frame);pointer-events:none}
+#pairHint::before{content:"";width:12px;height:12px;border-radius:50%;background:var(--mf-brass);flex:none}
+#pairHint.visible{display:flex}
 
 /* MF-17: transition "None" = instant cut */
 .mf-no-fade .media{transition:none!important}
 /* MF-31 confirm dialog, MF-33 paired success */
 #confirmOverlay{z-index:70}
-#confirmBox{width:480px;height:260px;box-sizing:border-box;background:var(--mf-forest-900);border:1px solid var(--mf-forest-700);border-radius:var(--mf-r-lg);padding:20px 24px;
-  display:flex;flex-direction:column;justify-content:space-between}
+#confirmBox{box-sizing:border-box;background:var(--mf-forest-900);border:1px solid var(--mf-forest-700);border-radius:var(--mf-r-lg)}
 .confirmTitle{font-size:28px;font-weight:700}
 .confirmBody{font-size:20px;line-height:1.3;margin-top:8px}
-.confirmButtons{display:flex;justify-content:space-between}
-.confirmButtons button{width:200px;min-height:64px;margin:0!important}
+.confirmButtons{display:flex;justify-content:space-between;margin-top:auto}
+.confirmButtons button,.shutdownButtons button{width:260px;min-height:64px;margin:0!important;font-weight:700}
 #confirmCancel{background:var(--mf-forest-800);color:var(--mf-linen);border:2px solid var(--mf-forest-700)}
 #confirmSignOut{background:var(--mf-brick);color:#fff}
 #confirmDone{font-size:30px;font-weight:700;margin:auto;text-align:center}
 #confirmDone[hidden],#confirmAsk[hidden],#pairSuccess[hidden],#pairBox[hidden]{display:none}
-#pairSuccess{text-align:center}
-.successTitle{font-size:40px;font-weight:700}
-.successText{font-size:26px;margin-top:10px}
+/* #70 paired toast: forest-900 card, top centre, over the photo; no scrim, no shadow */
+#pairOverlay.toast{background:none;align-items:flex-start;pointer-events:none}
+#pairSuccess{display:flex;align-items:center;gap:14px;margin-top:20px;padding:14px 22px;background:var(--mf-forest-900);
+  border:1px solid var(--mf-forest-700);border-radius:var(--mf-r-lg)}
+.successTitle{font-size:var(--mf-f-body);font-weight:700}
+.successText{font-size:var(--mf-f-small);color:var(--mf-oat)}
+.toastTick{flex:none;display:inline-grid;place-items:center;width:40px;height:40px;border-radius:50%;
+  background:var(--mf-forest-600);color:#fff;vertical-align:middle}
+.mf-tick{width:26px;height:26px;display:block}
 .confirmError{font-size:20px;color:var(--mf-brick-text);font-weight:600}
 .confirmError[hidden]{display:none}
 /* ---------- MF-36: product / developer mode (frame only) ---------- */
-.dev-banner{position:fixed;left:12px;bottom:12px;z-index:9000;font-size:14px;line-height:1.3;
-    color:rgba(255,255,255,.6);background:rgba(0,0,0,.35);border-radius:4px;padding:4px 8px;
-    pointer-events:none;font-family:var(--mf-font-frame)}
+/* #70 mock 12: top-left pill with a brass dot; hidden (opacity) while any overlay/dialog is up */
+.dev-banner{position:fixed;left:12px;top:12px;z-index:9000;display:flex;align-items:center;gap:8px;font-size:var(--mf-f-small);line-height:1.3;
+    color:var(--mf-linen);background:var(--mf-pill);border-radius:var(--mf-r-pill);padding:6px 14px;
+    pointer-events:none;font-family:var(--mf-font-frame);transition:opacity .2s}
+.dev-banner::before{content:"";width:10px;height:10px;border-radius:50%;background:var(--mf-brass);flex:none}
+body:has(.overlay.visible,#shuttingDown:not([hidden]),#safeScreen:not([hidden]),.hotspot-error:not([hidden]),.wifi-overlay:not([hidden]),.dev-toast:not([hidden])) .dev-banner{opacity:0}
 .dev-banner[hidden],.dev-toast[hidden],.hotspot-error[hidden]{display:none}
 .dev-toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:8900;width:560px;
-    height:72px;box-sizing:border-box;background:#fff;color:#111;border-radius:10px;padding:10px 18px;
-    box-shadow:0 4px 18px rgba(0,0,0,.4);font-family:var(--mf-font-frame);transition:opacity .6s}
+    height:72px;box-sizing:border-box;background:var(--mf-forest-900);color:var(--mf-linen);border:1px solid var(--mf-forest-700);
+    border-radius:var(--mf-r-lg);padding:10px 18px;font-family:var(--mf-font-frame);transition:opacity .6s}
 .dev-toast.fading{opacity:0}
 .dev-toast-title{font-size:20px;font-weight:600;white-space:nowrap}
-.dev-toast-sub{font-size:16px;color:#666;white-space:nowrap}
-.hotspot-error{position:fixed;inset:0;z-index:8800;background:rgba(0,0,0,.85);display:flex;
-    align-items:center;justify-content:center;font-family:var(--mf-font-frame)}
-.hotspot-error-card{position:relative;width:680px;height:400px;box-sizing:border-box;background:#fff;
-    color:#111;border-radius:12px;padding:20px 26px;text-align:left;font-size:20px;line-height:1.25;overflow:hidden}
-.hotspot-error-card h2{font-size:28px;margin:0 0 8px}
-.hotspot-error-card p{margin:0 0 6px}
-.hotspot-error-card ol{margin:0 0 6px;padding-left:24px;font-size:17px}
-.hotspot-error-card li{margin:0 0 2px}
-.hotspot-error-foot{font-size:16px;color:#666;max-width:470px}
-#hotspotErrorClose{position:absolute;right:20px;bottom:16px;height:64px;min-width:120px;font-size:20px;
-    border:0;border-radius:10px;background:#222;color:#fff}
+.dev-toast-sub{font-size:16px;color:var(--mf-oat);white-space:nowrap}
+.hotspot-error{position:fixed;inset:0;z-index:8800;background:var(--mf-ink);font-family:var(--mf-font-frame)}
+/* #70 mock 06: two columns; brick "!" + title + Close left, numbered brass steps right */
+.hotspot-error-card{position:absolute;inset:0;box-sizing:border-box;display:grid;grid-template-columns:270px 1fr;gap:22px;
+    padding:20px 22px 20px 26px;color:var(--mf-linen);overflow:hidden}
+.herrLeft{display:flex;flex-direction:column}
+.herrIcon{width:56px;height:56px;border-radius:50%;background:var(--mf-brick);color:#fff;display:grid;place-items:center;font-size:34px;font-weight:700;margin-bottom:16px}
+.hotspot-error-card h2{font-size:28px;margin:0 0 12px;line-height:1.15}
+.herrLeft p{color:var(--mf-oat);margin:0;font-size:20px}
+.hotspot-error-card h3{font-size:20px;margin:0 0 10px}
+.hotspot-error-card ol{margin:0;padding:0;list-style:none;counter-reset:s;display:flex;flex-direction:column;gap:6px}
+.hotspot-error-card li{counter-increment:s;display:flex;gap:10px;align-items:center;background:var(--mf-forest-900);border:1px solid var(--mf-forest-700);
+    border-radius:var(--mf-r-md);padding:6px 10px;font-size:18px;line-height:1.2}
+.hotspot-error-card li::before{content:counter(s);flex:none;width:28px;height:28px;box-sizing:border-box;border-radius:50%;background:var(--mf-walnut-900);
+    border:2px solid var(--mf-brass);color:var(--mf-brass);font-weight:700;font-size:16px;display:grid;place-items:center}
+.hotspot-error-card code{font-family:inherit;font-weight:700;color:var(--mf-brass)}
+.hotspot-error-foot{font-size:18px;color:var(--mf-oat);margin:8px 0 0;line-height:1.2}
+#hotspotErrorClose{margin-top:auto;align-self:flex-start;width:160px;min-height:64px}
 
 /* MF-49 shut down */
 #shutdownOverlay{z-index:70}
-#shutdownBox{width:480px;min-height:260px;box-sizing:border-box;background:var(--mf-forest-900);border:1px solid var(--mf-forest-700);border-radius:var(--mf-r-lg);padding:20px 24px}
+#shutdownBox{box-sizing:border-box;background:var(--mf-forest-900);border:1px solid var(--mf-forest-700);border-radius:var(--mf-r-lg)}
 #shutdownBox .confirmTitle{font-size:28px;font-weight:700}
 #shutdownBox .confirmBody{font-size:20px;line-height:1.3;margin:8px 0 16px}
-.shutdownButtons{display:flex;justify-content:space-between}
-.shutdownButtons button{width:200px;min-height:64px;margin:0!important}
+/* MENU-V2 dialog fix: flex columns so the buttons sit at the bottom of the card */
+/* 08/09-v2: 600 px cards, 28 px padding, 64 px buttons pinned to the bottom */
+#devModeBox,#shutdownBox,#confirmBox{width:600px;min-height:272px;padding:28px;display:flex;flex-direction:column}
+#devModeAsk,#devModeDone,#shutdownAsk,#confirmAsk{flex:1;display:flex;flex-direction:column}
+.shutdownButtons{display:flex;justify-content:space-between;margin-top:auto}
 #shutdownCancel{background:var(--mf-forest-800);color:var(--mf-linen);border:2px solid var(--mf-forest-700)}
 #shutdownConfirm{background:var(--mf-brick);color:#fff}
 #shutdownError{font-size:20px;color:var(--mf-brick-text);margin-top:10px}
 #shutdownAsk[hidden],#shutdownDone[hidden],#shutdownError[hidden]{display:none}
 /* ---------- MF-18: hotspot change (frame) ---------- */
-.wifi-overlay{position:fixed;inset:0;z-index:8700;background:rgba(0,0,0,.85);display:flex;
+.wifi-overlay{position:fixed;inset:0;z-index:8700;background:var(--mf-scrim);display:flex;
     align-items:center;justify-content:center;font-family:var(--mf-font-frame)}
 .wifi-overlay[hidden]{display:none}
-.wifi-card{position:relative;width:680px;max-height:460px;box-sizing:border-box;background:#fff;color:#111;
-    border-radius:12px;padding:14px 24px;text-align:center;font-size:18px;line-height:1.25;overflow:hidden}
+.wifi-card{position:relative;width:680px;max-height:460px;box-sizing:border-box;background:var(--mf-forest-900);color:var(--mf-linen);
+    border:1px solid var(--mf-forest-700);border-radius:var(--mf-r-lg);padding:14px 24px;text-align:center;font-size:18px;line-height:1.25;overflow:hidden}
 .wifi-card h2{font-size:28px;margin:0 0 8px}
 .wifi-card p{margin:4px 0}
 .wifi-small{width:460px}
-.wifi-qr{width:240px;height:240px;margin:0 auto 6px;background:#fff}
+.wifi-qr{width:240px;height:240px;margin:0 auto 6px;background:#fff;border-radius:var(--mf-r-sm);overflow:hidden}
 .wifi-qr svg{width:100%;height:100%;display:block;shape-rendering:crispEdges}
-.wifi-countdown{font-size:32px;font-variant-numeric:tabular-nums;font-weight:600}
-.wifi-x{position:absolute;right:8px;top:6px;width:56px;height:56px;font-size:32px;border:0;background:none}
+.wifi-countdown{font-size:32px;font-variant-numeric:tabular-nums;font-weight:600;color:var(--mf-brass)}
+/* #70 mock 13: full-screen, QR left, text + brass countdown and bar right */
+.wifi-card.wifi-rj{position:absolute;inset:0;width:auto;max-height:none;border:0;border-radius:0;background:var(--mf-ink);padding:24px 32px;
+    display:grid;grid-template-columns:240px 1fr;gap:32px;align-items:center;text-align:left;font-size:20px}
+.wifi-rj .wifi-qr{margin:0}
+.wifi-rj p{color:var(--mf-oat);margin:0 0 10px}
+.wifi-rj p b{color:var(--mf-linen)}
+.wifi-rj .nowrap{white-space:nowrap}
+.wifi-rj .wifi-countdown{margin-top:22px;font-size:20px;font-weight:400}
+.wifi-rj #wifiCountdown{font-size:48px;color:var(--mf-brass);margin-left:8px}
+.wifi-bar{height:8px;background:var(--mf-forest-700);border-radius:4px;overflow:hidden}
+#wifiBar{height:100%;background:var(--mf-brass);transform-origin:left}
+.wifi-card h2 .toastTick{margin-right:12px}
+.wifi-x{position:absolute;right:8px;top:6px;width:56px;height:56px;font-size:32px;border:0;background:none;color:var(--mf-linen)}
 
 /* MF-51 dev mode confirm (reuses the shut-down dialog look) */
 #devModeOverlay{z-index:70}
-#devModeBox{width:480px;min-height:260px;box-sizing:border-box;background:var(--mf-forest-900);border:1px solid var(--mf-forest-700);border-radius:var(--mf-r-lg);padding:20px 24px}
+#devModeBox{box-sizing:border-box;background:var(--mf-forest-900);border:1px solid var(--mf-forest-700);border-radius:var(--mf-r-lg)}
 #devModeBox .confirmTitle{font-size:28px;font-weight:700}
 #devModeBox .confirmBody{font-size:20px;line-height:1.3;margin:8px 0 16px}
 #devModeCancel{background:var(--mf-forest-800);color:var(--mf-linen);border:2px solid var(--mf-forest-700)}
@@ -690,8 +577,8 @@ video {
 #devModeError{font-size:20px;color:var(--mf-brick-text);margin-top:10px}
 #devModeAsk[hidden],#devModeDone[hidden],#devModeError[hidden]{display:none}
 #devRing{position:fixed;z-index:9500;width:72px;height:72px;margin:-36px 0 0 -36px;border-radius:50%;
-  pointer-events:none;border:3px solid rgba(255,255,255,0);transform:scale(.6)}
-#devRing.filling{border-color:rgba(255,255,255,.35);transform:scale(1);transition:border-color 2s linear,transform 2s linear}
+  pointer-events:none;border:3px solid var(--mf-brass);opacity:0;transform:scale(.6)}
+#devRing.filling{opacity:.6;transform:scale(1);transition:opacity 2s linear,transform 2s linear}  /* compositor-only */
 #devRing[hidden]{display:none}
 
 /* MF-49 "Shutting down" cover (Designer spec) */
@@ -700,23 +587,22 @@ video {
 #shuttingDown[hidden]{display:none}
 #shuttingDown .sdTitle{font-size:48px;font-weight:700;color:var(--mf-linen)}
 #shuttingDown .sdWarn{font-size:32px;color:var(--mf-brass);margin-top:16px}
-#shuttingDown .sdDots{margin-top:28px;display:flex;gap:14px}
-#shuttingDown .sdDots span{width:14px;height:14px;border-radius:50%;background:var(--mf-linen);opacity:.5;
-  animation:sdPulse 1s infinite ease-in-out}
-#shuttingDown .sdDots span:nth-child(2){animation-delay:.2s}
-#shuttingDown .sdDots span:nth-child(3){animation-delay:.4s}
-@keyframes sdPulse{0%,100%{opacity:.15}50%{opacity:.5}}
+/* #70 spinner: forest-700 track + one brass arc, rotated with transform only; any frozen angle still reads */
+.mf-spinner{width:72px;height:72px;box-sizing:border-box;border-radius:50%;border:7px solid var(--mf-forest-700);
+  border-top-color:var(--mf-brass);animation:mf-spin 1.1s linear infinite;margin-bottom:28px}
+@keyframes mf-spin{to{transform:rotate(360deg)}}
 /* MF-55 G3 */
 #pairBox.mf-devtemp{display:none!important}
 #pairDevTemp{text-align:center}
+#pairDevTemp .successTitle{font-size:40px}
 #pairDevTemp[hidden]{display:none}
 
-/* MF-49 fallback Safe screen (Wren's layout) */
-#safeScreen{position:fixed;inset:0;z-index:100000;background:#006B2E;color:#fff;display:flex;
+/* #65 B safe screen (#70 10-shutting-down): shown only after "synced"; the panel freezes on it after halt */
+#safeScreen{position:fixed;inset:0;z-index:100000;background:var(--mf-ink);color:var(--mf-linen);display:flex;
   flex-direction:column;align-items:center;justify-content:center;text-align:center;
-  font-family:system-ui,sans-serif;touch-action:none}
+  font-family:var(--mf-font-frame);touch-action:none}
 #safeScreen[hidden]{display:none}
-#safeScreen .safeTitle{font-size:64px;font-weight:700;line-height:1.15;max-width:720px;max-height:2.3em;
-  overflow:hidden;margin-top:24px}
-#safeScreen .safeTick{animation:none}   /* static: the frame freezes after halt */
-#safeScreen .safeSub{font-size:32px;font-weight:700;color:#FFB000;margin-top:16px}
+#safeScreen .safeSpin{animation:none;transform:rotate(35deg)}   /* static: no mid-update frame to freeze on */
+#safeScreen .safeTitle{font-size:44px;font-weight:700;line-height:1.15}
+#safeScreen .safeSub{font-size:32px;font-weight:700;color:var(--mf-brass);margin-top:16px}
+#safeScreen .safeNote{font-size:var(--mf-f-small);color:var(--mf-oat);margin-top:12px}

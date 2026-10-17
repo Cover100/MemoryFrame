@@ -1,0 +1,7 @@
+/* #66 proposal: bottom row Close (left, neutral outline) / Shut down (right, red). Mock only. */
+#frame{background:linear-gradient(135deg,#6d8fa8,#c7a27a 60%,#3d5a40)} /* stands in for a photo */
+.menuButtons button{min-height:56px;font-size:22px;background:#ddd;color:#111}
+.menuBottom{margin-top:12px;display:flex;justify-content:space-between;gap:24px}
+.menuBottom button{width:200px;min-height:64px;margin:0!important;font-size:24px;border-radius:8px}
+#menuClose{background:transparent;color:#fff;border:2px solid rgba(255,255,255,.8)!important}
+#menuShutdown{background:#C62828;color:#fff;border:0}

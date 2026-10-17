@@ -1,0 +1,7 @@
+/* #65 proposal: "Shutting down" final screen (mock only, not app code) */
+#shuttingDown{display:flex}
+#shuttingDown .sdSpinner{width:96px;height:96px;box-sizing:border-box;border-radius:50%;
+  border:10px solid rgba(255,255,255,.18);border-top-color:#fff;margin-bottom:32px;
+  transform:rotate(40deg)} /* real build: animation:sdSpin 1s linear infinite; frozen mid-turn here */
+#shuttingDown .sdTitle{font-size:56px}
+#shuttingDown .sdWarn{font-size:32px;font-weight:700;margin-top:18px}

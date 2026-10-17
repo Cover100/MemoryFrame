@@ -1,0 +1,18 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<!-- Mock for #67 (3 s hold confirm). Styles: kiosk-style.css = static/style.css from origin/main @555a195 -->
+<link rel="stylesheet" href="kiosk-style.css"><link rel="stylesheet" href="_menu.css">
+<style>#devModeConfirm{background:#FFB000;color:#111}   /* amber, not red */
+#devModeCancel{outline:3px solid #fff;outline-offset:3px} /* default (focused) */</style></head>
+<body><div id="frame">
+<div id="devModeOverlay" class="overlay visible">
+  <div id="devModeBox">
+    <div id="devModeAsk">
+      <div class="confirmTitle">Switch to dev mode?</div>
+      <div class="confirmBody">Phones on the frame's Wi-Fi will disconnect until you restart the frame.</div>
+      <div class="shutdownButtons">
+        <button id="devModeCancel" type="button">Cancel</button>
+        <button id="devModeConfirm" type="button">Switch</button>
+      </div>
+    </div>
+  </div>
+</div></div></body></html>

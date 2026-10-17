@@ -1,0 +1,17 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<!-- Mock for #66 (Shut down confirm). Styles: kiosk-style.css = static/style.css from origin/main @555a195 -->
+<link rel="stylesheet" href="kiosk-style.css"><link rel="stylesheet" href="_menu.css">
+<style>#shutdownCancel{outline:3px solid #fff;outline-offset:3px} /* default (focused) */</style></head>
+<body><div id="frame">
+<div id="shutdownOverlay" class="overlay visible">
+  <div id="shutdownBox">
+    <div id="shutdownAsk">
+      <div class="confirmTitle">Shut down Memory Frame?</div>
+      <div class="confirmBody">Photos stay on the frame. To turn it on again, unplug it and plug it back in.</div>
+      <div class="shutdownButtons">
+        <button id="shutdownCancel" type="button">Cancel</button>
+        <button id="shutdownConfirm" type="button">Shut down</button>
+      </div>
+    </div>
+  </div>
+</div></div></body></html>

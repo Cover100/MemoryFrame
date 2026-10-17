@@ -1,0 +1,709 @@
+/*
+======================================================
+Memory Frame Styling
+Raspberry Pi 800x480 IPS Display
+======================================================
+*/
+
+
+/* ====================================================
+   Global reset
+   ==================================================== */
+
+
+html,
+body {
+
+
+    margin: 0;
+
+
+    padding: 0;
+
+
+    width: 100%;
+
+
+    height: 100%;
+
+
+
+    overflow: hidden;
+
+
+
+    background: black;
+
+
+
+    cursor: none;
+
+
+
+    user-select: none;
+
+
+
+    -webkit-user-select: none;
+
+
+
+    -webkit-touch-callout: none;
+
+
+
+    touch-action: none;
+
+
+
+}
+
+
+
+
+
+/* ====================================================
+   Main Frame
+   ==================================================== */
+
+
+#frame {
+
+
+    position: relative;
+
+
+
+    width: 100vw;
+
+
+
+    height: 100vh;
+
+
+
+    overflow: hidden;
+
+
+
+    background: black;
+
+
+
+    touch-action: none;
+
+
+
+    overscroll-behavior: none;
+
+
+
+}
+
+
+
+
+
+/* ====================================================
+   Image + Video Layers
+   ==================================================== */
+
+
+.media {
+
+
+    position: absolute;
+
+
+
+    top: 0;
+
+
+
+    left: 0;
+
+
+
+    width: 100%;
+
+
+
+    height: 100%;
+
+
+
+    object-fit: cover;
+
+
+
+    opacity: 0;
+
+
+
+    transition:
+
+        opacity 1.5s ease-in-out;
+
+
+
+    pointer-events: none;
+
+
+
+    will-change:
+
+        opacity,
+        transform;
+
+
+
+}
+
+
+
+
+
+.media.visible {
+
+
+    opacity: 1;
+
+
+}
+
+
+
+
+
+/* ====================================================
+   Ken Burns Effects
+   ==================================================== */
+
+
+.kenburns1 {
+
+
+    animation:
+
+        zoomIn
+        10s
+        linear
+        forwards;
+
+
+
+}
+
+
+
+
+.kenburns2 {
+
+
+    animation:
+
+        panLeft
+        10s
+        linear
+        forwards;
+
+
+
+}
+
+
+
+
+
+.kenburns3 {
+
+
+    animation:
+
+        panRight
+        10s
+        linear
+        forwards;
+
+
+
+}
+
+
+
+
+
+
+@keyframes zoomIn {
+
+    from {
+
+        transform:
+            scale(1);
+
+    }
+
+    to {
+
+        transform:
+            scale(1.08);
+
+    }
+
+}
+
+
+
+@keyframes panLeft {
+
+    from {
+
+        transform:
+            scale(1.03)
+            translate(0,0);
+
+    }
+
+    to {
+
+        transform:
+            scale(1.08)
+            translate(-1.3%,-0.7%);
+
+    }
+
+}
+
+
+
+@keyframes panRight {
+
+    from {
+
+        transform:
+            scale(1.03)
+            translate(0,0);
+
+    }
+
+    to {
+
+        transform:
+            scale(1.08)
+            translate(1.3%,0.7%);
+
+    }
+
+}
+
+
+
+
+
+
+/* ====================================================
+   Video
+   ==================================================== */
+
+
+video {
+
+
+    object-fit: cover;
+
+
+
+}
+
+
+
+
+
+/* ====================================================
+   Brightness Overlay
+   ==================================================== */
+
+
+#brightnessOverlay {
+
+
+    position: absolute;
+
+
+
+    left: 50%;
+
+
+
+    bottom: 35px;
+
+
+
+    transform:
+
+        translateX(-50%);
+
+
+
+    display: none;
+
+
+
+    align-items: center;
+
+
+
+    justify-content: center;
+
+
+
+    gap: 12px;
+
+
+
+    padding:
+
+        12px
+        25px;
+
+
+
+    border-radius:
+
+        30px;
+
+
+
+    background:
+
+        rgba(
+            0,
+            0,
+            0,
+            0.65
+        );
+
+
+
+    color: white;
+
+
+
+    font-family:
+
+        Arial,
+        sans-serif;
+
+
+
+    font-size:
+
+        30px;
+
+
+
+    z-index: 100;
+
+
+
+    pointer-events: none;
+
+
+
+    animation:
+
+        fadeBrightness
+        0.2s
+        ease;
+
+
+
+}
+
+
+
+
+
+#brightnessIcon {
+
+
+    font-size:
+
+        34px;
+
+
+}
+
+
+
+
+
+#brightnessValue {
+
+
+    min-width:
+
+        60px;
+
+
+    text-align:
+
+        center;
+
+
+}
+
+
+
+
+
+
+@keyframes fadeBrightness {
+
+
+    from {
+
+
+        opacity: 0;
+
+
+
+        transform:
+
+            translateX(-50%)
+            translateY(10px);
+
+
+
+    }
+
+
+    to {
+
+
+        opacity: 1;
+
+
+
+        transform:
+
+            translateX(-50%)
+            translateY(0);
+
+
+
+    }
+
+
+}
+
+
+
+
+
+
+
+/* ====================================================
+   Future Clock Overlay
+   ==================================================== */
+
+
+#clockOverlay {
+
+
+    position: absolute;
+
+
+
+    right: 25px;
+
+
+
+    bottom: 20px;
+
+
+
+    color: white;
+
+
+
+    font-family:
+
+        Arial,
+        sans-serif;
+
+
+
+    font-size:
+
+        32px;
+
+
+
+    display: none;
+
+
+
+    text-shadow:
+
+        0 2px 5px black;
+
+
+
+    z-index: 50;
+
+
+
+}
+
+
+
+
+
+
+/* ====================================================
+   Prevent unwanted mobile/browser behaviour
+   ==================================================== */
+
+
+* {
+
+
+    -webkit-tap-highlight-color:
+
+        transparent;
+
+
+
+}
+
+
+
+/* MF-12/MF-19 overlays: sized for 800x480, legible from 1 m */
+.overlay{position:fixed;inset:0;z-index:50;display:none;align-items:center;justify-content:center;
+  background:rgba(0,0,0,.9);color:#fff;font-family:system-ui,sans-serif}
+.overlay.visible{display:flex}
+#menuOverlay{z-index:60}
+#pairBox{display:flex;gap:22px;align-items:center;max-width:790px;max-height:470px}
+.step{display:flex;flex-direction:column;align-items:center;text-align:center}
+.step[hidden]{display:none}
+.stepTitle{font-size:28px;font-weight:600;margin-bottom:8px}
+.stepText{font-size:22px;margin-top:6px;max-width:230px;overflow-wrap:anywhere}
+/* MF-23: the SVG carries its own 4-module white quiet zone; scale the whole thing, never crop */
+.qr{flex:none;line-height:0;overflow:visible}
+.qr svg{display:block;width:min(200px,42vh);height:auto;aspect-ratio:1/1;max-width:100%;
+  background:#fff;shape-rendering:crispEdges;image-rendering:pixelated}
+#pairCode{font-size:80px;font-weight:700;letter-spacing:2px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.overlay button{font-size:24px;margin:10px 8px 0 0;padding:10px 18px;border-radius:8px;border:0}
+.emptyText{font-size:30px;text-align:center;max-width:720px;line-height:1.4}
+.emptyTitle{font-size:48px;font-weight:700;margin-bottom:16px}
+#menuBox{max-width:760px}
+.menuTitle{font-size:28px;font-weight:700;margin-bottom:4px}
+#menuInfo{font-size:24px;border-collapse:collapse;line-height:1.25}
+#menuInfo td{overflow-wrap:anywhere}
+#menuInfo th{text-align:left;font-weight:400;opacity:.8;padding:2px 20px 2px 0;white-space:nowrap}
+#menuInfo td{font-weight:600}
+.menuButtons{margin-top:8px;display:flex;gap:8px}
+.menuButtons button{margin:0!important;padding:8px 14px!important}
+#pairUrlAlt{display:block;font-size:20px;opacity:.85}
+#pairHint{position:fixed;right:12px;bottom:10px;z-index:40;display:none;padding:6px 12px;border-radius:8px;
+  background:rgba(0,0,0,.45);color:rgba(255,255,255,.85);font:18px system-ui,sans-serif;pointer-events:none}
+#pairHint.visible{display:block}
+
+/* MF-17: transition "None" = instant cut */
+.mf-no-fade .media{transition:none!important}
+/* MF-31 confirm dialog, MF-33 paired success */
+#confirmOverlay{z-index:70}
+#confirmBox{width:480px;height:260px;box-sizing:border-box;background:#222;border-radius:12px;padding:20px 24px;
+  display:flex;flex-direction:column;justify-content:space-between}
+.confirmTitle{font-size:28px;font-weight:700}
+.confirmBody{font-size:20px;line-height:1.3;margin-top:8px}
+.confirmButtons{display:flex;justify-content:space-between}
+.confirmButtons button{width:200px;min-height:64px;margin:0!important}
+#confirmCancel{background:#ddd;color:#111}
+#confirmSignOut{background:#c62828;color:#fff}
+#confirmDone{font-size:30px;font-weight:700;margin:auto;text-align:center}
+#confirmDone[hidden],#confirmAsk[hidden],#pairSuccess[hidden],#pairBox[hidden]{display:none}
+#pairSuccess{text-align:center}
+.successTitle{font-size:40px;font-weight:700}
+.successText{font-size:26px;margin-top:10px}
+.confirmError{font-size:20px;color:#ff8a80;font-weight:600}
+.confirmError[hidden]{display:none}
+/* ---------- MF-36: product / developer mode (frame only) ---------- */
+.dev-banner{position:fixed;left:12px;bottom:12px;z-index:9000;font-size:14px;line-height:1.3;
+    color:rgba(255,255,255,.6);background:rgba(0,0,0,.35);border-radius:4px;padding:4px 8px;
+    pointer-events:none;font-family:system-ui,sans-serif}
+.dev-banner[hidden],.dev-toast[hidden],.hotspot-error[hidden]{display:none}
+.dev-toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:8900;width:560px;
+    height:72px;box-sizing:border-box;background:#fff;color:#111;border-radius:10px;padding:10px 18px;
+    box-shadow:0 4px 18px rgba(0,0,0,.4);font-family:system-ui,sans-serif;transition:opacity .6s}
+.dev-toast.fading{opacity:0}
+.dev-toast-title{font-size:20px;font-weight:600;white-space:nowrap}
+.dev-toast-sub{font-size:16px;color:#666;white-space:nowrap}
+.hotspot-error{position:fixed;inset:0;z-index:8800;background:rgba(0,0,0,.85);display:flex;
+    align-items:center;justify-content:center;font-family:system-ui,sans-serif}
+.hotspot-error-card{position:relative;width:680px;height:400px;box-sizing:border-box;background:#fff;
+    color:#111;border-radius:12px;padding:20px 26px;text-align:left;font-size:20px;line-height:1.25;overflow:hidden}
+.hotspot-error-card h2{font-size:28px;margin:0 0 8px}
+.hotspot-error-card p{margin:0 0 6px}
+.hotspot-error-card ol{margin:0 0 6px;padding-left:24px;font-size:17px}
+.hotspot-error-card li{margin:0 0 2px}
+.hotspot-error-foot{font-size:16px;color:#666;max-width:470px}
+#hotspotErrorClose{position:absolute;right:20px;bottom:16px;height:64px;min-width:120px;font-size:20px;
+    border:0;border-radius:10px;background:#222;color:#fff}
+
+/* MF-49 shut down */
+#shutdownOverlay{z-index:70}
+#shutdownBox{width:480px;min-height:260px;box-sizing:border-box;background:#222;border-radius:12px;padding:20px 24px}
+#shutdownBox .confirmTitle{font-size:28px;font-weight:700}
+#shutdownBox .confirmBody{font-size:20px;line-height:1.3;margin:8px 0 16px}
+.shutdownButtons{display:flex;justify-content:space-between}
+.shutdownButtons button{width:200px;min-height:64px;margin:0!important}
+#shutdownCancel{background:#ddd;color:#111}
+#shutdownConfirm{background:#c62828;color:#fff}
+#shutdownError{font-size:20px;color:#ff8a80;margin-top:10px}
+#shutdownAsk[hidden],#shutdownDone[hidden],#shutdownError[hidden]{display:none}
+/* ---------- MF-18: hotspot change (frame) ---------- */
+.wifi-overlay{position:fixed;inset:0;z-index:8700;background:rgba(0,0,0,.85);display:flex;
+    align-items:center;justify-content:center;font-family:system-ui,sans-serif}
+.wifi-overlay[hidden]{display:none}
+.wifi-card{position:relative;width:680px;max-height:460px;box-sizing:border-box;background:#fff;color:#111;
+    border-radius:12px;padding:14px 24px;text-align:center;font-size:18px;line-height:1.25;overflow:hidden}
+.wifi-card h2{font-size:28px;margin:0 0 8px}
+.wifi-card p{margin:4px 0}
+.wifi-small{width:460px}
+.wifi-qr{width:240px;height:240px;margin:0 auto 6px;background:#fff}
+.wifi-qr svg{width:100%;height:100%;display:block;shape-rendering:crispEdges}
+.wifi-countdown{font-size:32px;font-variant-numeric:tabular-nums;font-weight:600}
+.wifi-x{position:absolute;right:8px;top:6px;width:56px;height:56px;font-size:32px;border:0;background:none}
+
+/* MF-51 dev mode confirm (reuses the shut-down dialog look) */
+#devModeOverlay{z-index:70}
+#devModeBox{width:480px;min-height:260px;box-sizing:border-box;background:#222;border-radius:12px;padding:20px 24px}
+#devModeBox .confirmTitle{font-size:28px;font-weight:700}
+#devModeBox .confirmBody{font-size:20px;line-height:1.3;margin:8px 0 16px}
+#devModeCancel{background:#ddd;color:#111}
+#devModeConfirm{background:#1565c0;color:#fff}
+#devModeError{font-size:20px;color:#ff8a80;margin-top:10px}
+#devModeAsk[hidden],#devModeDone[hidden],#devModeError[hidden]{display:none}
+#devRing{position:fixed;z-index:9500;width:72px;height:72px;margin:-36px 0 0 -36px;border-radius:50%;
+  pointer-events:none;border:3px solid rgba(255,255,255,0);transform:scale(.6)}
+#devRing.filling{border-color:rgba(255,255,255,.35);transform:scale(1);transition:border-color 2s linear,transform 2s linear}
+#devRing[hidden]{display:none}
+
+/* MF-49 "Shutting down" cover (Designer spec) */
+#shuttingDown{position:fixed;inset:0;z-index:99999;background:#111111;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;font-family:system-ui,sans-serif;touch-action:none}
+#shuttingDown[hidden]{display:none}
+#shuttingDown .sdTitle{font-size:48px;font-weight:700;color:#fff}
+#shuttingDown .sdWarn{font-size:32px;color:#FFB000;margin-top:16px}
+#shuttingDown .sdDots{margin-top:28px;display:flex;gap:14px}
+#shuttingDown .sdDots span{width:14px;height:14px;border-radius:50%;background:#fff;opacity:.5;
+  animation:sdPulse 1s infinite ease-in-out}
+#shuttingDown .sdDots span:nth-child(2){animation-delay:.2s}
+#shuttingDown .sdDots span:nth-child(3){animation-delay:.4s}
+@keyframes sdPulse{0%,100%{opacity:.15}50%{opacity:.5}}
+/* MF-55 G3 */
+#pairBox.mf-devtemp{display:none!important}
+#pairDevTemp{text-align:center}
+#pairDevTemp[hidden]{display:none}

@@ -168,8 +168,17 @@
         </div>
     </div>
 
-    <!-- MF-49: full-screen "Shutting down" (Designer). "Safe to unplug" is drawn by the late
-         shutdown hook on fb0 once it is genuinely safe. -->
+    <!-- MF-49: full-screen "Shutting down" cover (Designer), until the server confirms sync. -->
+    <!-- Safe screen (Wren's layout), shown only after the server confirms sync; stays on the
+         panel through poweroff. Copy: Wren's final. -->
+    <div id="safeScreen" hidden>
+        <svg class="safeTick" viewBox="0 0 120 120" width="120" height="120" aria-hidden="true">
+            <polyline points="22,64 50,92 100,28" fill="none" stroke="#fff" stroke-width="16"
+                      stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <div class="safeTitle">Unplug once the screen goes dark</div>
+        <div class="safeSub">Photos saved · Memory Frame is turning off</div>
+    </div>
     <div id="shuttingDown" hidden>
         <div class="sdTitle">Shutting down…</div>
         <div class="sdWarn">Don't unplug yet</div>

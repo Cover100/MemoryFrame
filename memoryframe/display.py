@@ -145,7 +145,7 @@ def set_brightness():
 
 POWEROFF_CMD = ["sudo", "-n", "/usr/bin/systemctl", "poweroff"]
 SYNC_CMD = ["sync"]
-POWEROFF_DELAY = 1.0          # let the kiosk paint "Shutting down…" first
+POWEROFF_DELAY = 3.0          # after the "synced" response: let the kiosk paint the Safe screen
 
 
 def frame_token():
@@ -207,8 +207,9 @@ def _refuse_writes_while_shutting_down():
 @bp.route("/frame/shutdown", methods=["POST"])
 @localhost_only
 def shutdown():
-    """MF-49: stop accepting writes, sync, then power off. "Safe to unplug" is drawn later by the
-    systemd-shutdown hook (deploy/safe-screen), after filesystems are unmounted/read-only."""
+    """MF-49: stop accepting writes and sync; answer synced=true only after a successful sync. The
+    kiosk then shows the green Safe screen, and poweroff runs POWEROFF_DELAY s after this response
+    (the fb0 late hook didn't work on vc4drmfb, so the last kiosk frame is what stays on the panel)."""
     _check_token()
     app = current_app._get_current_object()
     st = app.extensions.setdefault("mf_shutdown", {})
@@ -216,9 +217,11 @@ def shutdown():
     log.warning("shutdown requested from the frame menu; syncing")
     if not _sync():
         st["synced"] = False
-        return jsonify({"shutting_down": False}), 500
-    _schedule_poweroff(app, float(app.config.get("POWEROFF_DELAY", POWEROFF_DELAY)))
-    return jsonify({"shutting_down": True})
+        return jsonify({"synced": False}), 500
+    resp = jsonify({"synced": True})
+    # schedule only once the response has been sent, so the kiosk can paint the Safe screen first
+    resp.call_on_close(lambda: _schedule_poweroff(app, float(app.config.get("POWEROFF_DELAY", POWEROFF_DELAY))))
+    return resp
 
 
 # ---------------- MF-51: Dev mode until reboot (kiosk only) ----------------

@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="csrf-token" content="{{ csrf_token() }}">
 <title>Settings</title>
-<link rel="stylesheet" href="/static/pair.css">
-<link rel="stylesheet" href="/static/settings.css">
+<link rel="stylesheet" href="{{ static('pair.css') }}">
+<link rel="stylesheet" href="{{ static('settings.css') }}">
 </head>
 <body>
 <h1>Settings</h1>
@@ -33,6 +33,6 @@
   <span class="status" data-for="shuffle" aria-live="polite"></span>
 </section>
 <p><a href="/admin/">Back</a></p>
-<script src="/static/settings.js"></script>
+<script src="{{ static('settings.js') }}"></script>
 </body>
 </html>

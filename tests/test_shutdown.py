@@ -77,14 +77,6 @@ def test_token_only_in_kiosk_page(client):
     assert r.status_code == 302 and b"mf-frame-token" not in r.data
 
 
-def test_sudoers_rule_is_only_poweroff():
-    rules = [l for l in (ROOT / "deploy" / "memoryframe-poweroff-sudoers").read_text().splitlines()
-             if l.strip() and not l.startswith("#")]
-    assert rules == ["@USER@ ALL=(root) NOPASSWD: /usr/bin/systemctl poweroff"]
-    inst = (ROOT / "deploy" / "install.sh").read_text()
-    assert "visudo -cf" in inst and "/etc/sudoers.d/memoryframe-poweroff" in inst and "-m 0440" in inst
-
-
 def cover(page):
     return evaluate(page, "(()=>{const c=document.getElementById('shuttingDown');"
                           "return c.hidden ? null : c.innerText;})()")

@@ -77,7 +77,7 @@ def test_display_read_routes_open_to_network(client):
 # Routes that are allowed to answer GET. All must be read-only.
 READ_ONLY_GET_ENDPOINTS = {
     "static", "display.index", "display.media", "display.uploads", "display.healthz",
-    "display.get_brightness", "admin.home", "api.status",
+    "display.get_brightness", "display.shutdown_status", "admin.home", "api.status",
     "pairing.state", "pairing.pair_page", "pairing.frame_status", "admin.upload_page", "api.storage",
     "admin.library_page", "admin.settings_page", "api.get_settings", "wifi.page", "wifi.keep_page", "api.list_media", "api.thumb", "display.show_now_state",
 }

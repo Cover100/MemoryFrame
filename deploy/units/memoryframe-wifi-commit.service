@@ -1,0 +1,16 @@
+# #62: root oneshot started by the app via polkit (deploy/memoryframe-polkit.rules); no sudo.
+# No [Install]: it can only be started on demand. Output goes to /run/memoryframe/wifi-commit.out for the app.
+[Unit]
+Description=Memory Frame: commit a frame Wi-Fi change
+After=NetworkManager.service memoryframe-netmode.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/memoryframe-netmode wifi-commit
+TimeoutStartSec=60
+RuntimeDirectory=memoryframe
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+StandardOutput=truncate:/run/memoryframe/wifi-commit.out
+StandardError=journal
+

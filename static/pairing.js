@@ -283,16 +283,30 @@
     button("devModeConfirm", async ()=>{
         if(devBusy){ return; }
         devBusy = true;
-        let ok = false;
+        $("devModeAsk").hidden = true; $("devModeError").hidden = true; $("devModeDone").hidden = false;
+        $("devModeStatus").textContent = "Joining home Wi-Fi\u2026";
+        $("devModeDetail").textContent = "This can take up to 30 seconds.";
+        $("devModeAfter").hidden = true;
+        let res = {ok: false, reason: "no answer from the frame"};
         try{
             const meta = document.querySelector('meta[name="mf-frame-token"]');
-            ok = (await fetch("/frame/dev-mode", {method: "POST",
-                headers: {"X-Frame-Token": meta ? meta.content : ""}})).ok;
+            const r = await fetch("/frame/dev-mode", {method: "POST",
+                headers: {"X-Frame-Token": meta ? meta.content : ""}});
+            try{ res = await r.json(); }catch(e){ res = {ok: false, reason: "HTTP " + r.status}; }
         }catch(e){ console.warn(e); }
-        if(!ok){ devBusy = false; $("devModeError").hidden = false; return; }
-        $("devModeAsk").hidden = true; $("devModeDone").hidden = false;
-        setTimeout(()=>{ devBusy = false; devOverlay.classList.remove("visible"); }, 4000);
+        if(res && res.ok === true){
+            devBusy = false;
+            devOverlay.classList.remove("visible");       // the dev label shows the new state
+            tick();
+            return;
+        }
+        $("devModeStatus").textContent = "Couldn't join home Wi-Fi \u2014 hotspot kept on";
+        $("devModeDetail").textContent = (res && typeof res.reason === "string" && res.reason) ? res.reason : "unknown error";
+        $("devModeAfter").hidden = false;
+        devBusy = false;
     });
+    button("devModeOk", ()=>{ devOverlay.classList.remove("visible"); });
+
 
     // ---------- MF-49: shut down ----------
     const shutdownOverlay = $("shutdownOverlay");
@@ -332,6 +346,17 @@
             if(window.mfShuttingDown){ e.stopImmediatePropagation(); e.preventDefault(); }
         }, true);
     }
+    // #62: if the poweroff call itself fails (e.g. polkit), don't leave the cover up: "Couldn't shut down".
+    setInterval(async ()=>{
+        if(!window.mfShuttingDown){ return; }
+        let failed = false;
+        try{ failed = (await (await fetch("/frame/shutdown-status")).json()).failed === true; }catch(e){ return; }
+        if(!failed){ return; }
+        shuttingDown = false; window.mfShuttingDown = false;
+        for(const id of ["shuttingDown", "safeScreen"]){ const el = $(id); if(el){ el.hidden = true; } }
+        $("shutdownAsk").hidden = false; $("shutdownError").hidden = false;
+        shutdownOverlay.classList.add("visible");
+    }, 1000);
 
     button("menuPair", ()=>{ closeMenu(); onDemand = true; onDemandRound = false; tick(); });
     // ---------- MF-31: confirm "Sign out all phones" ----------

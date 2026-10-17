@@ -26,14 +26,53 @@
 set -euo pipefail
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
-CONF="${MEMORYFRAME_HOTSPOT_CONF:-$DIR/hotspot.conf}"
+if [ "$EUID" = 0 ] || [ "${MEMORYFRAME_AS_ROOT_TEST:-}" = 1 ]; then
+    # As root (e.g. the memoryframe-reset path at boot, via the root-owned /usr/local/sbin copy): no env
+    # hooks, fixed PATH, and only the root-owned config.
+    export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+    unset NMCLI SUDO SYSTEMD_RUN MEMORYFRAME_HOTSPOT_CONF
+    CONF=/etc/memoryframe/hotspot.conf
+    SUDO=""
+    ROOT_PATH=1
+else
+    ROOT_PATH=0
+    CONF="${MEMORYFRAME_HOTSPOT_CONF:-$DIR/hotspot.conf}"
+fi
 MIN_LEN=8
 RECOMMENDED_LEN=12
 
 SSID="" PASSWORD=""
 IFACE="wlan0" ADDRESS="10.42.0.1/24" CON_NAME="MemoryFrame-hotspot" BAND="bg" CHANNEL="6"
-# shellcheck disable=SC1090
-[ -f "$CONF" ] && . "$CONF"
+# The config is parsed, never sourced: only these KEY=value lines (optionally quoted) are used.
+parse_conf() {
+    local line k v
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line%$'\r'}"
+        line="${line#"${line%%[![:space:]]*}"}"
+        case "$line" in ''|'#'*) continue ;; esac
+        if ! [[ "$line" =~ ^([A-Z_]+)=(.*)$ ]]; then
+            echo "hotspot.conf: ignoring a line that is not KEY=value" >&2; continue
+        fi
+        k="${BASH_REMATCH[1]}" v="${BASH_REMATCH[2]}"
+        if [[ "$v" =~ ^\"(.*)\"$ ]] || [[ "$v" =~ ^\'(.*)\'$ ]]; then v="${BASH_REMATCH[1]}"; fi
+        case "$k" in
+            SSID) SSID="$v" ;; PASSWORD) PASSWORD="$v" ;; IFACE) IFACE="$v" ;; ADDRESS) ADDRESS="$v" ;;
+            CON_NAME) CON_NAME="$v" ;; BAND) BAND="$v" ;; CHANNEL) CHANNEL="$v" ;;
+            *) echo "hotspot.conf: ignoring unknown key $k" >&2 ;;
+        esac
+    done < "$1"
+}
+if [ -f "$CONF" ]; then parse_conf "$CONF"; fi
+# CON_NAME ends up in commands run as root (--test revert): strict charset, and on the root path it must
+# be the name netmode.sh assumes.
+[[ "$CON_NAME" =~ ^[A-Za-z0-9._-]{1,64}$ ]] || { echo "hotspot.conf: bad CON_NAME" >&2; exit 1; }
+if [ "$ROOT_PATH" = 1 ] && [ "$CON_NAME" != MemoryFrame-hotspot ]; then
+    echo "hotspot.conf: CON_NAME must be MemoryFrame-hotspot" >&2; exit 1
+fi
+[[ "$IFACE" =~ ^[a-zA-Z0-9_.-]{1,15}$ ]] || { echo "hotspot.conf: bad IFACE" >&2; exit 1; }
+[[ "$CHANNEL" =~ ^[0-9]{1,3}$ ]] || { echo "hotspot.conf: bad CHANNEL" >&2; exit 1; }
+case "$BAND" in a|bg) ;; *) echo "hotspot.conf: BAND must be a or bg" >&2; exit 1 ;; esac
+[[ "$ADDRESS" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}/[0-9]{1,2}$ ]] || { echo "hotspot.conf: bad ADDRESS" >&2; exit 1; }
 
 NMCLI="${NMCLI:-nmcli}"
 SUDO="${SUDO-sudo}"
@@ -128,14 +167,14 @@ test)
     PREV="$(nm -g GENERAL.CONNECTION device show "$IFACE" 2>/dev/null | head -n1 || true)"
     [ "$PREV" = "$CON_NAME" ] && PREV=""
     if [ -n "$PREV" ]; then
-        REVERT="'$NMCLI' connection down '$CON_NAME'; '$NMCLI' connection up '$PREV' || '$NMCLI' device connect '$IFACE'"
+        REVERT="$(printf '%q connection down %q; %q connection up %q || %q device connect %q' "$NMCLI" "$CON_NAME" "$NMCLI" "$PREV" "$NMCLI" "$IFACE")"
     else
-        REVERT="'$NMCLI' connection down '$CON_NAME'; '$NMCLI' device connect '$IFACE'"
+        REVERT="$(printf '%q connection down %q; %q device connect %q' "$NMCLI" "$CON_NAME" "$NMCLI" "$IFACE")"
     fi
     # Schedule the revert FIRST, as a transient systemd timer (runs as root, survives
     # this shell/SSH/Pi Connect session dying), then bring the hotspot up.
     $SUDO "$SYSTEMD_RUN" --on-active="$TEST_SECONDS" --unit="memoryframe-hotspot-revert-$$" \
-        /bin/sh -c "$REVERT"
+        /bin/bash -c "$REVERT"
     echo "Revert scheduled in ${TEST_SECONDS}s (back to: ${PREV:-whatever NetworkManager picks})."
     nm connection up "$CON_NAME"
     echo "Hotspot '$SSID' active for ${TEST_SECONDS}s. Frame URL: http://${ADDRESS%/*}/ (or http://memoryframe.lan/)"

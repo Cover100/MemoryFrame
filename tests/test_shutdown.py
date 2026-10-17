@@ -31,7 +31,7 @@ def test_sync_then_poweroff_and_writes_refused(client, stub):
     r.close()
     assert client.post("/brightness", json={"value": 50}, environ_base=LOCAL).status_code == 503
     time.sleep(0.5)
-    assert stub.read_text().split() == ["sync", "poweroff"]      # sync strictly before poweroff
+    assert stub.read_text().split() == ["sync", "sync", "poweroff"]      # sync strictly before poweroff
 
 
 def test_poweroff_scheduled_only_after_the_response(client, stub, mf_app):
@@ -42,7 +42,7 @@ def test_poweroff_scheduled_only_after_the_response(client, stub, mf_app):
     assert stub.read_text().split() == ["sync"]            # response not finished yet: no poweroff
     r.close()
     time.sleep(0.4)
-    assert stub.read_text().split() == ["sync", "poweroff"]
+    assert stub.read_text().split() == ["sync", "sync", "poweroff"]
 
 
 def test_sync_failure_no_poweroff(client, stub, mf_app):
@@ -119,20 +119,21 @@ def test_menu_shutdown_safe_only_after_synced(page, server, mf_app, net, tmp_pat
     gate.write_text("")
     page.pump(0.5)
     s = safe(page)
-    assert s and "Safe to unplug" in s and "Photos saved · Memory Frame is off" in s
+    assert s and "Photos saved" in s and "Wait 15 seconds, then unplug" in s and "Safe to unplug" not in s
     assert "goes dark" not in s
     st = evaluate(page, "(()=>{const t=document.querySelector('#safeScreen .safeTitle');const c=getComputedStyle(t);"
                         "return [c.fontSize,c.fontWeight,Math.round(t.getBoundingClientRect().width)<=720,"
                         "Math.round(t.getBoundingClientRect().height/parseFloat(c.lineHeight))<=2,"
                         "getComputedStyle(document.querySelector('#safeScreen .safeSub')).fontSize,"
                         "getComputedStyle(document.querySelector('#safeScreen .safeTick')).animationName];})()")
-    assert st == ["56px", "700", True, True, "28px", "none"]
+    assert st == ["64px", "700", True, True, "32px", "none"]
+    assert evaluate(page, "getComputedStyle(document.querySelector('#safeScreen .safeSub')).color") == "rgb(255, 176, 0)"
     assert cover(page) is None
     assert out.read_text().split() == ["sync"]                 # poweroff ~delay after the response
     bg = evaluate(page, "getComputedStyle(document.getElementById('safeScreen')).backgroundColor")
     assert bg == "rgb(0, 107, 46)"
     page.pump(1.2)
-    assert out.read_text().split() == ["sync", "poweroff"]
+    assert out.read_text().split() == ["sync", "sync", "poweroff"]
 
 
 def test_menu_shutdown_sync_failure_shows_error(page, server, mf_app, net, tmp_path):
@@ -149,10 +150,11 @@ def test_menu_shutdown_sync_failure_shows_error(page, server, mf_app, net, tmp_p
 
 def test_safe_copy_is_one_constant_and_not_shown_before_sync(client):
     from memoryframe import display
-    assert display.SAFE_SCREEN_COPY == {"title": "Safe to unplug", "sub": "Photos saved \u00b7 Memory Frame is off"}
+    assert display.UNPLUG_WAIT_SECONDS == 15
+    assert display.SAFE_SCREEN_COPY == {"title": "Photos saved", "sub": "Wait 15 seconds, then unplug"}
     root = Path(__file__).resolve().parents[1]
     for f in ("templates/index.html", "static/pairing.js"):
-        assert "Safe to unplug" not in (root / f).read_text() and "goes dark" not in (root / f).read_text()
+        assert "Photos saved" not in (root / f).read_text() and "Wait 15" not in (root / f).read_text() and "goes dark" not in (root / f).read_text()
 
 
 def test_order_writes_blocked_then_sync_then_response_then_poweroff(client, stub, mf_app, monkeypatch):

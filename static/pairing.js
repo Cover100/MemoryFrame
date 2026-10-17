@@ -318,7 +318,7 @@
             ok = r.ok && (await r.json()).synced === true;     // only after the server's sync
         }catch(e){ console.warn(e); }
         if(ok){
-            $("safeScreen").hidden = false;                  // final frame; poweroff follows in ~3 s
+            $("safeScreen").hidden = false;                  // final frame; poweroff follows ~1.2 s later
             cover.hidden = true;
         }else{
             shuttingDown = false; window.mfShuttingDown = false; cover.hidden = true;

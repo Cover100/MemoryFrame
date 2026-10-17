@@ -147,7 +147,9 @@ def set_brightness():
 POWEROFF_CMD = ["sudo", "-n", "/usr/bin/systemctl", "poweroff"]
 SYNC_CMD = ["sync"]
 # Copy of the final shutdown screen (Wren confirmed): one place to change it.
-SAFE_SCREEN_COPY = {"title": "Safe to unplug", "sub": "Photos saved \u00b7 Memory Frame is off"}
+# Seconds the user is told to wait before unplugging. Keep >= 2x the measured worst-case screen-to-halt time.
+UNPLUG_WAIT_SECONDS = 15
+SAFE_SCREEN_COPY = {"title": "Photos saved", "sub": f"Wait {UNPLUG_WAIT_SECONDS} seconds, then unplug"}
 POWEROFF_DELAY = 1.2          # after the "synced" response: just long enough for the kiosk to paint
 
 
@@ -190,6 +192,8 @@ def _schedule_poweroff(app, delay):
         if st.get("done"):
             return
         st["done"] = True
+        with app.app_context():
+            _sync()                              # second sync right before poweroff
         try:
             subprocess.run(cmd, timeout=30, check=False)
         except (OSError, subprocess.TimeoutExpired) as e:

@@ -144,7 +144,8 @@ def set_brightness():
 # ---------------- MF-49: shut down (kiosk only) ----------------
 
 POWEROFF_CMD = ["sudo", "-n", "/usr/bin/systemctl", "poweroff"]
-POWEROFF_DELAY = 3.0          # let the frame paint "Safe to unplug" first
+SYNC_CMD = ["sync"]
+POWEROFF_DELAY = 1.0          # let the kiosk paint "Shutting down…" first
 
 
 def frame_token():
@@ -156,28 +157,67 @@ def frame_token():
     return ext["mf_frame_token"]
 
 
-@bp.route("/frame/shutdown", methods=["POST"])
-@localhost_only
-def shutdown():
+def _check_token():
     import hmac
-    import subprocess
-    import threading
     sent = request.headers.get("X-Frame-Token", "")
     if not sent or not hmac.compare_digest(sent.encode(), frame_token().encode()):
         abort(403)
-    cmd = list(current_app.config.get("POWEROFF_CMD") or POWEROFF_CMD)
-    delay = float(current_app.config.get("POWEROFF_DELAY", POWEROFF_DELAY))
+
+
+def _sync():
+    """Flush everything to the SD card. True only if sync really succeeded."""
+    import subprocess
+    try:
+        return subprocess.run(list(current_app.config.get("SYNC_CMD") or SYNC_CMD),
+                              timeout=60, check=False).returncode == 0
+    except (OSError, subprocess.TimeoutExpired) as e:
+        log.warning("sync failed: %s", type(e).__name__)
+        return False
+
+
+def _schedule_poweroff(app, delay):
+    import subprocess
+    import threading
+    st = app.extensions.setdefault("mf_shutdown", {})
+    if st.get("timer"):
+        st["timer"].cancel()
+    cmd = list(app.config.get("POWEROFF_CMD") or POWEROFF_CMD)
 
     def run():
+        if st.get("done"):
+            return
+        st["done"] = True
         try:
             subprocess.run(cmd, timeout=30, check=False)
         except (OSError, subprocess.TimeoutExpired) as e:
             log.warning("poweroff failed: %s", type(e).__name__)
-
-    log.warning("shutdown requested from the frame menu")
     t = threading.Timer(delay, run)
     t.daemon = True
+    st["timer"] = t
     t.start()
+
+
+@bp.before_app_request
+def _refuse_writes_while_shutting_down():
+    st = current_app.extensions.get("mf_shutdown") or {}
+    if st.get("synced") and request.method not in ("GET", "HEAD", "OPTIONS"):
+        abort(503)
+
+
+@bp.route("/frame/shutdown", methods=["POST"])
+@localhost_only
+def shutdown():
+    """MF-49: stop accepting writes, sync, then power off. "Safe to unplug" is drawn later by the
+    systemd-shutdown hook (deploy/safe-screen), after filesystems are unmounted/read-only."""
+    _check_token()
+    app = current_app._get_current_object()
+    st = app.extensions.setdefault("mf_shutdown", {})
+    st["synced"] = True                       # refuse further writes from now on
+    log.warning("shutdown requested from the frame menu; syncing")
+    if not _sync():
+        st["synced"] = False
+        return jsonify({"shutting_down": False}), 500
+    _schedule_poweroff(app, float(app.config.get("POWEROFF_DELAY", POWEROFF_DELAY)))
     return jsonify({"shutting_down": True})
 
 

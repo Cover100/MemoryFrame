@@ -86,7 +86,7 @@ Switches are refused (exit 3) while another switch runs or an MF-18 Wi-Fi change
 |---|---|
 | Frame in Developer Wi-Fi (until reboot) and unreachable | Power-cycle or menu **Shut down**, then start: boots into product (hotspot) |
 | Persistent `dev` and home Wi-Fi gone | Hotspot starts automatically for that boot; or on a PC write `product` in `memoryframe-mode.txt` (or delete it) and boot |
-| Hotspot broken / wrong name or password | On a PC create an empty `memoryframe-reset` on bootfs and boot: default hotspot from `deploy/hotspot.conf`, product mode |
+| Hotspot broken / wrong name or password | On a PC create an empty `memoryframe-reset` on bootfs and boot: default hotspot from `/etc/memoryframe/hotspot.conf` (the copy `install.sh` makes of `deploy/hotspot.conf`: re-run `install.sh` after editing it), product mode |
 | Need home Wi-Fi permanently (dev Pi) | On a PC write `dev` in `memoryframe-mode.txt` and boot |
 | Keyboard/SSH available | `sudo deploy/netmode.sh status`, then `product` / `dev` / `dev-temp` |
 

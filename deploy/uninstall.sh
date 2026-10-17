@@ -5,10 +5,12 @@ set -u
 sudo systemctl disable --now memoryframe.service 2>/dev/null || true
 sudo rm -f /etc/systemd/system/memoryframe.service
 sudo systemctl disable memoryframe-netmode.service 2>/dev/null || true
-sudo rm -f /etc/systemd/system/memoryframe-netmode.service /etc/sudoers.d/memoryframe /usr/local/sbin/memoryframe-netmode
+sudo rm -f /etc/systemd/system/memoryframe-netmode.service /etc/sudoers.d/memoryframe /usr/local/sbin/memoryframe-netmode /usr/local/sbin/memoryframe-hotspot
 sudo rm -f /etc/systemd/system/memoryframe-devtemp.service /etc/systemd/system/memoryframe-wifi-apply.service \
     /etc/systemd/system/memoryframe-wifi-commit.service /etc/systemd/system/memoryframe-wifi-rollback.service \
     /etc/polkit-1/rules.d/50-memoryframe.rules
+sudo rm -f /etc/memoryframe/hotspot.conf   # holds the hotspot password
+sudo rmdir /etc/memoryframe 2>/dev/null || true
 sudo systemctl daemon-reload
 rm -f "$HOME/.config/autostart/memoryframe-kiosk.desktop"
 pkill -f deploy/kiosk.sh || true

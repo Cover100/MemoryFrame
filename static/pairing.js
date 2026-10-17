@@ -215,15 +215,14 @@
         showOverlay(menuOverlay);
         try{
             const s = await getJSON("/frame/status");
-            $("menuIp").textContent = (s.ips || []).length ? s.ips.join(", ") : "not connected";
-            $("menuSsid").textContent = s.network === "hotspot" ? (s.ssid || "hotspot") + " (hotspot)"
-                                                                : "home Wi-Fi";
-            const site = okUrl(s.site) ? s.site : fallbackBase(s);
-            $("menuSite").textContent = site.replace("http://", "") +
-                (okUrl(s.site_fallback) ? "  or  " + s.site_fallback.replace("http://", "") : "");
-            $("menuFree").textContent = gb(s.storage.free) + " of " + gb(s.storage.total);
-            $("menuPaired").textContent = String(s.paired);
-            $("menuVersion").textContent = s.version;
+            const free = s.storage.free, total = s.storage.total;   // menu v2: display-only meter
+            const f = $("menuFree"), of = document.createElement("span");
+            f.textContent = gb(free) + " free ";
+            of.textContent = "of " + gb(total);
+            f.appendChild(of);
+            const used = total > 0 ? Math.min(1, Math.max(0, 1 - free / total)) : 0;
+            $("menuUsed").style.transform = "scaleX(" + used.toFixed(3) + ")";
+            $("menuMeter").setAttribute("aria-valuenow", String(Math.round(used * 100)));
         }catch(e){
             console.warn("frame status unavailable", e);
         }

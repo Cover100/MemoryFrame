@@ -597,14 +597,31 @@ video {
 .overlay button{font-size:24px;margin:10px 8px 0 0;padding:10px 18px;border-radius:var(--mf-r-md);border:0;font-family:var(--mf-font-frame)}
 .emptyText{font-size:30px;text-align:center;max-width:720px;line-height:1.4}
 .emptyTitle{font-size:48px;font-weight:700;margin-bottom:16px}
-#menuBox{max-width:760px}
-.menuTitle{font-size:28px;font-weight:700;margin-bottom:4px}
-#menuInfo{font-size:24px;border-collapse:collapse;line-height:1.25}
-#menuInfo td{overflow-wrap:anywhere}
-#menuInfo th{text-align:left;font-weight:400;opacity:.8;padding:2px 20px 2px 0;white-space:nowrap}
-#menuInfo td{font-weight:600}
-.menuButtons{margin-top:8px;display:flex;gap:8px}
-.menuButtons button{margin:0!important;padding:8px 14px!important}
+/* menu v2 (MENU-V2.md, 07-menu-final): info left, Pair/Sign out right, Close + Shut down along the bottom */
+#menuBox{position:absolute;inset:16px;padding:22px 24px 20px;display:grid;grid-template-columns:1fr 280px;
+  grid-template-rows:auto 1fr auto;gap:0 28px;background:var(--mf-forest-900);border:1px solid var(--mf-forest-700);border-radius:var(--mf-r-lg)}
+.menuTitle{grid-column:1/-1;display:flex;align-items:center;gap:12px;font-size:28px;font-weight:700;margin-bottom:16px}
+.menuMark{width:14px;height:14px;border-radius:50%;background:var(--mf-brass);flex:none}
+.menuInfo{display:flex;flex-direction:column;min-width:0}
+.menuNote{margin:0;background:var(--mf-walnut-900);border:1px solid var(--mf-walnut);border-radius:var(--mf-r-lg);padding:14px 16px 16px}
+.menuNote .q{display:block;color:var(--mf-brass);font-size:44px;line-height:.6;height:22px;font-weight:700}
+.menuNote p{margin:0;font-size:20px;line-height:1.35;color:var(--mf-linen);display:-webkit-box;-webkit-box-orient:vertical;
+  -webkit-line-clamp:5;overflow:hidden;overflow-wrap:anywhere;white-space:pre-line}
+.menuNote.empty{background:transparent;border:1px dashed var(--mf-walnut);padding:16px}
+.menuNote.empty b{display:block;font-size:20px;color:var(--mf-oat);margin-bottom:4px}
+.menuNote.empty p{display:block;color:var(--mf-oat);font-size:var(--mf-f-small)}
+.menuStore{margin-top:auto;padding:12px 0 20px}
+.menuStoreVal{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px}
+.menuStoreVal>span{font-size:var(--mf-f-small);color:var(--mf-oat)}
+#menuFree{font-size:var(--mf-f-body);font-variant-numeric:tabular-nums}
+#menuFree span{font-weight:400;color:var(--mf-oat)}
+.menuTrack{height:8px;border-radius:4px;background:var(--mf-forest-700);overflow:hidden}
+#menuUsed{height:100%;background:var(--mf-leaf);transform-origin:left;transform:scaleX(0)}
+.menuSide{display:flex;flex-direction:column;gap:12px}
+.menuBottom{grid-column:1/-1;display:flex;justify-content:space-between;border-top:1px solid var(--mf-forest-700);padding-top:16px}
+#menuBox button{margin:0!important;min-height:64px}
+.menuSide button{width:280px}
+.menuBottom button{width:220px}
 .overlay button.mf-btn{min-height:var(--mf-touch-frame);font-weight:700}
 .overlay button.mf-btn-secondary{border:2px solid var(--mf-forest-700)}
 #confirmCancel,#shutdownCancel,#devModeCancel{outline:var(--mf-ring-width) solid var(--mf-brass);outline-offset:3px}   /* default button */
@@ -617,8 +634,7 @@ video {
 .mf-no-fade .media{transition:none!important}
 /* MF-31 confirm dialog, MF-33 paired success */
 #confirmOverlay{z-index:70}
-#confirmBox{width:480px;height:260px;box-sizing:border-box;background:var(--mf-forest-900);border:1px solid var(--mf-forest-700);border-radius:var(--mf-r-lg);padding:20px 24px;
-  display:flex;flex-direction:column;justify-content:space-between}
+#confirmBox{width:480px;height:260px;box-sizing:border-box;background:var(--mf-forest-900);border:1px solid var(--mf-forest-700);border-radius:var(--mf-r-lg);padding:20px 24px}
 .confirmTitle{font-size:28px;font-weight:700}
 .confirmBody{font-size:20px;line-height:1.3;margin-top:8px}
 .confirmButtons{display:flex;justify-content:space-between}
@@ -666,7 +682,10 @@ video {
 #shutdownBox{width:480px;min-height:260px;box-sizing:border-box;background:var(--mf-forest-900);border:1px solid var(--mf-forest-700);border-radius:var(--mf-r-lg);padding:20px 24px}
 #shutdownBox .confirmTitle{font-size:28px;font-weight:700}
 #shutdownBox .confirmBody{font-size:20px;line-height:1.3;margin:8px 0 16px}
-.shutdownButtons{display:flex;justify-content:space-between}
+/* MENU-V2 dialog fix: flex columns so the buttons sit at the bottom of the card */
+#devModeBox,#shutdownBox{display:flex;flex-direction:column}
+#devModeAsk,#devModeDone,#shutdownAsk{flex:1;display:flex;flex-direction:column}
+.shutdownButtons{display:flex;justify-content:space-between;margin-top:auto}
 .shutdownButtons button{width:200px;min-height:64px;margin:0!important}
 #shutdownCancel{background:var(--mf-forest-800);color:var(--mf-linen);border:2px solid var(--mf-forest-700)}
 #shutdownConfirm{background:var(--mf-brick);color:#fff}

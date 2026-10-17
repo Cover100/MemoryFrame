@@ -40,3 +40,24 @@ def test_overlays_use_frame_theme():
 def test_safe_screen_is_static():
     assert "animation:none" in rule("#safeScreen .safeSpin")
     assert "var(--mf-ink)" in rule("#safeScreen")
+
+
+def test_dialog_buttons_pinned_to_bottom():
+    assert "#devModeBox,#shutdownBox{display:flex;flex-direction:column}" in CSS
+    assert "margin-top:auto" in rule(".shutdownButtons")
+    assert "flex" not in rule("#confirmBox")                  # the no-op rule is gone
+
+
+def _menu(client, mf_app, msg):
+    mf_app.config["FRAME_MESSAGE"] = msg
+    return client.get("/", environ_base={"REMOTE_ADDR": "127.0.0.1"}).get_data(as_text=True)
+
+
+def test_menu_v2_message_card_and_empty_state(client, mf_app):
+    html = _menu(client, mf_app, None)
+    assert "No message yet" in html and 'id="menuMessage"' not in html
+    for gone in ("menuIp", "menuSsid", "menuSite", "menuPaired", "menuVersion"):
+        assert gone not in html
+    html = _menu(client, mf_app, "Happy 80th, Nana! <b>xx</b>")
+    assert "Happy 80th, Nana! &lt;b&gt;xx&lt;/b&gt;" in html and "No message yet" not in html   # text, never HTML
+    assert 'role="meter"' in html and html.index('id="menuClose"') < html.index('id="menuShutdown"')

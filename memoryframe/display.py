@@ -36,7 +36,8 @@ def index():
     if not is_local_request():
         return redirect("/admin/", code=302)
     return render_template("index.html", media=get_media(), frame_token=frame_token(),
-                           safe_copy=SAFE_SCREEN_COPY)
+                           safe_copy=SAFE_SCREEN_COPY,
+                           frame_message=current_app.config.get("FRAME_MESSAGE"))   # #73 feeds this
 
 
 @bp.route("/frame-fonts.css")

@@ -136,21 +136,23 @@
 
     <!-- MF-19 / MF-34: menu (double tap) -->
     <div id="menuOverlay" class="overlay">
-        <div id="menuBox">
-            <div class="menuTitle">Memory Frame</div>
-            <table id="menuInfo">
-                <tr><th>IP</th><td id="menuIp">-</td></tr>
-                <tr><th>Wi-Fi</th><td id="menuSsid">-</td></tr>
-                <tr><th>Site</th><td id="menuSite">-</td></tr>
-                <tr><th>Free storage</th><td id="menuFree">-</td></tr>
-                <tr><th>Phones paired</th><td id="menuPaired">-</td></tr>
-                <tr><th>Version</th><td id="menuVersion">-</td></tr>
-            </table>
-            <div class="menuButtons">
+        <div id="menuBox" role="dialog" aria-label="Menu">
+            <div class="menuTitle"><span class="menuMark" aria-hidden="true"></span>Memory Frame</div>
+            <div class="menuInfo">
+                {% if frame_message %}<figure class="menuNote"><span class="q" aria-hidden="true">“</span><p id="menuMessage">{{ frame_message }}</p></figure>
+                {% else %}<div class="menuNote empty"><b>No message yet</b><p>Add one from your phone in Settings, under “Message on the frame”.</p></div>
+                {% endif %}<div class="menuStore">
+                    <div class="menuStoreVal"><span>Free storage</span><b id="menuFree">-</b></div>
+                    <div class="menuTrack" role="meter" aria-label="Storage used" aria-valuemin="0" aria-valuemax="100" id="menuMeter"><div id="menuUsed"></div></div>
+                </div>
+            </div>
+            <div class="menuSide">
                 <button id="menuPair" class="mf-btn" type="button">Pair new device</button>
                 <button id="menuSignOut" class="mf-btn mf-btn-secondary" type="button">Sign out all phones</button>
+            </div>
+            <div class="menuBottom">
+                <button id="menuClose" class="mf-btn mf-btn-secondary mf-btn-default" type="button">Close</button>
                 <button id="menuShutdown" class="mf-btn mf-btn-danger" type="button">Shut down</button>
-                <button id="menuClose" class="mf-btn mf-btn-secondary" type="button">Close</button>
             </div>
         </div>
     </div>

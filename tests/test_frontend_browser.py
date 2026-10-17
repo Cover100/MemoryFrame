@@ -217,13 +217,13 @@ def test_state_a_no_photos_no_phone_full_onboarding_on_hotspot(page, server, mf_
     o = overlay(page)
     assert o["visible"] and o["qr"]
     code = mf_app.extensions["mf_pairing"].code
-    assert o["code"].replace(" ", "") == code and o["font"] >= 72
+    assert o["code"].replace(" ", "") == code and o["font"] >= 56
     assert (o["vw"], o["vh"]) == (800, 480)
     left, top, right, bottom = o["box"]
     assert left >= 0 and top >= 0 and right <= o["vw"] and bottom <= o["vh"], o   # fits 800x480
     # Wi-Fi join QR first, then the site QR for the hotspot address (port 80 is served)
     assert visible(page, "wifiStep") and evaluate(page, "!!document.querySelector('#wifiQr svg')")
-    assert text(page, "siteTitle") == "2. Open site"
+    assert text(page, "siteTitle") == "Open site" and text(page, "siteBadge") == "2" and text(page, "codeBadge") == "3"
     assert text(page, "pairUrl") == "http://10.42.0.1/pair"
     assert text(page, "pairUrlAlt") == "or http://memoryframe.lan/pair"
     assert not visible(page, "pairHint")

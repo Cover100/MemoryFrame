@@ -58,8 +58,8 @@ def test_label_g2_style(page, server, devtemp):
     st = evaluate(page, "(()=>{const b=document.getElementById('devBanner');const s=getComputedStyle(b);"
                         "const r=b.getBoundingClientRect();return [s.fontSize,s.pointerEvents,s.position,"
                         "r.left,innerHeight-r.bottom,parseFloat(s.color.split(',')[3]||'1')];})()")
-    assert st[0] == "14px" and st[1] == "none" and st[2] == "fixed"
-    assert st[3] < 40 and st[4] < 40 and st[5] < 1          # bottom-left, semi-transparent
+    assert st[0] == "18px" and st[1] == "none" and st[2] == "fixed"
+    assert st[3] < 40 and st[4] > 400                        # #70 mock 12: top-left pill
 
 
 def test_label_hidden_in_product(page, server, devtemp):

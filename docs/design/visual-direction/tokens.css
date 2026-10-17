@@ -1,0 +1,82 @@
+/* ==========================================================================
+   Memory Frame design tokens: "Forest & Walnut" visual direction (Wren, Oct 2026)
+   CSS custom properties only. Mocks only: nothing here is wired into the app yet.
+   Sampled from the product photo (as photographed, for reference):
+     walnut #554538 (grain dark #3A2D24, light #6E5C46) · black surround #151B20 · brass hand #716249
+   ========================================================================== */
+
+/* Local font for the frame (offline). Atkinson Hyperlegible, SIL OFL, Regular + Bold only (~2 x 30 KB
+   woff2 when subset to Latin). The real files would live at /static/fonts/; mocks use the installed copy. */
+@font-face { font-family: "MF Frame"; font-weight: 400; src: local("Atkinson Hyperlegible"), local("AtkinsonHyperlegible-Regular"), url("/static/fonts/atkinson-hyperlegible-400.woff2") format("woff2"); font-display: block; }
+@font-face { font-family: "MF Frame"; font-weight: 700; src: local("Atkinson Hyperlegible Bold"), local("AtkinsonHyperlegible-Bold"), url("/static/fonts/atkinson-hyperlegible-700.woff2") format("woff2"); font-display: block; }
+
+:root {
+  /* ---- Frame palette (dark: the screen should melt into the black surround) ---- */
+  --mf-ink:          #0E1311;  /* screen background behind overlays, full-screen states */
+  --mf-forest-900:   #16261D;  /* overlay card / dialog surface */
+  --mf-forest-800:   #24382C;  /* raised: neutral buttons, list rows, info table stripes */
+  --mf-forest-700:   #2F4A3A;  /* hairlines / borders on forest surfaces */
+  --mf-forest-600:   #2A6140;  /* primary action fill (white text 7.3:1) */
+  --mf-leaf:         #8FD1A4;  /* success text + ticks on dark */
+  --mf-linen:        #F3EDE4;  /* primary text on dark */
+  --mf-oat:          #C9BBA8;  /* secondary text on dark */
+  --mf-walnut:       #5A4535;  /* brown accent: dividers, chips, decorative only (never text bg for small text) */
+  --mf-walnut-900:   #3A2C22;  /* brown surface: dev banner, step badges */
+  --mf-brass:        #D6B36A;  /* gold accent: focus/default ring, countdowns, "wait" warnings, brightness fill */
+  --mf-brick:        #A8352A;  /* destructive fill (white text 6.6:1) */
+  --mf-brick-text:   #E7A097;  /* error text on dark */
+  --mf-scrim:        rgba(14, 19, 17, 0.82); /* flat scrim behind dialogs (no blur) */
+  --mf-pill:         rgba(14, 19, 17, 0.78); /* small hint/toast pill over the photo */
+  --mf-qr-light:     #FFFFFF;  /* QR quiet zone: always pure white */
+  --mf-qr-dark:      #000000;
+
+  /* ---- Phone palette (light "paper", forest header band ties it to the frame) ---- */
+  --mf-paper:        #F6F1E9;  /* page background */
+  --mf-card:         #FFFFFF;  /* cards, inputs */
+  --mf-line:         #E2D8CA;  /* borders, dividers */
+  --mf-text:         #1F2A24;  /* body text */
+  --mf-text-2:       #5E5146;  /* secondary text (walnut-grey) */
+  --mf-green:        #2A6140;  /* primary buttons, links, selected states */
+  --mf-green-50:     #E3EEE6;  /* selected segment / success background */
+  --mf-brown:        #6B4F3A;  /* walnut text accent, icons */
+  --mf-red:          #A8352A;  /* destructive text + fills */
+  --mf-red-50:       #F8E4E1;  /* error background */
+  --mf-warn-bg:      #FBF1DC;  /* warning box background (brass tint) */
+  --mf-warn-line:    #D6B36A;  /* warning box border = brass */
+  --mf-warn-text:    #6E4A10;  /* warning text */
+
+  /* ---- Type ---- */
+  --mf-font-frame: "MF Frame", "Atkinson Hyperlegible", "DejaVu Sans", "Liberation Sans", sans-serif;
+  --mf-font-phone: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+  --mf-font-mono-digits: "MF Frame", "DejaVu Sans Mono", monospace; /* code digits use tabular-nums */
+
+  /* Frame scale (800x480 at ~190 dpi, read at arm's length): nothing below 18 px */
+  --mf-f-display: 44px;  /* full-screen state headline ("Shutting down") */
+  --mf-f-code:    64px;  /* 6-digit pairing code */
+  --mf-f-title:   30px;  /* dialog / overlay title */
+  --mf-f-body:    22px;  /* dialog body, button labels */
+  --mf-f-label:   20px;  /* table labels, QR captions */
+  --mf-f-small:   18px;  /* hints, banner (minimum) */
+
+  /* Phone scale (412 px CSS width) */
+  --mf-p-h1:      28px;
+  --mf-p-h2:      20px;
+  --mf-p-body:    17px;
+  --mf-p-small:   15px;  /* minimum */
+
+  /* ---- Space, shape, targets ---- */
+  --mf-s-1: 4px;  --mf-s-2: 8px;  --mf-s-3: 12px; --mf-s-4: 16px;
+  --mf-s-5: 24px; --mf-s-6: 32px; --mf-s-7: 48px;
+  --mf-r-sm: 8px;    /* inputs, chips */
+  --mf-r-md: 12px;   /* buttons */
+  --mf-r-lg: 16px;   /* cards, dialogs */
+  --mf-r-pill: 999px;
+  --mf-touch-frame: 56px;  /* frame buttons: min height 56 (>= 48 required) */
+  --mf-touch-phone: 48px;
+  --mf-ring-width: 3px;    /* default/focus ring: solid brass outline, offset 3px (outline, not a shadow) */
+
+  /* ---- Motion (frame: transform/opacity only) ---- */
+  --mf-ease: cubic-bezier(.2, .7, .2, 1);
+  --mf-t-fast: 150ms;
+  --mf-t-med: 250ms;
+}

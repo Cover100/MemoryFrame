@@ -1,0 +1,25 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Wi-Fi changed: scan to rejoin (MF-18)</title>
+<!-- Memory Frame visual direction mock (Wi-Fi changed: scan to rejoin (MF-18)). 800x480. Mocks only, not app code. -->
+<link rel="stylesheet" href="frame.css"><style>
+.rj { position:absolute; inset:0; background:var(--mf-ink); padding:24px 32px; display:grid; grid-template-columns: 268px 1fr; gap:32px; align-items:center; }
+.rj .qr { width:268px; }
+.rj h1 { font-size:var(--mf-f-title); margin:0 0 16px; }
+.rj p { margin:0 0 10px; color:var(--mf-oat); font-size:var(--mf-f-label); }
+.rj p b { color:var(--mf-linen); }
+.rj .count { margin-top:22px; display:flex; align-items:baseline; gap:12px; color:var(--mf-oat); font-size:var(--mf-f-label); }
+.rj .count b { font-size:48px; color:var(--mf-brass); font-variant-numeric:tabular-nums; }
+.rj .bar { height:8px; background:var(--mf-forest-700); border-radius:4px; overflow:hidden; margin-top:10px; }
+.rj .bar div { height:100%; width:100%; background:var(--mf-brass); transform-origin:left; transform:scaleX(.83); }
+</style></head>
+<body><div id="frame">
+<div class="rj" role="status">
+  <div class="qr"><img src="../assets/qr-wifi-new.svg" alt=""></div>
+  <div>
+    <h1>Wi-Fi changed: scan to rejoin</h1>
+    <p>Wi-Fi: <b>Garden Frame</b></p>
+    <p>Then open <b>http://10.42.0.1/</b> and tap <b style="white-space:nowrap">"Keep new Wi-Fi"</b></p>
+    <div class="count">Old Wi-Fi returns in <b>4:09</b></div>
+    <div class="bar"><div></div></div>
+  </div>
+</div>
+</div></body></html>

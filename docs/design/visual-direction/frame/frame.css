@@ -1,0 +1,71 @@
+/* Frame components for the mocks (800x480 Chromium kiosk on a Pi).
+   Rules obeyed: no blur/backdrop-filter, no box-shadows (edges are 1 px borders), no gradients over the
+   slideshow, flat scrims, light DOM, animations on transform/opacity only. */
+@import url("../tokens.css");
+
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 800px; height: 480px; overflow: hidden; background: var(--mf-ink); }
+body { font-family: var(--mf-font-frame); color: var(--mf-linen); font-size: var(--mf-f-body); line-height: 1.25;
+       -webkit-font-smoothing: antialiased; }
+#frame { position: relative; width: 800px; height: 480px; overflow: hidden; background: var(--mf-ink); }
+.media { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+
+/* ---------- small pills over the photo (hint, brightness, toast, banner) ---------- */
+.pill { position: absolute; display: flex; align-items: center; gap: var(--mf-s-2);
+        background: var(--mf-pill); color: var(--mf-linen); border-radius: var(--mf-r-pill);
+        font-size: var(--mf-f-small); padding: 8px 16px; }
+.hint { right: 16px; bottom: 16px; }
+.hint .tap { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--mf-brass); position: relative; }
+.hint .tap::after { content: ""; position: absolute; inset: 4px; border-radius: 50%; background: var(--mf-brass); }
+
+.brightness { left: 50%; bottom: 32px; transform: translateX(-50%); padding: 14px 24px; gap: 16px; font-size: var(--mf-f-body); }
+.brightness .sun { color: var(--mf-brass); font-size: 28px; line-height: 1; }
+.brightness .track { width: 240px; height: 10px; border-radius: 5px; background: var(--mf-forest-700); overflow: hidden; }
+.brightness .fill { height: 100%; width: 100%; background: var(--mf-brass); transform-origin: left; } /* scaleX(value) */
+.brightness .val { min-width: 64px; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.toast { left: 50%; top: 20px; transform: translateX(-50%); border-radius: var(--mf-r-lg); padding: 14px 22px; gap: 14px;
+         background: var(--mf-forest-900); border: 1px solid var(--mf-forest-700); }
+.toast .tick { width: 40px; height: 40px; border-radius: 50%; background: var(--mf-forest-600); color: #fff;
+               display: grid; place-items: center; font-size: 24px; font-weight: 700; flex: none; }
+.toast b { display: block; font-size: var(--mf-f-body); }
+.toast span { color: var(--mf-oat); font-size: var(--mf-f-small); }
+
+.banner { left: 12px; top: 12px; border-radius: var(--mf-r-sm); background: var(--mf-walnut-900);
+          border: 1px solid var(--mf-walnut); padding: 6px 12px; font-size: var(--mf-f-small); }
+.banner .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--mf-brass); flex: none; }
+
+/* ---------- overlays ---------- */
+.scrim { position: absolute; inset: 0; background: var(--mf-scrim); display: flex; align-items: center; justify-content: center; }
+.solid { position: absolute; inset: 0; background: var(--mf-ink); }
+.card { background: var(--mf-forest-900); border: 1px solid var(--mf-forest-700); border-radius: var(--mf-r-lg); padding: var(--mf-s-5); }
+.title { font-size: var(--mf-f-title); font-weight: 700; margin: 0 0 var(--mf-s-3); line-height: 1.15; }
+.body { color: var(--mf-oat); margin: 0 0 var(--mf-s-5); }
+
+/* buttons */
+.btn { min-height: var(--mf-touch-frame); padding: 0 24px; border-radius: var(--mf-r-md); border: 0; font: inherit;
+       font-size: var(--mf-f-body); font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+       color: var(--mf-linen); background: var(--mf-forest-800); }
+.btn-primary { background: var(--mf-forest-600); color: #fff; }
+.btn-neutral { background: var(--mf-forest-800); color: var(--mf-linen); border: 2px solid var(--mf-forest-700); }
+.btn-danger  { background: var(--mf-brick); color: #fff; }
+.btn-accent  { background: var(--mf-brass); color: var(--mf-ink); }
+.btn-default { outline: var(--mf-ring-width) solid var(--mf-brass); outline-offset: 3px; } /* the default button */
+.btn:active { transform: scale(.97); }
+
+.dialog { width: 600px; }
+.dialog .row { display: flex; gap: var(--mf-s-4); }
+.dialog .row .btn { flex: 1; }
+
+/* QR card: white tile; the 4-module quiet zone is part of the QR image itself (always pure white) */
+.qr { background: var(--mf-qr-light); padding: 0; border-radius: var(--mf-r-sm); line-height: 0; }
+.qr img { width: 100%; height: auto; display: block; image-rendering: pixelated; }
+
+.step-badge { display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 50%;
+              background: var(--mf-walnut-900); border: 2px solid var(--mf-brass); color: var(--mf-brass);
+              font-weight: 700; font-size: 20px; flex: none; }
+
+/* spinner: a track ring + one brass arc, rotated with transform only. Any frozen angle still reads as "busy". */
+.spinner { width: 72px; height: 72px; border-radius: 50%; border: 7px solid var(--mf-forest-700);
+           border-top-color: var(--mf-brass); animation: mf-spin 1.1s linear infinite; }
+@keyframes mf-spin { to { transform: rotate(360deg); } }

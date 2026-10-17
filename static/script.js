@@ -94,6 +94,7 @@ let lastY = 0;
 let brightnessDragging = false;
 
 // Hold-to-adjust brightness
+let gestureActive = false;     // a pointerdown on the slideshow started this gesture
 let swipeAxis = null;          // "x" (swipe) or "y" (brightness) once decided for this touch
 let brightnessMode = false;
 
@@ -901,9 +902,23 @@ function preloadNext(){
 // ======================================================
 
 
+// Brightness/swipe never apply while the menu or any dialog/overlay is open, or when the touch
+// starts on one (e.g. tapping "Shut down" must not change brightness).
+function overlayBlocksGestures(target){
+    const SEL = ".overlay.visible, .wifi-overlay:not([hidden]), .dev-toast:not([hidden]), "
+              + ".hotspot-error:not([hidden]), .mf-modal:not([hidden])";
+    if(document.querySelector(SEL)){ return true; }
+    return !!(target && target.closest &&
+              target.closest(".overlay, .wifi-overlay, .dev-toast, .hotspot-error, .mf-modal, button, a, input"));
+}
+
 document.addEventListener(
     "pointerdown",
     function(event){
+
+        // Capture phase: buttons stop pointerdown from bubbling, which used to leave a stale start
+        // point so the next move looked like a brightness drag.
+        gestureActive = !overlayBlocksGestures(event.target);
 
         startX =
             event.clientX;
@@ -919,7 +934,8 @@ document.addEventListener(
         window.mfBrightnessDragging = false;
         swipeAxis = null;
 
-    }
+    },
+    true
 );
 
 
@@ -928,6 +944,10 @@ document.addEventListener(
 document.addEventListener(
     "pointermove",
     function(event){
+
+        if(!gestureActive || overlayBlocksGestures(null)){
+            return;
+        }
 
         let deltaY =
             event.clientY -
@@ -992,6 +1012,14 @@ document.addEventListener(
     function(event){
 
         window.mfBrightnessDragging = false;
+        const active = gestureActive;
+        gestureActive = false;
+
+        if(!active){
+            brightnessDragging = false;
+            brightnessMode = false;
+            return;
+        }
 
         if(
             brightnessDragging

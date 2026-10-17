@@ -219,3 +219,56 @@ def test_brightness_drag_then_still_hold_never_opens_dev_confirm(ready, backligh
     release(ready, 400, 284)
     ready.pump(0.5)
     assert not dev_confirm_open(ready) and not menu_open(ready)
+
+
+def bright(backlight):
+    return (backlight / "brightness").read_text().strip()
+
+
+def tap_el(page, el_id, kind="touch"):
+    r = evaluate(page, f"(()=>{{const b=document.getElementById('{el_id}').getBoundingClientRect();"
+                       "return [b.left+b.width/2,b.top+b.height/2];})()")
+    (tap if kind == "touch" else click)(page, r[0], r[1])
+    page.pump(0.4)
+
+
+@pytest.mark.parametrize("kind", ["touch", "mouse"])
+def test_menu_and_dialog_taps_never_change_brightness(ready, backlight, mf_app, kind):
+    mf_app.config["POWEROFF_CMD"] = ["true"]
+    before = bright(backlight)
+    tap(ready, 400, 400); time.sleep(0.1); tap(ready, 400, 400)      # double tap low on the screen
+    ready.pump(0.5)
+    assert menu_open(ready)
+    tap_el(ready, "menuShutdown", kind)                              # button far above the tap point
+    assert evaluate(ready, "document.getElementById('shutdownOverlay').classList.contains('visible')")
+    tap_el(ready, "shutdownCancel", kind)
+    evaluate(ready, "memoryFramePairing.openMenu()"); ready.pump(0.3)
+    tap_el(ready, "menuSignOut", kind)
+    tap_el(ready, "confirmCancel", kind)
+    evaluate(ready, "memoryFramePairing.openMenu()"); ready.pump(0.3)
+    tap_el(ready, "menuClose", kind)
+    ready.pump(0.8)
+    assert bright(backlight) == before
+
+
+def test_drag_inside_open_menu_never_changes_brightness(ready, backlight):
+    before = bright(backlight)
+    evaluate(ready, "memoryFramePairing.openMenu()"); ready.pump(0.3)
+    press(ready, 400, 350)
+    for i in range(1, 25):
+        move(ready, 400, 350 - i * 8)
+        time.sleep(0.02)
+    release(ready, 400, 158)
+    ready.pump(0.8)
+    assert bright(backlight) == before
+
+
+def test_slideshow_drag_still_changes_brightness(ready, backlight):
+    before = bright(backlight)
+    press(ready, 400, 300)
+    for i in range(1, 30):
+        move(ready, 400, 300 - i * 5)
+        time.sleep(0.02)
+    release(ready, 400, 155)
+    ready.pump(1.0)
+    assert bright(backlight) != before

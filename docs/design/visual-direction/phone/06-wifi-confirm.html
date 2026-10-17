@@ -1,0 +1,22 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Frame Wi-Fi: confirm</title>
+<!-- Memory Frame visual direction mock (Frame Wi-Fi: confirm). 412x915. Mocks only, not app code. -->
+<link rel="stylesheet" href="phone.css"><style>
+.scrim { position:fixed; inset:0; background:rgba(31,42,36,.55); display:flex; align-items:flex-end; }
+.sheet { background:#fff; width:100%; border-radius:20px 20px 0 0; padding:24px 20px 28px; }
+.sheet .rowb { display:flex; gap:12px; margin-top:20px; } .sheet .rowb .btn { flex:1; }
+</style></head><body>
+<header class="bar"><a class="back" href="#">‹</a><div class="name"><span class="dot"></span>Frame Wi-Fi</div></header>
+<main class="dim">
+  <h1>Frame Wi-Fi</h1>
+  <p class="muted">Current Wi-Fi: <b style="color:var(--mf-text)">MemoryFrame-4F2A</b></p>
+  <label class="f">New name</label><input class="field" value="Garden Frame">
+  <label class="f">New password</label><input class="field" type="password" value="new-password-88">
+</main>
+<div class="scrim"><div class="sheet" role="alertdialog">
+  <h2 style="font-size:24px">Change Wi-Fi?</h2>
+  <div class="warn" style="margin:12px 0"><span class="i">!</span><div>All phones will disconnect. Rejoin with the new password within 5 minutes or the old Wi-Fi comes back.</div></div>
+  <p style="margin:0">New Wi-Fi: <b>Garden Frame</b></p>
+  <div class="rowb"><button class="btn btn-neutral btn-big" style="outline:3px solid var(--mf-green);outline-offset:2px">Cancel</button><button class="btn btn-primary btn-big">Change Wi-Fi</button></div>
+</div></div>
+</body></html>

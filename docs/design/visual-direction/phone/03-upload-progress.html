@@ -1,0 +1,29 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Upload in progress</title>
+<!-- Memory Frame visual direction mock (Upload in progress). 412x915. Mocks only, not app code. -->
+<link rel="stylesheet" href="phone.css"><style>
+.files { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:10px; }
+.files li { background:#fff; border:1px solid var(--mf-line); border-radius:var(--mf-r-md); padding:10px; display:flex; gap:12px; align-items:center; }
+.files img { width:52px; height:52px; border-radius:8px; object-fit:cover; flex:none; }
+.files .t { flex:1; min-width:0; }
+.files .n { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:16px; }
+.files .s { font-size:var(--mf-p-small); color:var(--mf-text-2); margin-top:2px; }
+.files .s.ok { color:var(--mf-green); font-weight:600; } .files .s.bad { color:var(--mf-red); font-weight:600; }
+.files .progress { margin-top:6px; }
+.sum { background:var(--mf-green-50); color:var(--mf-green); border-radius:var(--mf-r-md); padding:12px 14px; font-weight:600; margin:14px 0 16px; font-size:16px; }
+</style></head><body>
+<header class="bar"><a class="back" href="#">‹</a><div class="name"><span class="dot"></span>Upload photos</div></header>
+<main>
+  <p class="muted small" style="margin-bottom:12px">Free space: 21.4 GB (room for about 5,000 photos)</p>
+  <a class="btn btn-neutral block" href="#">Choose more photos</a>
+  <div class="sum" role="status">3 of 6 done (3 added or already there). They appear on the frame within a few seconds.</div>
+  <ul class="files">
+    <li><img src="../assets/thumb-1.jpg" alt=""><div class="t"><div class="n">IMG_2041.jpg (3.2 MB)</div><div class="s ok">✓ Added</div></div></li>
+    <li><img src="../assets/thumb-2.jpg" alt=""><div class="t"><div class="n">IMG_2042.heic (2.7 MB)</div><div class="s ok">✓ Added</div></div></li>
+    <li><img src="../assets/thumb-3.jpg" alt=""><div class="t"><div class="n">Beach day with Nana.jpg (4.1 MB)</div><div class="s">Already on the frame</div></div></li>
+    <li><img src="../assets/thumb-4.jpg" alt=""><div class="t"><div class="n">IMG_2047.jpg (5.0 MB)</div><div class="s">Uploading 64%</div><div class="progress"><div style="transform:scaleX(.64)"></div></div></div></li>
+    <li><img src="../assets/thumb-6.jpg" alt=""><div class="t"><div class="n">IMG_2050.jpg (3.6 MB)</div><div class="s">Waiting...</div></div></li>
+    <li><img src="../assets/thumb-5.jpg" alt=""><div class="t"><div class="n">IMG_2053.jpg (2.9 MB)</div><div class="s">Waiting...</div></div></li>
+  </ul>
+</main>
+</body></html>

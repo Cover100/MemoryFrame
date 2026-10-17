@@ -1,0 +1,46 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Double-tap menu option A: info table (reference layout) + message strip</title>
+<!-- Memory Frame visual direction mock (Double-tap menu option A: info table (reference layout) + message strip). 800x480. Mocks only, not app code. -->
+<link rel="stylesheet" href="frame.css"><style>
+.menuA { position:absolute; inset:16px; padding:22px 24px 20px; display:grid; grid-template-columns: 1fr 260px;
+         grid-template-rows:auto auto 1fr auto; gap:0 28px; }
+.menuA .title { grid-column:1 / -1; display:flex; align-items:center; gap:12px; margin:0 0 10px; }
+.menuA .title .mark { width:14px; height:14px; border-radius:50%; background:var(--mf-brass); flex:none; }
+.menuA table { border-collapse:collapse; font-size:var(--mf-f-label); align-self:start; width:100%; }
+.menuA th { text-align:left; color:var(--mf-oat); font-weight:400; padding:3px 16px 3px 0; white-space:nowrap; }
+.menuA td { text-align:right; white-space:nowrap; padding:3px 0; font-weight:700; }
+.menuA tr + tr th, .menuA tr + tr td { border-top:1px solid var(--mf-forest-700); }
+.menuA .side { display:flex; flex-direction:column; gap:12px; }
+.menuA .side .btn { width:100%; }
+.strip { grid-column:1 / -1; align-self:start; margin-top:12px; display:flex; gap:12px; align-items:flex-start;
+         background:var(--mf-walnut-900); border:1px solid var(--mf-walnut); border-radius:var(--mf-r-md); padding:8px 14px; }
+.strip .q { color:var(--mf-brass); font-size:36px; line-height:1; height:24px; font-weight:700; flex:none; }
+.strip p { margin:0; font-size:var(--mf-f-small); line-height:1.3; color:var(--mf-linen);
+           display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; overflow-wrap:anywhere; }
+.strip.empty { background:transparent; border:1px dashed var(--mf-walnut); padding:8px 14px; }
+.strip.empty p { color:var(--mf-oat); -webkit-line-clamp:1; }
+.menuA .bottom { grid-column:1 / -1; display:flex; justify-content:space-between; padding-top:14px; border-top:1px solid var(--mf-forest-700); }
+.menuA .bottom .btn { width:220px; }
+</style></head>
+<body><div id="frame">
+<img class="media" src="../assets/photo-landscape.jpg" alt="">
+<div class="scrim"><div class="card menuA" role="dialog" aria-label="Menu">
+  <h1 class="title"><span class="mark"></span>Memory Frame</h1>
+  <table>
+    <tr><th>IP</th><td>10.42.0.1</td></tr>
+    <tr><th>Wi-Fi</th><td>MemoryFrame-4F2A (hotspot)</td></tr>
+    <tr><th>Site</th><td>10.42.0.1</td></tr>
+    <tr><th>Free storage</th><td>21.4 GB of 28.8 GB</td></tr>
+    <tr><th>Phones paired</th><td>2</td></tr>
+    <tr><th>Version</th><td>0.9.3</td></tr>
+  </table>
+  <div class="side">
+    <button class="btn btn-primary">Pair new device</button>
+    <button class="btn btn-neutral">Sign out all phones</button>
+  </div>
+  <figure class="strip" style="margin:12px 0 0"><span class="q" aria-hidden="true">“</span><p>Happy 80th, Nana! Every photo on here was sent by one of us, from wherever we are. We miss you and we love you. Sam, Priya and the kids xx</p></figure>
+  <div class="bottom">
+    <button class="btn btn-neutral btn-default" autofocus>Close</button>
+    <button class="btn btn-danger">Shut down</button>
+  </div>
+</div></div>
+</div></body></html>

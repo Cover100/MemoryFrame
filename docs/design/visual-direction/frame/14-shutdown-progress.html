@@ -1,0 +1,18 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>14: Shutting down… (progress, current style, unchanged)</title>
+<!-- Memory Frame mock 14 (left): the EARLIER screen, #shuttingDown, exactly as built in main (static/style.css "MF-49 cover").
+     800x480. Unchanged by this proposal; shown for comparison. Spinner frozen mid-turn for the screenshot only. -->
+<link rel="stylesheet" href="frame.css"><style>
+#shuttingDown{position:absolute;inset:0;background:var(--mf-ink);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:var(--mf-font-frame)}
+#shuttingDown .sdTitle{font-size:48px;font-weight:700;color:var(--mf-linen)}
+#shuttingDown .sdWarn{font-size:32px;color:var(--mf-brass);margin-top:16px}
+.mf-spinner{width:72px;height:72px;box-sizing:border-box;border-radius:50%;border:7px solid var(--mf-forest-700);
+  border-top-color:var(--mf-brass);animation:mf-spin 1.1s linear infinite;margin-bottom:28px}
+@keyframes mf-spin{to{transform:rotate(360deg)}}
+</style></head>
+<body><div id="frame">
+<div id="shuttingDown">
+  <div class="mf-spinner" aria-hidden="true"></div>
+  <div class="sdTitle">Shutting down…</div>
+  <div class="sdWarn">Don't unplug yet</div>
+</div>
+</div></body></html>

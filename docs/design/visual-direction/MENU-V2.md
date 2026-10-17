@@ -1,4 +1,4 @@
-# Double-tap menu rework (menu v2): option A vs option B, dev-mode confirm fix, frame message
+# Double-tap menu rework (menu v2): final hybrid menu, dev-mode confirm fix, frame message
 
 *Wren (Designer), 17 Oct 2026. Mocks only, for the user's sign-off (via Rowan → Sloane). No app code changes.
 Same tokens and components as [DIRECTION.md](DIRECTION.md); rendered with `tools/render.py` (headless Chromium,
@@ -10,9 +10,33 @@ cancel button with the border around it, maybe bring that onto close on the menu
 right: Shut down, pair new device, sign out of all phones, then Close. Only basic info should be on the left e.g. title
 Memory Frame, free storage and a custom message to the gift receiver."*
 
+## ✅ Final decision (user, 17 Oct 2026): hybrid menu → `frame/07-menu-final.png`, `frame/07-menu-final-empty.png`
+
+![Final menu](frame/07-menu-final.png)
+
+**This is the menu to build.** Options A and B below are kept for the record only.
+- **Title:** "Memory Frame" with the brass dot.
+- **Left column (info only, from B):** the gift message card (walnut-900, brass quote mark, 20 px linen, up to 140 characters, 4 lines
+  normally, capped at 5 with an ellipsis; checked that an all-caps 136-character message fits 5 lines without touching the meter),
+  then **free storage as a display-only meter** at the foot: "Free storage" (oat, 18 px) and "**21.4 GB free** of 28.8 GB" on one line,
+  above the 8 px bar (leaf on forest-700, `transform:scaleX(used)`; `role="meter"`, not interactive). **No IP, Wi-Fi, Site, Phones paired or Version.**
+- **Right column (from A):** Pair new device (forest-600, solid) and **Sign out all phones** (neutral, outlined), each 280 px wide and **64 px** tall, 12 px apart,
+  top-aligned with the message card.
+- **Bottom row across the card (from A):** **Close** bottom-left (neutral with the 3 px brass default ring, initial focus) and **Shut down** bottom-right
+  (brick, opens the confirm, never the default), each 220 px wide and **64 px** tall, under a 1 px forest-700 divider. About 250 px of space separates them.
+- Geometry: card inset 16 px, padding 22/24/20 px, columns 1fr + 280 px with a 28 px gap. Nothing clips at 800x480 (render check plus a visual check).
+- Empty state: the same quiet dashed hint, "No message yet / Add one from your phone in Settings, under “Message on the frame”."
+- **Wording:** "Sign out all phones" (matches the confirm title "Sign out all phones?").
+- **Details move to the phone:** Wi-Fi, address, phones paired and version go to **Settings → About this frame** (`phone/04-settings-v2.png`);
+  the message is set in **Settings → Message on the frame** (`04-settings-v2`, `04b-settings-message-saved`).
+- **Dev-mode confirm fix approved:** `frame/09-dev-mode-confirm-v2.png` (card centred, buttons pinned to the bottom with 28 px padding;
+  root cause and CSS fix below). `08-shutdown-confirm-v2.png` shows the same fix for the shut-down confirm.
+
+## History: options A and B (superseded by the final hybrid)
+
 ![A vs B](frame/07-menu-AvsB.png)
 
-## Pick one: A or B
+### A vs B (as shown to the user)
 
 **Trade-off in one line:** A keeps the technical details (IP, Site, version), which are handy for setup and support but noise
 for a gift receiver; B is simpler and friendlier, and those details move to the phone site's About page.
@@ -63,7 +87,7 @@ frame that tells them the feature exists and where to find it, whereas a blank s
 (secondary colour, no fill, no button look), so a receiver who sees it before a message is set isn't bothered, and it disappears as soon as a message is saved.
 It deliberately has no link or QR, because the frame can't set the message itself.
 
-## Where the removed info goes (option B)
+## Where the removed info goes (final menu and option B)
 IP / address, Wi-Fi name, Site, Phones paired and Version come **off the frame menu** and stay on the phone site:
 - **Settings → About this frame** (new row at the bottom of Settings, in `04-settings-v2` and `04b`): Frame Wi-Fi, Address, Phones paired, Free storage, Version.
 - Wi-Fi name and password changes are still on **Frame Wi-Fi** (home page row, `05-wifi-change`).
@@ -99,7 +123,7 @@ Settings is slightly tightened (12 px card gaps, Transition on one row) so every
 | Saved | ✓ Saved · Saved (disabled) · Remove message · "On the frame now" |
 | About row | About this frame / Wi-Fi, address, phones paired, version |
 
-Sign-out wording: B uses the user's "Sign out of all phones"; A keeps "Sign out all phones" from the reference. The confirm title stays "Sign out all phones?". Pick one when building.
+Sign-out wording: **decided: "Sign out all phones"** (final menu, same as A and the confirm title). B's "Sign out of all phones" is superseded.
 
 ## Dev-mode confirm: why the buttons sit too high (root cause)
 Checked on `origin/main` @ 3dc2fae and PR #72 head `restyle-a-tokens` @ eea9d6e (the CSS rules are the same in both, only colours differ).

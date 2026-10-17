@@ -297,6 +297,50 @@ M["07-menu-optA"] = ("Double-tap menu option A: info table (reference layout) + 
 M["07-menu-optA-empty"] = ("Double-tap menu option A: no message set", MENUA_CSS, menuA(
     '<div class="strip empty"><p>No message yet. Add one from your phone in Settings, under \u201cMessage on the frame\u201d.</p></div>'))
 
+# Menu FINAL (user's hybrid choice, 17 Oct): B's left column (message card + storage meter, no IP/Site/
+# Version) with A's buttons (Pair / Sign out on the right, Close bottom-left with the default ring,
+# Shut down bottom-right). All buttons 64 px. Details live on the phone under "About this frame".
+MENUF_CSS = MENU2_CSS + '''<style>
+.menuF { position:absolute; inset:16px; padding:22px 24px 20px; display:grid; grid-template-columns: 1fr 280px;
+         grid-template-rows:auto 1fr auto; gap:0 28px; }
+.menuF .title { grid-column:1 / -1; display:flex; align-items:center; gap:12px; margin:0 0 14px; }
+.menuF .title .mark { width:14px; height:14px; border-radius:50%; background:var(--mf-brass); flex:none; }
+.menuF .info { display:flex; flex-direction:column; min-width:0; }
+.menuF .store { margin-top:auto; padding-top:14px; }
+.menuF .store .val { margin:0 0 8px; display:flex; justify-content:space-between; align-items:baseline; gap:12px; }
+.menuF .store .val .lab { font-size:var(--mf-f-small); color:var(--mf-oat); margin:0; font-weight:400; }
+.menuF .side { display:flex; flex-direction:column; gap:12px; }
+.menuF .side .btn, .menuF .bottom .btn { min-height:64px; white-space:nowrap; }
+.menuF .side .btn { width:100%; }
+.menuF .bottom { grid-column:1 / -1; display:flex; justify-content:space-between; margin-top:16px; padding-top:16px; border-top:1px solid var(--mf-forest-700); }
+.menuF .bottom .btn { width:220px; }
+</style>'''
+STORE_F = '''<div class="store">
+      <div class="val"><span class="lab">Free storage</span><b>21.4 GB free <span>of 28.8 GB</span></b></div>
+      <div class="track" role="meter" aria-label="Storage used" aria-valuemin="0" aria-valuemax="28.8" aria-valuenow="7.4"><div class="used" style="transform:scaleX(.26)"></div></div>
+    </div>'''
+def menuF(note):
+    return PHOTO + '''
+<div class="scrim"><div class="card menuF" role="dialog" aria-label="Menu">
+  <h1 class="title"><span class="mark"></span>Memory Frame</h1>
+  <div class="info">
+    ''' + note + '''
+    ''' + STORE_F + '''
+  </div>
+  <div class="side">
+    <button class="btn btn-primary">Pair new device</button>
+    <button class="btn btn-neutral">Sign out all phones</button>
+  </div>
+  <div class="bottom">
+    <button class="btn btn-neutral btn-default" autofocus>Close</button>
+    <button class="btn btn-danger">Shut down</button>
+  </div>
+</div></div>'''
+M["07-menu-final"] = ("Double-tap menu FINAL (hybrid): message + storage left, Pair / Sign out right, Close / Shut down bottom", MENUF_CSS, menuF(
+    '<figure class="note"><span class="q" aria-hidden="true">\u201c</span><p>' + GIFT_MSG + '</p></figure>'))
+M["07-menu-final-empty"] = ("Double-tap menu FINAL (hybrid): no message set", MENUF_CSS, menuF(
+    '<div class="note empty"><b>No message yet</b><p>Add one from your phone in Settings, under \u201cMessage on the frame\u201d.</p></div>'))
+
 # Confirm v2: card vertically centred, a minimum height, and the buttons pinned to the bottom with the
 # same 28 px padding on every side (fixes the app's buttons sitting high with dead space under them).
 CONFIRM2_CSS = '''<style>

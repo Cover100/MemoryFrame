@@ -2,6 +2,8 @@
 use a fixed PATH; the reset path runs a root-owned hotspot.sh copy, and hotspot.conf is parsed, never sourced."""
 import os
 import subprocess
+
+import pytest
 from pathlib import Path
 
 from test_hotspot_script import run as hs_run, read, stub  # noqa: F401  (fixture)
@@ -40,11 +42,11 @@ def test_netmode_non_root_still_honours_test_hooks(tmp_path):
 
 def test_netmode_root_block_is_first_and_fixed():
     s = NETMODE.read_text()
-    blk = s.split('if [ "$(id -u)" = 0 ]', 1)[1].split("\nfi\n", 1)[0]
+    blk = s.split('if [ "$EUID" = 0 ]', 1)[1].split("\nfi\n", 1)[0]
     assert "export PATH=/usr/sbin:/usr/bin:/sbin:/bin" in blk
     assert "MEMORYFRAME_*|NMCLI|IW|SYSTEMD_RUN|SUDO) unset" in blk
     assert "MEMORYFRAME_HOTSPOT_SH=/usr/local/sbin/memoryframe-hotspot" in blk
-    assert s.index('if [ "$(id -u)" = 0 ]') < s.index('NMCLI="${NMCLI:-nmcli}"')
+    assert s.index('if [ "$EUID" = 0 ]') < s.index('NMCLI="${NMCLI:-nmcli}"')
 
 
 def test_root_owned_hotspot_copy_and_conf_installed_and_unit_has_no_hook():
@@ -88,3 +90,27 @@ def test_hotspot_conf_bad_values_rejected(stub):
     conf.write_text('SSID="Frame"\nPASSWORD="good-long-pass-42"\nIFACE="wlan0; reboot"\n')
     r = hs_run(env)
     assert r.returncode == 1 and "bad IFACE" in r.stderr
+
+
+@pytest.mark.parametrize("name", ["Memory'Frame", "a b", "x;reboot", "$(id)", ""])
+def test_con_name_with_quote_or_shell_chars_rejected(stub, name):
+    d, conf, env = stub
+    conf.write_text(f'SSID="Frame"\nPASSWORD="good-long-pass-42"\nCON_NAME="{name}"\n')
+    r = hs_run(env)
+    assert r.returncode == 1 and "bad CON_NAME" in r.stderr
+    assert "connection add" not in read(d, "log")
+
+
+def test_root_path_requires_default_con_name(stub):
+    s = (ROOT / "deploy" / "hotspot.sh").read_text()
+    assert 'if [ "$ROOT_PATH" = 1 ] && [ "$CON_NAME" != MemoryFrame-hotspot ]' in s
+    assert "printf '%q connection down %q" in s and "/bin/bash -c \"$REVERT\"" in s
+    assert "'$CON_NAME'" not in s
+
+
+def test_euid_used_before_path_and_uninstall_removes_conf():
+    for f in ("netmode.sh", "hotspot.sh"):
+        s = (ROOT / "deploy" / f).read_text()
+        assert 'if [ "$EUID" = 0 ]' in s and "$(id -u)" not in s.split("CONF")[0]
+    u = (ROOT / "deploy" / "uninstall.sh").read_text()
+    assert "rm -f /etc/memoryframe/hotspot.conf" in u

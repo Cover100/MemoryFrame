@@ -6,6 +6,8 @@ sudo systemctl disable --now memoryframe.service 2>/dev/null || true
 sudo rm -f /etc/systemd/system/memoryframe.service
 sudo systemctl disable memoryframe-netmode.service 2>/dev/null || true
 sudo rm -f /etc/systemd/system/memoryframe-netmode.service /etc/sudoers.d/memoryframe /usr/local/sbin/memoryframe-netmode /usr/local/sbin/memoryframe-hotspot
+sudo rm -f /etc/memoryframe/hotspot.conf   # holds the hotspot password
+sudo rmdir /etc/memoryframe 2>/dev/null || true
 sudo systemctl daemon-reload
 rm -f "$HOME/.config/autostart/memoryframe-kiosk.desktop"
 pkill -f deploy/kiosk.sh || true

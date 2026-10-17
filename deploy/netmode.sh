@@ -52,7 +52,7 @@
 # MEMORYFRAME_AS_ROOT_TEST=1 only makes a non-root test run behave as root (it can't do the reverse).
 set -euo pipefail
 
-if [ "$(id -u)" = 0 ] || [ "${MEMORYFRAME_AS_ROOT_TEST:-}" = 1 ]; then
+if [ "$EUID" = 0 ] || [ "${MEMORYFRAME_AS_ROOT_TEST:-}" = 1 ]; then
     export PATH=/usr/sbin:/usr/bin:/sbin:/bin
     for _v in $(compgen -e); do
         case "$_v" in MEMORYFRAME_*|NMCLI|IW|SYSTEMD_RUN|SUDO) unset "$_v" ;; esac

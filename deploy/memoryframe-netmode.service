@@ -11,7 +11,6 @@ Before=memoryframe.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-Environment=MEMORYFRAME_HOTSPOT_SH=@APP_DIR@/deploy/hotspot.sh
 ExecStart=/usr/local/sbin/memoryframe-netmode boot
 TimeoutStartSec=150
 RuntimeDirectory=memoryframe

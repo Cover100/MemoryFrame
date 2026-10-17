@@ -68,6 +68,12 @@ sed -e "s#@USER@#$APP_USER#g" -e "s#@APP_DIR@#$APP_DIR#g" \
     "$APP_DIR/deploy/memoryframe.service" | sudo tee /etc/systemd/system/memoryframe.service >/dev/null
 # MF-36/MF-18: root-owned copy of the network helper (the checkout is writable by the app user).
 sudo install -o root -g root -m 0755 "$APP_DIR/deploy/netmode.sh" /usr/local/sbin/memoryframe-netmode
+# Root-owned hotspot.sh + config for the memoryframe-reset boot path (root never runs checkout files).
+sudo install -o root -g root -m 0755 "$APP_DIR/deploy/hotspot.sh" /usr/local/sbin/memoryframe-hotspot
+if [ -f "$APP_DIR/deploy/hotspot.conf" ]; then
+    sudo install -d -o root -g root -m 0755 /etc/memoryframe
+    sudo install -o root -g root -m 0600 "$APP_DIR/deploy/hotspot.conf" /etc/memoryframe/hotspot.conf
+fi
 sed -e "s#@APP_DIR@#$APP_DIR#g" \
     "$APP_DIR/deploy/memoryframe-netmode.service" | sudo tee /etc/systemd/system/memoryframe-netmode.service >/dev/null
 # #62: root oneshot units for the app's privileged actions + a polkit rule that lets only the app
@@ -102,11 +108,9 @@ if ! sudo env MEMORYFRAME_BOOT_CONFIG="${MEMORYFRAME_BOOT_CONFIG:-}" bash "$APP_
     echo "WARNING: fan overlay not added" >&2
 fi
 
-echo "== Shutdown screen (late hook writes 'Safe to unplug' to fb0)"
-sudo install -d -m 0755 /usr/lib/memoryframe /usr/lib/systemd/system-shutdown
-sudo install -m 0644 "$APP_DIR/deploy/safe-screen/safe-to-unplug.xrgb8888" \
-    "$APP_DIR/deploy/safe-screen/safe-to-unplug.rgb565" /usr/lib/memoryframe/
-sudo install -m 0755 "$APP_DIR/deploy/safe-screen/memoryframe-safe-screen" /usr/lib/systemd/system-shutdown/
+# MF-49: the fb0 late shutdown hook didn't draw on vc4drmfb; remove it if an older install added it.
+sudo rm -f /usr/lib/systemd/system-shutdown/memoryframe-safe-screen
+sudo rm -rf /usr/lib/memoryframe
 
 echo "== Kiosk autostart"
 chmod +x "$APP_DIR/deploy/kiosk.sh"

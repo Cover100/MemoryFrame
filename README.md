@@ -166,7 +166,7 @@ nano deploy/hotspot.conf                             # set SSID and PASSWORD
 - `--test SECONDS` (30-1800) arms the revert first (`systemd-run --on-active=SECONDS`, runs as
   root and survives the session dropping), then brings the hotspot up. The revert takes the
   hotspot down and brings back the Wi-Fi profile that was active before.
-- **Change password/SSID:** edit `deploy/hotspot.conf` and re-run `./deploy/hotspot.sh`
+- **Change password/SSID:** edit `deploy/hotspot.conf`, re-run `./deploy/install.sh` (it copies the file to root-owned `/etc/memoryframe/hotspot.conf`, which the `memoryframe-reset` boot path uses), and re-run `./deploy/hotspot.sh`
   (same profile, no duplicates, autoconnect stays off).
 - **Rollback:** `./deploy/hotspot.sh --rollback`. If wlan0 does not come back on its own:
   `sudo nmcli connection up <your Wi-Fi profile>`.

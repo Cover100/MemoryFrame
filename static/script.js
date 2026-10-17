@@ -971,7 +971,11 @@ document.addEventListener(
                 swipeAxis = "y";
                 brightnessMode = true;
                 window.mfBrightnessDragging = true;     // cancels the 3 s still-hold (pairing.js)
-                deltaY = event.clientY - startY;        // include the first 12 px
+                // Measure from the crossing point: the first 72 px only start the drag and are
+                // not applied, so the first frame doesn't jump (~50 units at 72 px * speed).
+                startY = event.clientY;
+                lastY = event.clientY;
+                deltaY = 0;
             }else if(Math.abs(totalX) > BRIGHTNESS_START){
                 swipeAxis = "x";
             }

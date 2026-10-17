@@ -43,9 +43,16 @@ def test_safe_screen_is_static():
 
 
 def test_dialog_buttons_pinned_to_bottom():
-    assert "#devModeBox,#shutdownBox{display:flex;flex-direction:column}" in CSS
-    assert "margin-top:auto" in rule(".shutdownButtons")
-    assert "flex" not in rule("#confirmBox")                  # the no-op rule is gone
+    assert "#devModeBox,#shutdownBox,#confirmBox{width:600px;min-height:272px;padding:28px;display:flex;flex-direction:column}" in CSS
+    assert "margin-top:auto" in rule(".shutdownButtons") and "margin-top:auto" in rule(".confirmButtons")
+    assert "justify-content:space-between" not in rule("#confirmBox")   # the old no-op rule is gone
+    b = rule(".confirmButtons button,.shutdownButtons button")
+    assert "width:260px" in b and "font-weight:700" in b
+
+
+def test_dev_confirm_copy_and_phone_button_font():
+    assert "Switch to dev mode?" in HTML and ">Switch</button>" in HTML and "Join developer Wi-Fi?" not in HTML
+    assert ".mf-phone button { font: inherit;" in (ROOT / "static" / "tokens.css").read_text()
 
 
 def _menu(client, mf_app, msg):

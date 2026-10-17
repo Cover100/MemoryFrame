@@ -56,10 +56,11 @@ def test_confirm_copy_and_size(ready):
     assert visible(ready, "confirmOverlay") and not menu_open(ready)
     assert "Sign out all phones?" in text(ready, "confirmBox") and CONFIRM_BODY in text(ready, "confirmBox")
     box = evaluate(ready, "(()=>{const r=document.getElementById('confirmBox').getBoundingClientRect();return [r.width,r.height];})()")
-    assert [round(v) for v in box] == [480, 260]
+    assert round(box[0]) == 600 and round(box[1]) >= 272          # 08/09-v2 card
     for b in ("confirmCancel", "confirmSignOut"):
-        r = evaluate(ready, f"(()=>{{const r=document.getElementById('{b}').getBoundingClientRect();return [r.width,r.height];}})()")
-        assert round(r[0]) >= 200 and round(r[1]) >= 64
+        r = evaluate(ready, f"(()=>{{const r=document.getElementById('{b}').getBoundingClientRect(),"
+                            f"c=document.getElementById('confirmBox').getBoundingClientRect();return [r.width,r.height,c.bottom-r.bottom];}})()")
+        assert round(r[0]) == 260 and round(r[1]) == 64 and round(r[2]) == 29   # pinned: 28 px padding + 1 px border
     assert evaluate(ready, "getComputedStyle(document.getElementById('confirmSignOut')).backgroundColor") == "rgb(168, 53, 42)"   # --mf-brick (restyle A)
 
 
@@ -233,3 +234,14 @@ def test_success_card_has_no_code_behind_it(ready, mf_app):
     assert text(ready, "pairCode") == "" and evaluate(ready, "document.getElementById('pairQr').innerHTML") == ""
     assert evaluate(ready, "getComputedStyle(document.getElementById('pairBox')).display") == "none"
     assert code.replace(" ", "") not in evaluate(ready, "document.getElementById('pairOverlay').innerText").replace(" ", "")
+
+
+@pytest.mark.parametrize("box,ask,btn", [("shutdownBox", "shutdownOverlay", "shutdownCancel"),
+                                         ("devModeBox", "devModeOverlay", "devModeCancel")])
+def test_confirm_buttons_pinned_to_bottom(ready, box, ask, btn):
+    evaluate(ready, f"document.getElementById('{ask}').classList.add('visible')")
+    ready.pump(0.2)
+    r = evaluate(ready, f"(()=>{{const c=document.getElementById('{box}').getBoundingClientRect(),"
+                        f"b=document.getElementById('{btn}');const r=b.getBoundingClientRect();"
+                        f"return [c.width,c.bottom-r.bottom,r.width,getComputedStyle(b).fontWeight];}})()")
+    assert [round(r[0]), round(r[1]), round(r[2]), r[3]] == [600, 29, 260, "700"]

@@ -342,6 +342,17 @@
             if(window.mfShuttingDown){ e.stopImmediatePropagation(); e.preventDefault(); }
         }, true);
     }
+    // #62: if the poweroff call itself fails (e.g. polkit), don't leave the cover up: "Couldn't shut down".
+    setInterval(async ()=>{
+        if(!window.mfShuttingDown){ return; }
+        let failed = false;
+        try{ failed = (await (await fetch("/frame/shutdown-status")).json()).failed === true; }catch(e){ return; }
+        if(!failed){ return; }
+        shuttingDown = false; window.mfShuttingDown = false;
+        for(const id of ["shuttingDown", "safeScreen"]){ const el = $(id); if(el){ el.hidden = true; } }
+        $("shutdownAsk").hidden = false; $("shutdownError").hidden = false;
+        shutdownOverlay.classList.add("visible");
+    }, 1000);
 
     button("menuPair", ()=>{ closeMenu(); onDemand = true; onDemandRound = false; tick(); });
     // ---------- MF-31: confirm "Sign out all phones" ----------

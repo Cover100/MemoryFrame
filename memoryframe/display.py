@@ -188,9 +188,13 @@ def _schedule_poweroff(app, delay):
             return
         st["done"] = True
         try:
-            subprocess.run(cmd, timeout=30, check=False)
+            rc = subprocess.run(cmd, timeout=30, check=False).returncode
+            why = f"exit {rc}" if rc else ""
         except (OSError, subprocess.TimeoutExpired) as e:
-            log.warning("poweroff failed: %s", type(e).__name__)
+            why = type(e).__name__
+        if why:                                    # e.g. polkit rule missing: tell the kiosk, accept writes again
+            log.warning("poweroff failed: %s", why)
+            st.update(poweroff_failed=True, synced=False, done=False)
     t = threading.Timer(delay, run)
     t.daemon = True
     st["timer"] = t
@@ -204,6 +208,14 @@ def _refuse_writes_while_shutting_down():
         abort(503)
 
 
+@bp.route("/frame/shutdown-status")
+@localhost_only
+def shutdown_status():
+    """#62: the kiosk polls this while its shutdown cover is up; failed=true -> "Couldn't shut down"."""
+    st = current_app.extensions.get("mf_shutdown") or {}
+    return jsonify({"failed": bool(st.get("poweroff_failed"))})
+
+
 @bp.route("/frame/shutdown", methods=["POST"])
 @localhost_only
 def shutdown():
@@ -213,6 +225,7 @@ def shutdown():
     app = current_app._get_current_object()
     st = app.extensions.setdefault("mf_shutdown", {})
     st["synced"] = True                       # refuse further writes from now on
+    st["poweroff_failed"] = False
     log.warning("shutdown requested from the frame menu; syncing")
     if not _sync():
         st["synced"] = False

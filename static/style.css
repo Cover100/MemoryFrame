@@ -610,6 +610,7 @@ video {
 .menuNote.empty{background:transparent;border:1px dashed var(--mf-walnut);padding:16px}
 .menuNote.empty b{display:block;font-size:20px;color:var(--mf-oat);margin-bottom:4px}
 .menuNote.empty p{display:block;color:var(--mf-oat);font-size:var(--mf-f-small)}
+.menuNote[hidden]{display:none}
 .menuStore{margin-top:auto;padding:12px 0 20px}
 .menuStoreVal{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px}
 .menuStoreVal>span{font-size:var(--mf-f-small);color:var(--mf-oat)}

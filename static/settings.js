@@ -37,4 +37,37 @@
         const v = sh.checked;
         save("shuffle", v, ()=>{ sh.checked = !v; });
     });
+
+    // #73: message on the frame. Live preview via textContent (never as HTML); saved on Save.
+    const ta = document.getElementById("frameMessage");
+    if(ta){
+        const max = Number(ta.dataset.max) || 140;
+        const count = document.getElementById("messageCount");
+        const prev = document.getElementById("messagePreview"), prevText = document.getElementById("messagePreviewText");
+        const prevEmpty = document.getElementById("messagePreviewEmpty");
+        const preview = ()=>{
+            const v = ta.value.replace(/\s+/g, " ").trim();
+            count.textContent = `${ta.value.length} / ${max}`;
+            count.classList.toggle("err", ta.value.length > max);
+            prevText.textContent = v;
+            prev.hidden = !v; prevEmpty.hidden = !!v;
+        };
+        ta.addEventListener("input", preview);
+        preview();
+        async function saveMessage(value){
+            try{
+                const r = await fetch("/api/v1/message", {method: "PUT", credentials: "same-origin",
+                    headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf},
+                    body: JSON.stringify({message: value})});
+                const j = await r.json().catch(()=> ({}));
+                if(!r.ok){ throw new Error(j.error || String(r.status)); }
+                ta.value = j.message; preview();
+                status("message", j.message ? "Saved" : "Cleared");
+            }catch(e){
+                status("message", "Couldn't save. Try again.", true);
+            }
+        }
+        document.getElementById("messageSave").addEventListener("click", ()=> saveMessage(ta.value));
+        document.getElementById("messageClear").addEventListener("click", ()=> saveMessage(""));
+    }
 })();

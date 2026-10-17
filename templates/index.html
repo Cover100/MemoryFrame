@@ -139,9 +139,9 @@
         <div id="menuBox" role="dialog" aria-label="Menu">
             <div class="menuTitle"><span class="menuMark" aria-hidden="true"></span>Memory Frame</div>
             <div class="menuInfo">
-                {% if frame_message %}<figure class="menuNote"><span class="q" aria-hidden="true">“</span><p id="menuMessage">{{ frame_message }}</p></figure>
-                {% else %}<div class="menuNote empty"><b>No message yet</b><p>Add one from your phone in Settings, under “Message on the frame”.</p></div>
-                {% endif %}<div class="menuStore">
+                <figure class="menuNote" id="menuNote"{% if not frame_message %} hidden{% endif %}><span class="q" aria-hidden="true">“</span><p id="menuMessage">{{ frame_message }}</p></figure>
+                <div class="menuNote empty" id="menuNoteEmpty"{% if frame_message %} hidden{% endif %}><b>No message yet</b><p>Add one from your phone in Settings, under “Message on the frame”.</p></div>
+                <div class="menuStore">
                     <div class="menuStoreVal"><span>Free storage</span><b id="menuFree">-</b></div>
                     <div class="menuTrack" role="meter" aria-label="Storage used" aria-valuemin="0" aria-valuemax="100" id="menuMeter"><div id="menuUsed"></div></div>
                 </div>

@@ -33,6 +33,27 @@
   <label class="toggle"><input type="checkbox" id="shuffle" data-key="shuffle" {% if s.shuffle %}checked{% endif %}> On</label>
   <span class="status" data-for="shuffle" aria-live="polite"></span>
 </section>
+<section id="messageSection">
+  <h2>Message on the frame</h2>
+  <p class="hint">Shown in the frame's menu (double tap the photo). Up to {{ message_max }} characters.</p>
+  <label for="frameMessage" class="sr-only">Message</label>
+  <textarea id="frameMessage" maxlength="{{ message_max }}" rows="3" data-max="{{ message_max }}"
+    placeholder="e.g. Happy birthday, Nana! Love from all of us.">{{ message }}</textarea>
+  <div class="msgRow"><span id="messageCount" aria-live="polite">{{ message|length }} / {{ message_max }}</span>
+    <button type="button" id="messageSave">Save</button> <button type="button" id="messageClear">Clear</button></div>
+  <span class="status" data-for="message" aria-live="polite"></span>
+  <h3>Preview</h3>
+  <figure class="msgPreview" id="messagePreview"><span class="q" aria-hidden="true">“</span><p id="messagePreviewText">{{ message }}</p></figure>
+  <div class="msgPreview empty" id="messagePreviewEmpty"><b>No message yet</b></div>
+</section>
+<section id="aboutSection">
+  <h2>About this frame</h2>
+  <dl class="about">
+    <dt>IP</dt><dd id="aboutIp">{{ about.ip }}</dd>
+    <dt>Site</dt><dd id="aboutSite">{{ about.site }}</dd>
+    <dt>Version</dt><dd id="aboutVersion">{{ about.version }}</dd>
+  </dl>
+</section>
 <p><a href="/admin/">Back</a></p>
 <script src="{{ static('settings.js') }}"></script>
 </body>

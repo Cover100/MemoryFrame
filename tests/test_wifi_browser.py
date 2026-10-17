@@ -39,6 +39,8 @@ def test_frame_rejoin_screen(page, server, mf_app, net, helper):
     assert cd in ("3:00", "2:59", "2:58", "2:57"), cd
     q = rect(page, "#wifiRejoinQr")
     assert round(q[2] - q[0]) == 240 and round(q[3] - q[1]) == 240
+    bar = evaluate(page, "document.getElementById('wifiBar').style.transform")       # #70 mock 13: brass bar
+    assert bar.startswith("scaleX(0.5") or bar.startswith("scaleX(0.6"), bar
     data = decode(screenshot(page), q)
     assert data.startswith("WIFI:T:WPA;S:Frame Home;P:Brand new pw!;"), data
     # not dismissable; the menu is ignored

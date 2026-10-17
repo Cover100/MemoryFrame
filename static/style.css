@@ -319,190 +319,16 @@ video {
 
 
 
-/* ====================================================
-   Brightness Overlay
-   ==================================================== */
-
-
-#brightnessOverlay {
-
-
-    position: absolute;
-
-
-
-    left: 50%;
-
-
-
-    bottom: 35px;
-
-
-
-    transform:
-
-        translateX(-50%);
-
-
-
-    display: none;
-
-
-
-    align-items: center;
-
-
-
-    justify-content: center;
-
-
-
-    gap: 12px;
-
-
-
-    padding:
-
-        12px
-        25px;
-
-
-
-    border-radius:
-
-        30px;
-
-
-
-    background:
-
-        rgba(
-            0,
-            0,
-            0,
-            0.65
-        );
-
-
-
-    color: white;
-
-
-
-    font-family:
-
-        Arial,
-        sans-serif;
-
-
-
-    font-size:
-
-        30px;
-
-
-
-    z-index: 100;
-
-
-
-    pointer-events: none;
-
-
-
-    animation:
-
-        fadeBrightness
-        0.2s
-        ease;
-
-
-
-}
-
-
-
-
-
-#brightnessIcon {
-
-
-    font-size:
-
-        34px;
-
-
-}
-
-
-
-
-
-#brightnessValue {
-
-
-    min-width:
-
-        60px;
-
-
-    text-align:
-
-        center;
-
-
-}
-
-
-
-
-
-
-@keyframes fadeBrightness {
-
-
-    from {
-
-
-        opacity: 0;
-
-
-
-        transform:
-
-            translateX(-50%)
-            translateY(10px);
-
-
-
-    }
-
-
-    to {
-
-
-        opacity: 1;
-
-
-
-        transform:
-
-            translateX(-50%)
-            translateY(0);
-
-
-
-    }
-
-
-}
-
-
-
-
-
-
-
+/* #70 mock 02: brightness pill (brass sun, brass fill scaled with transform, bold linen value) */
+#brightnessOverlay{position:absolute;left:50%;bottom:32px;transform:translateX(-50%);display:none;align-items:center;gap:16px;
+  padding:14px 24px;border-radius:var(--mf-r-pill);background:var(--mf-pill);color:var(--mf-linen);font-family:var(--mf-font-frame);
+  font-size:var(--mf-f-body);z-index:100;pointer-events:none;animation:fadeBrightness .2s ease}
+#brightnessIcon{color:var(--mf-brass);line-height:0}
+.mf-sun{width:28px;height:28px}
+.brightTrack{width:240px;height:10px;border-radius:5px;background:var(--mf-forest-700);overflow:hidden}
+#brightnessFill{display:block;height:100%;background:var(--mf-brass);transform-origin:left}
+#brightnessValue{min-width:64px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+@keyframes fadeBrightness{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
 /* ====================================================
    Future Clock Overlay
    ==================================================== */
@@ -584,16 +410,27 @@ video {
   background:var(--mf-scrim);color:var(--mf-linen);font-family:var(--mf-font-frame)}
 .overlay.visible{display:flex}
 #menuOverlay{z-index:60}
-#pairBox{display:flex;gap:22px;align-items:center;max-width:790px;max-height:470px}
-.step{display:flex;flex-direction:column;align-items:center;text-align:center}
+/* #70 mocks 03/04: "Pair a phone" title bar with Close, step cards with numbered brass badges */
+#pairOverlay:not(.toast){background:var(--mf-ink)}
+#pairBox{position:absolute;inset:0;box-sizing:border-box;padding:22px 28px;display:flex;flex-direction:column}
+.pairHead{display:flex;justify-content:space-between;align-items:center;font-size:var(--mf-f-title);font-weight:700;margin-bottom:16px;min-height:56px}
+#pairClose{margin:0!important}
+.pairCols{flex:1;display:flex;gap:20px;min-height:0}
+.step{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;background:var(--mf-forest-900);
+  border:1px solid var(--mf-forest-700);border-radius:var(--mf-r-lg);padding:16px;box-sizing:border-box}
+#codeStep{flex:1.25}
+.stepBadge{flex:none;display:inline-grid;place-items:center;width:32px;height:32px;border-radius:50%;background:var(--mf-walnut-900);
+  border:2px solid var(--mf-brass);color:var(--mf-brass);font-size:18px;font-weight:700;box-sizing:border-box}
+.codeWrap{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:12px}
 .step[hidden]{display:none}
-.stepTitle{font-size:28px;font-weight:600;margin-bottom:8px}
-.stepText{font-size:22px;margin-top:6px;max-width:230px;overflow-wrap:anywhere}
+.stepTitle{align-self:flex-start;display:flex;gap:10px;align-items:center;font-size:var(--mf-f-body);font-weight:700}
+.stepText{font-size:var(--mf-f-small);color:var(--mf-oat);overflow-wrap:anywhere}
+.stepText b{display:block;color:var(--mf-linen)}
 /* MF-23: the SVG carries its own 4-module white quiet zone; scale the whole thing, never crop */
 .qr{flex:none;line-height:0;overflow:visible}
-.qr svg{display:block;width:min(200px,42vh);height:auto;aspect-ratio:1/1;max-width:100%;
+.qr svg{display:block;width:min(184px,40vh);height:auto;aspect-ratio:1/1;max-width:100%;
   background:#fff;shape-rendering:crispEdges;image-rendering:pixelated}
-#pairCode{font-size:80px;font-weight:700;letter-spacing:2px;font-variant-numeric:tabular-nums;white-space:nowrap}
+#pairCode{font-family:var(--mf-font-mono-digits);font-size:56px;line-height:1;font-weight:700;letter-spacing:2px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .overlay button{font-size:24px;margin:10px 8px 0 0;padding:10px 18px;border-radius:var(--mf-r-md);border:0;font-family:var(--mf-font-frame)}
 .emptyText{font-size:30px;text-align:center;max-width:720px;line-height:1.4}
 .emptyTitle{font-size:48px;font-weight:700;margin-bottom:16px}
@@ -625,10 +462,14 @@ video {
 .overlay button.mf-btn{min-height:var(--mf-touch-frame);font-weight:700}
 .overlay button.mf-btn-secondary{border:2px solid var(--mf-forest-700)}
 #confirmCancel,#shutdownCancel,#devModeCancel{outline:var(--mf-ring-width) solid var(--mf-brass);outline-offset:3px}   /* default button */
-#pairUrlAlt{display:block;font-size:20px;opacity:.85}
-#pairHint{position:fixed;right:12px;bottom:10px;z-index:40;display:none;padding:6px 12px;border-radius:8px;
-  background:rgba(0,0,0,.45);color:rgba(255,255,255,.85);font:18px var(--mf-font-frame);pointer-events:none}
-#pairHint.visible{display:block}
+#pairUrlAlt{display:block}
+#wifiStep[hidden]~.step .qr svg{width:min(236px,46vh)}   /* 04: two columns, bigger site QR */
+#wifiStep[hidden]~#codeStep{flex:1}
+#wifiStep[hidden]~#codeStep #pairCode{font-size:var(--mf-f-code)}
+#pairHint{position:fixed;right:16px;bottom:16px;z-index:40;display:none;align-items:center;gap:8px;padding:8px 16px;border-radius:var(--mf-r-pill);
+  background:var(--mf-pill);color:var(--mf-linen);font:var(--mf-f-small) var(--mf-font-frame);pointer-events:none}
+#pairHint::before{content:"";width:12px;height:12px;border-radius:50%;background:var(--mf-brass);flex:none}
+#pairHint.visible{display:flex}
 
 /* MF-17: transition "None" = instant cut */
 .mf-no-fade .media{transition:none!important}
@@ -655,9 +496,12 @@ video {
 .confirmError{font-size:20px;color:var(--mf-brick-text);font-weight:600}
 .confirmError[hidden]{display:none}
 /* ---------- MF-36: product / developer mode (frame only) ---------- */
-.dev-banner{position:fixed;left:12px;bottom:12px;z-index:9000;font-size:14px;line-height:1.3;
-    color:rgba(255,255,255,.6);background:rgba(0,0,0,.35);border-radius:4px;padding:4px 8px;
-    pointer-events:none;font-family:var(--mf-font-frame)}
+/* #70 mock 12: top-left pill with a brass dot; hidden (opacity) while any overlay/dialog is up */
+.dev-banner{position:fixed;left:12px;top:12px;z-index:9000;display:flex;align-items:center;gap:8px;font-size:var(--mf-f-small);line-height:1.3;
+    color:var(--mf-linen);background:var(--mf-pill);border-radius:var(--mf-r-pill);padding:6px 14px;
+    pointer-events:none;font-family:var(--mf-font-frame);transition:opacity .2s}
+.dev-banner::before{content:"";width:10px;height:10px;border-radius:50%;background:var(--mf-brass);flex:none}
+body:has(.overlay.visible,#shuttingDown:not([hidden]),#safeScreen:not([hidden]),.hotspot-error:not([hidden]),.wifi-overlay:not([hidden]),.dev-toast:not([hidden])) .dev-banner{opacity:0}
 .dev-banner[hidden],.dev-toast[hidden],.hotspot-error[hidden]{display:none}
 .dev-toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:8900;width:560px;
     height:72px;box-sizing:border-box;background:var(--mf-forest-900);color:var(--mf-linen);border:1px solid var(--mf-forest-700);
@@ -665,17 +509,23 @@ video {
 .dev-toast.fading{opacity:0}
 .dev-toast-title{font-size:20px;font-weight:600;white-space:nowrap}
 .dev-toast-sub{font-size:16px;color:var(--mf-oat);white-space:nowrap}
-.hotspot-error{position:fixed;inset:0;z-index:8800;background:var(--mf-scrim);display:flex;
-    align-items:center;justify-content:center;font-family:var(--mf-font-frame)}
-.hotspot-error-card{position:relative;width:680px;height:400px;box-sizing:border-box;background:var(--mf-forest-900);
-    border:1px solid var(--mf-forest-700);color:var(--mf-linen);border-radius:var(--mf-r-lg);padding:20px 26px;text-align:left;font-size:20px;line-height:1.25;overflow:hidden}
-.hotspot-error-card h2{font-size:28px;margin:0 0 8px;color:var(--mf-brick-text)}
-.hotspot-error-card p{margin:0 0 6px}
-.hotspot-error-card ol{margin:0 0 6px;padding-left:24px;font-size:17px}
-.hotspot-error-card li{margin:0 0 2px}
-.hotspot-error-foot{font-size:16px;color:var(--mf-oat);max-width:470px}
-#hotspotErrorClose{position:absolute;right:20px;bottom:16px;height:64px;min-width:120px;font-size:20px;
-    border:2px solid var(--mf-forest-700);border-radius:var(--mf-r-md);background:var(--mf-forest-800);color:var(--mf-linen);font-weight:700}
+.hotspot-error{position:fixed;inset:0;z-index:8800;background:var(--mf-ink);font-family:var(--mf-font-frame)}
+/* #70 mock 06: two columns; brick "!" + title + Close left, numbered brass steps right */
+.hotspot-error-card{position:absolute;inset:0;box-sizing:border-box;display:grid;grid-template-columns:270px 1fr;gap:22px;
+    padding:20px 22px 20px 26px;color:var(--mf-linen);overflow:hidden}
+.herrLeft{display:flex;flex-direction:column}
+.herrIcon{width:56px;height:56px;border-radius:50%;background:var(--mf-brick);color:#fff;display:grid;place-items:center;font-size:34px;font-weight:700;margin-bottom:16px}
+.hotspot-error-card h2{font-size:28px;margin:0 0 12px;line-height:1.15}
+.herrLeft p{color:var(--mf-oat);margin:0;font-size:20px}
+.hotspot-error-card h3{font-size:20px;margin:0 0 10px}
+.hotspot-error-card ol{margin:0;padding:0;list-style:none;counter-reset:s;display:flex;flex-direction:column;gap:6px}
+.hotspot-error-card li{counter-increment:s;display:flex;gap:10px;align-items:center;background:var(--mf-forest-900);border:1px solid var(--mf-forest-700);
+    border-radius:var(--mf-r-md);padding:6px 10px;font-size:18px;line-height:1.2}
+.hotspot-error-card li::before{content:counter(s);flex:none;width:28px;height:28px;box-sizing:border-box;border-radius:50%;background:var(--mf-walnut-900);
+    border:2px solid var(--mf-brass);color:var(--mf-brass);font-weight:700;font-size:16px;display:grid;place-items:center}
+.hotspot-error-card code{font-family:inherit;font-weight:700;color:var(--mf-brass)}
+.hotspot-error-foot{font-size:18px;color:var(--mf-oat);margin:8px 0 0;line-height:1.2}
+#hotspotErrorClose{margin-top:auto;align-self:flex-start;width:160px;min-height:64px}
 
 /* MF-49 shut down */
 #shutdownOverlay{z-index:70}
@@ -703,6 +553,17 @@ video {
 .wifi-qr{width:240px;height:240px;margin:0 auto 6px;background:#fff;border-radius:var(--mf-r-sm);overflow:hidden}
 .wifi-qr svg{width:100%;height:100%;display:block;shape-rendering:crispEdges}
 .wifi-countdown{font-size:32px;font-variant-numeric:tabular-nums;font-weight:600;color:var(--mf-brass)}
+/* #70 mock 13: full-screen, QR left, text + brass countdown and bar right */
+.wifi-card.wifi-rj{position:absolute;inset:0;width:auto;max-height:none;border:0;border-radius:0;background:var(--mf-ink);padding:24px 32px;
+    display:grid;grid-template-columns:240px 1fr;gap:32px;align-items:center;text-align:left;font-size:20px}
+.wifi-rj .wifi-qr{margin:0}
+.wifi-rj p{color:var(--mf-oat);margin:0 0 10px}
+.wifi-rj p b{color:var(--mf-linen)}
+.wifi-rj .nowrap{white-space:nowrap}
+.wifi-rj .wifi-countdown{margin-top:22px;font-size:20px;font-weight:400}
+.wifi-rj #wifiCountdown{font-size:48px;color:var(--mf-brass);margin-left:8px}
+.wifi-bar{height:8px;background:var(--mf-forest-700);border-radius:4px;overflow:hidden}
+#wifiBar{height:100%;background:var(--mf-brass);transform-origin:left}
 .wifi-card h2 .toastTick{margin-right:12px}
 .wifi-x{position:absolute;right:8px;top:6px;width:56px;height:56px;font-size:32px;border:0;background:none;color:var(--mf-linen)}
 

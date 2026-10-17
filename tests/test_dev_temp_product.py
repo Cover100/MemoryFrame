@@ -108,7 +108,7 @@ def test_kiosk_shows_joining_then_closes_on_success(page, server, mf_app, net):
     mf_app.config["DEV_MODE_CMD"] = ["sh", "-c", "sleep 1; echo ok"]
     _confirm(page)
     page.pump(0.3)
-    assert "Joining home Wi-Fi" in _box(page)
+    assert "Switching to dev mode" in _box(page)
     page.pump(1.5)
     assert not evaluate(page, "document.getElementById('devModeOverlay').classList.contains('visible')")
 

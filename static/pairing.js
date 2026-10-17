@@ -73,7 +73,8 @@
         const wifi = !!st.wifi_qr_svg;
         $("wifiStep").hidden = !wifi;
         if(wifi && typeof st.wifi_qr_svg === "string"){ $("wifiQr").innerHTML = st.wifi_qr_svg; }     // SVG from our own server
-        $("siteTitle").textContent = wifi ? "2. Open site" : "Pair your phone";
+        $("siteBadge").textContent = wifi ? "2" : "1";      // #70 03/04: numbered brass badges
+        $("codeBadge").textContent = wifi ? "3" : "2";
         if(st.round && typeof st.round.qr_svg === "string" && typeof st.round.code === "string"){
             $("pairCode").textContent = st.round.code.slice(0, 3) + " " + st.round.code.slice(3);
             $("pairQr").innerHTML = st.round.qr_svg;
@@ -141,7 +142,7 @@
             $("wifiRejoinName").textContent = wc.new_ssid || "";
             if(typeof wc.qr_svg === "string"){ $("wifiRejoinQr").innerHTML = wc.qr_svg; }
             wifiDeadline = Date.now() + (Number(wc.remaining) || 0) * 1000;    // server deadline
-            $("wifiCountdown").textContent = mmss(wifiDeadline - Date.now());
+            tickWifi();
             closeMenu();
         }
         $("wifiUpdated").hidden = !(wc && wc.state === "committed");
@@ -155,7 +156,12 @@
             if(typeof wc.qr_svg === "string"){ $("wifiCancelledQr").innerHTML = wc.qr_svg; }
         }
     }
-    setInterval(()=>{ if(wifiRejoinActive()){ $("wifiCountdown").textContent = mmss(wifiDeadline - Date.now()); } }, 250);
+    function tickWifi(){
+        const left = wifiDeadline - Date.now();
+        $("wifiCountdown").textContent = mmss(left);
+        $("wifiBar").style.transform = "scaleX(" + Math.min(1, Math.max(0, left / 300000)).toFixed(3) + ")";   // 5 min window
+    }
+    setInterval(()=>{ if(wifiRejoinActive()){ tickWifi(); } }, 250);
     function closeCancelled(){ cancelledClosedId = cancelledId; $("wifiCancelled").hidden = true; }
     for(const id of ["wifiRejoin", "wifiUpdated"]){
         $(id).addEventListener("pointerdown", (e)=> e.stopPropagation());     // not dismissable, no menu
@@ -284,7 +290,7 @@
         if(devBusy){ return; }
         devBusy = true;
         $("devModeAsk").hidden = true; $("devModeError").hidden = true; $("devModeDone").hidden = false;
-        $("devModeStatus").textContent = "Joining home Wi-Fi\u2026";
+        $("devModeStatus").textContent = "Switching to dev mode\u2026";
         $("devModeDetail").textContent = "This can take up to 30 seconds.";
         $("devModeAfter").hidden = true;
         let res = {ok: false, reason: "no answer from the frame"};

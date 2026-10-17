@@ -31,7 +31,7 @@ def test_dev_ring_animates_compositor_only():
 
 
 def test_overlays_use_frame_theme():
-    for sel in (".hotspot-error-card", ".wifi-card", "#pairSuccess"):
+    for sel in (".hotspot-error-card li", ".wifi-card", "#pairSuccess", ".step"):
         r = rule(sel)
         assert "var(--mf-forest-900)" in r and "#fff" not in r, sel
     assert "box-shadow" not in CSS
@@ -68,3 +68,26 @@ def test_menu_v2_message_card_and_empty_state(client, mf_app):
     html = _menu(client, mf_app, "Happy 80th, Nana! <b>xx</b>")
     assert "Happy 80th, Nana! &lt;b&gt;xx&lt;/b&gt;" in html and "No message yet" not in html   # text, never HTML
     assert 'role="meter"' in html and html.index('id="menuClose"') < html.index('id="menuShutdown"')
+
+
+def test_dev_banner_pill_hides_under_overlays():
+    b = rule(".dev-banner")
+    assert "top:12px" in b and "var(--mf-pill)" in b and "font-size:var(--mf-f-small)" in b
+    assert "background:var(--mf-brass)" in rule(".dev-banner::before")
+    hide = CSS[CSS.index("body:has(.overlay.visible,"):]
+    hide = hide[:hide.index("}") + 1]
+    for part in ("#shuttingDown:not([hidden])", "#safeScreen:not([hidden])", ".hotspot-error:not([hidden])", ".wifi-overlay:not([hidden])"):
+        assert part in hide, part
+    assert hide.endswith(".dev-banner{opacity:0}")
+    assert "Switching to dev mode…" in HTML and "Joining home Wi-Fi" not in HTML
+    assert "Joining home Wi-Fi" not in (ROOT / "static" / "pairing.js").read_text()
+
+
+def test_brightness_pill_and_pairing_steps():
+    o = rule("#brightnessOverlay")
+    assert "var(--mf-pill)" in o and "Arial" not in o and "☀" not in HTML
+    assert "var(--mf-brass)" in rule("#brightnessFill") and "brightnessFill" in (ROOT / "static" / "script.js").read_text()
+    assert HTML.count('class="stepBadge"') == 3 and 'id="siteBadge"' in HTML and 'id="codeBadge"' in HTML
+    assert "border:2px solid var(--mf-brass)" in rule(".stepBadge")
+    for b in ("pairClose", "emptyClose", "devModeOk", "hotspotErrorClose"):
+        assert f'id="{b}" class="mf-btn mf-btn-secondary"' in HTML, b

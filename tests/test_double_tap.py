@@ -193,7 +193,7 @@ def test_brightness_starts_immediately_without_hold(ready, backlight):
 
 def test_small_vertical_wobble_is_not_brightness(ready, backlight):
     press(ready, 400, 300)
-    move(ready, 400, 292)                      # 8 px < 12 px
+    move(ready, 400, 292)                      # 8 px wobble: well under BRIGHTNESS_START (72 px)
     release(ready, 400, 292)
     ready.pump(0.8)
     assert (backlight / "brightness").read_text().strip() == "100"

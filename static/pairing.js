@@ -198,6 +198,7 @@
             const showPair = success || (st.paired === 0 && st.media === 0 && !dismissed) || onDemand;
             const showEmpty = !showPair && !dismissed && st.paired > 0 && st.media === 0;
             pairOverlay.classList.toggle("visible", showPair);
+            pairOverlay.classList.toggle("toast", success);   // #70: top-centre toast over the photo
             if(showEmpty && !emptyOverlay.classList.contains("visible")){ openedAt.set(emptyOverlay, Date.now()); }
             emptyOverlay.classList.toggle("visible", showEmpty);
             // Small corner hint whenever pairing is possible but nothing covers the screen.

@@ -96,8 +96,9 @@
     <!-- MF-12/MF-19 onboarding: Wi-Fi QR -> site QR + code (static/pairing.js) -->
     <div id="pairOverlay" class="overlay" aria-live="polite">
         <div id="pairSuccess" hidden>
-            <div class="successTitle">✓ Phone paired</div>
-            <div class="successText">Send photos from your phone.</div>
+            <span class="toastTick"><svg class="mf-tick" viewBox="0 0 24 24" aria-hidden="true"><polyline points="5,12.5 10,17.5 19,7" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            <div><div class="successTitle">Phone paired</div>
+            <div class="successText">Send photos from your phone.</div></div>
         </div>
         <div id="pairDevTemp" hidden>
             <div class="successTitle">Restart the frame to pair a phone</div>
@@ -181,17 +182,15 @@
     <!-- Safe screen (Wren's layout), shown only after the server confirms sync; stays on the
          panel through poweroff. Copy: display.SAFE_SCREEN_COPY. -->
     <div id="safeScreen" hidden>
-        <svg class="safeTick" viewBox="0 0 120 120" width="120" height="120" aria-hidden="true">
-            <polyline points="22,64 50,92 100,28" fill="none" stroke="#fff" stroke-width="16"
-                      stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
+        <div class="mf-spinner safeSpin" aria-hidden="true"></div>
         <div class="safeTitle">{{ safe_copy.title }}</div>
         <div class="safeSub">{{ safe_copy.sub }}</div>
+        <div class="safeNote">{{ safe_copy.note }}</div>
     </div>
     <div id="shuttingDown" hidden>
+        <div class="mf-spinner" aria-hidden="true"></div>
         <div class="sdTitle">Shutting down…</div>
         <div class="sdWarn">Don't unplug yet</div>
-        <div class="sdDots"><span></span><span></span><span></span></div>
     </div>
 
     <!-- MF-49: shut down (confirm) -->
@@ -279,7 +278,7 @@
     </div>
 </div>
 <div id="wifiUpdated" class="wifi-overlay" hidden>
-    <div class="wifi-card wifi-small"><h2>✓ Wi-Fi updated</h2><p>Wi-Fi: <span id="wifiUpdatedName"></span></p></div>
+    <div class="wifi-card wifi-small"><h2><span class="toastTick"><svg class="mf-tick" viewBox="0 0 24 24" aria-hidden="true"><polyline points="5,12.5 10,17.5 19,7" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Wi-Fi updated</h2><p>Wi-Fi: <span id="wifiUpdatedName"></span></p></div>
 </div>
 <div id="wifiCancelled" class="wifi-overlay" hidden>
     <div class="wifi-card">

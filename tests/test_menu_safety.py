@@ -180,7 +180,7 @@ def test_frame_shows_phone_paired_for_3s(ready, mf_app, server):
     end = time.time() + 5
     while time.time() < end and evaluate(ready, "document.getElementById('pairSuccess').hidden"):
         ready.pump(0.2)
-    assert "✓ Phone paired" in text(ready, "pairSuccess") and "Send photos from your phone." in text(ready, "pairSuccess")
+    assert "Phone paired" in text(ready, "pairSuccess") and "Send photos from your phone." in text(ready, "pairSuccess")
     assert visible(ready, "pairOverlay")
     ready.pump(4)
     assert not visible(ready, "pairOverlay")

@@ -24,7 +24,10 @@ let libraryOrder = [];   // filenames in /media order (by name)
 const SWIPE_THRESHOLD = 80;
 
 const BRIGHTNESS_SPEED = 0.7;
-const BRIGHTNESS_START = 12;   // px of vertical movement that starts a brightness drag (no hold)
+// TUNABLE: vertical drag distance (px) before brightness starts changing. 72 px is about 1 cm on
+// the 5-inch 800x480 panel (user: 12 px was too sensitive). Drag only, no hold delay. Keep it above
+// the 3 s still-hold's 20 px cancel tolerance (pairing.js CORNER_MOVE) so a drag always cancels it.
+const BRIGHTNESS_START = 72;
 
 const BRIGHTNESS_DISPLAY_TIME = 1500;
 

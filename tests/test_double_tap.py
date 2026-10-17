@@ -212,13 +212,44 @@ def test_horizontal_swipe_never_changes_brightness(ready, backlight):
 
 def test_brightness_drag_then_still_hold_never_opens_dev_confirm(ready, backlight):
     press(ready, 400, 300)
-    for i in range(1, 5):                      # 16 px up: brightness starts (still < the 20 px hold cancel)
+    for i in range(1, 21):                     # slow 80 px drag (past the 72 px start)
         move(ready, 400, 300 - i * 4)
-        time.sleep(0.02)
-    ready.pump(3.5)                            # then held still past 3 s
-    release(ready, 400, 284)
+        time.sleep(0.05)
+    ready.pump(3.5)                            # then rests past 3 s
+    release(ready, 400, 220)
     ready.pump(0.5)
     assert not dev_confirm_open(ready) and not menu_open(ready)
+
+
+def test_slow_drag_past_hold_tolerance_below_start_never_opens_dev(ready, backlight):
+    press(ready, 400, 300)
+    for i in range(1, 11):                     # 40 px: cancels the hold (20 px), no brightness (72 px)
+        move(ready, 400, 300 - i * 4)
+        time.sleep(0.1)
+    ready.pump(3.5)
+    release(ready, 400, 260)
+    ready.pump(0.5)
+    assert not dev_confirm_open(ready) and bright(backlight) == "100"
+
+
+def test_50px_move_leaves_brightness(ready, backlight):
+    press(ready, 400, 300)
+    for i in range(1, 11):
+        move(ready, 400, 300 - i * 5)
+        time.sleep(0.02)
+    release(ready, 400, 250)
+    ready.pump(0.8)
+    assert bright(backlight) == "100"
+
+
+def test_80px_move_changes_brightness(ready, backlight):
+    press(ready, 400, 300)
+    for i in range(1, 17):
+        move(ready, 400, 300 - i * 5)
+        time.sleep(0.02)
+    release(ready, 400, 220)
+    ready.pump(0.8)
+    assert bright(backlight) != "100"
 
 
 def bright(backlight):

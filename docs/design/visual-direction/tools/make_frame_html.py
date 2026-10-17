@@ -190,6 +190,134 @@ M["13-wifi-rejoin"] = ("Wi-Fi changed: scan to rejoin (MF-18)", '''<style>
   </div>
 </div>''')
 
+# ---------------------------------------------------------------------------------------------
+# Menu option B (user brief, 17 Oct): info-only left column (title, gift message, free storage at the foot), one vertical button stack on the right.
+# Right column top to bottom: Shut down, Pair new device, Sign out of all phones, Close (default ring).
+# The stack is bottom-aligned so Close sits nearest the thumb; Shut down is ~124 px below the
+# screen's top edge and 48 px from its right edge, with a wider 28 px gap under it.
+MENU2_CSS = '''<style>
+.menu2 { position:absolute; inset:20px; padding:28px; display:grid; grid-template-columns: 1fr 304px; gap:0 24px; }
+.menu2 .info { display:flex; flex-direction:column; min-width:0; }
+.menu2 .title { display:flex; align-items:center; gap:12px; margin:0 0 22px; }
+.menu2 .title .mark { width:14px; height:14px; border-radius:50%; background:var(--mf-brass); flex:none; }
+.store { margin-top:auto; }
+.store .lab { font-size:var(--mf-f-small); color:var(--mf-oat); margin:0 0 4px; }
+.store .val { font-size:var(--mf-f-body); font-weight:700; margin:0 0 10px; font-variant-numeric:tabular-nums; }
+.store .val span { font-weight:400; color:var(--mf-oat); }
+.store .track { height:8px; border-radius:4px; background:var(--mf-forest-700); overflow:hidden; }
+.store .used { height:100%; width:100%; background:var(--mf-leaf); transform-origin:left; } /* scaleX(used fraction) */
+.note { margin:0; background:var(--mf-walnut-900); border:1px solid var(--mf-walnut); border-radius:var(--mf-r-lg);
+        padding:14px 16px 16px; }
+.note .q { display:block; color:var(--mf-brass); font-size:44px; line-height:.6; height:22px; font-weight:700; }
+.note p { margin:0; font-size:var(--mf-f-label); line-height:1.35; color:var(--mf-linen);
+          display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:5; overflow:hidden; overflow-wrap:anywhere; } /* 140 chars of mixed case = 4 lines; 5 is the safety cap (all caps) */
+.note.empty { background:transparent; border:1px dashed var(--mf-walnut); padding:16px; }
+.note.empty b { display:block; font-size:var(--mf-f-label); color:var(--mf-oat); margin:0 0 4px; }
+.note.empty p { color:var(--mf-oat); font-size:var(--mf-f-small); display:block; }
+.stack { display:flex; flex-direction:column; justify-content:flex-end; gap:12px; }
+.stack .btn { width:100%; min-height:64px; padding:0 16px; white-space:nowrap; }
+.stack .btn-danger { margin-bottom:16px; } /* 12 + 16 = 28 px between Shut down and the rest */
+</style>'''
+STORE = '''<div class="store">
+      <div class="lab">Free storage</div>
+      <div class="val">21.4 GB free <span>of 28.8 GB</span></div>
+      <div class="track" role="img" aria-label="26% used"><div class="used" style="transform:scaleX(.26)"></div></div>
+    </div>'''
+STACK = '''<div class="stack">
+    <button class="btn btn-danger">Shut down</button>
+    <button class="btn btn-primary">Pair new device</button>
+    <button class="btn btn-neutral">Sign out of all phones</button>
+    <button class="btn btn-neutral btn-default" autofocus>Close</button>
+  </div>'''
+def menu2(note):
+    return PHOTO + '''
+<div class="scrim"><div class="card menu2" role="dialog" aria-label="Menu">
+  <div class="info">
+    <h1 class="title"><span class="mark"></span>Memory Frame</h1>
+    ''' + note + '''
+    ''' + STORE + '''
+  </div>
+  ''' + STACK + '''
+</div></div>'''
+GIFT_MSG = ("Happy 80th, Nana! Every photo on here was sent by one of us, from wherever we are. "
+            "We miss you and we love you. Sam, Priya and the kids xx")   # 138 chars (max 140)
+M["07-menu-optB"] = ("Double-tap menu option B: info left, buttons right", MENU2_CSS, menu2(
+    '<figure class="note"><span class="q" aria-hidden="true">\u201c</span><p>' + GIFT_MSG + '</p></figure>'))
+M["07-menu-optB-empty"] = ("Double-tap menu option B: no message set", MENU2_CSS, menu2(
+    '<div class="note empty"><b>No message yet</b><p>Add one from your phone in Settings, under \u201cMessage on the frame\u201d.</p></div>'))
+
+# Menu option A (user's reference, 17 Oct): the #70 07-menu layout kept (info table left, Pair / Sign out
+# right, Close bottom-left with the default ring, Shut down bottom-right), widened so the right buttons sit
+# inside the card, plus the gift message as a 2-line strip under the table.
+MENUA_CSS = '''<style>
+.menuA { position:absolute; inset:16px; padding:22px 24px 20px; display:grid; grid-template-columns: 1fr 260px;
+         grid-template-rows:auto auto 1fr auto; gap:0 28px; }
+.menuA .title { grid-column:1 / -1; display:flex; align-items:center; gap:12px; margin:0 0 10px; }
+.menuA .title .mark { width:14px; height:14px; border-radius:50%; background:var(--mf-brass); flex:none; }
+.menuA table { border-collapse:collapse; font-size:var(--mf-f-label); align-self:start; width:100%; }
+.menuA th { text-align:left; color:var(--mf-oat); font-weight:400; padding:3px 16px 3px 0; white-space:nowrap; }
+.menuA td { text-align:right; white-space:nowrap; padding:3px 0; font-weight:700; }
+.menuA tr + tr th, .menuA tr + tr td { border-top:1px solid var(--mf-forest-700); }
+.menuA .side { display:flex; flex-direction:column; gap:12px; }
+.menuA .side .btn { width:100%; }
+.strip { grid-column:1 / -1; align-self:start; margin-top:12px; display:flex; gap:12px; align-items:flex-start;
+         background:var(--mf-walnut-900); border:1px solid var(--mf-walnut); border-radius:var(--mf-r-md); padding:8px 14px; }
+.strip .q { color:var(--mf-brass); font-size:36px; line-height:1; height:24px; font-weight:700; flex:none; }
+.strip p { margin:0; font-size:var(--mf-f-small); line-height:1.3; color:var(--mf-linen);
+           display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; overflow-wrap:anywhere; }
+.strip.empty { background:transparent; border:1px dashed var(--mf-walnut); padding:8px 14px; }
+.strip.empty p { color:var(--mf-oat); -webkit-line-clamp:1; }
+.menuA .bottom { grid-column:1 / -1; display:flex; justify-content:space-between; padding-top:14px; border-top:1px solid var(--mf-forest-700); }
+.menuA .bottom .btn { width:220px; }
+</style>'''
+def menuA(strip):
+    return PHOTO + '''
+<div class="scrim"><div class="card menuA" role="dialog" aria-label="Menu">
+  <h1 class="title"><span class="mark"></span>Memory Frame</h1>
+  <table>
+    <tr><th>IP</th><td>10.42.0.1</td></tr>
+    <tr><th>Wi-Fi</th><td>MemoryFrame-4F2A (hotspot)</td></tr>
+    <tr><th>Site</th><td>10.42.0.1</td></tr>
+    <tr><th>Free storage</th><td>21.4 GB of 28.8 GB</td></tr>
+    <tr><th>Phones paired</th><td>2</td></tr>
+    <tr><th>Version</th><td>0.9.3</td></tr>
+  </table>
+  <div class="side">
+    <button class="btn btn-primary">Pair new device</button>
+    <button class="btn btn-neutral">Sign out all phones</button>
+  </div>
+  ''' + strip + '''
+  <div class="bottom">
+    <button class="btn btn-neutral btn-default" autofocus>Close</button>
+    <button class="btn btn-danger">Shut down</button>
+  </div>
+</div></div>'''
+M["07-menu-optA"] = ("Double-tap menu option A: info table (reference layout) + message strip", MENUA_CSS, menuA(
+    '<figure class="strip" style="margin:12px 0 0"><span class="q" aria-hidden="true">\u201c</span><p>' + GIFT_MSG + '</p></figure>'))
+M["07-menu-optA-empty"] = ("Double-tap menu option A: no message set", MENUA_CSS, menuA(
+    '<div class="strip empty"><p>No message yet. Add one from your phone in Settings, under \u201cMessage on the frame\u201d.</p></div>'))
+
+# Confirm v2: card vertically centred, a minimum height, and the buttons pinned to the bottom with the
+# same 28 px padding on every side (fixes the app's buttons sitting high with dead space under them).
+CONFIRM2_CSS = '''<style>
+.dialog2 { width:600px; min-height:272px; padding:28px; display:flex; flex-direction:column; }
+.dialog2 .title { margin:0 0 12px; }
+.dialog2 .body { margin:0 0 32px; }
+.dialog2 .row { margin-top:auto; display:flex; gap:var(--mf-s-4); }
+.dialog2 .row .btn { flex:1; min-height:64px; }
+</style>'''
+def confirm2(title, body, cancel, ok, okcls):
+    return PHOTO + f'''
+<div class="scrim"><div class="card dialog2" role="alertdialog">
+  <h1 class="title">{title}</h1>
+  <p class="body">{body}</p>
+  <div class="row"><button class="btn btn-neutral btn-default" autofocus>{cancel}</button><button class="btn {okcls}">{ok}</button></div>
+</div></div>'''
+M["08-shutdown-confirm-v2"] = ("Shut down confirm v2 (buttons pinned to the bottom)", CONFIRM2_CSS, confirm2("Shut down the frame?",
+    "Photos stay on the frame. To turn it on again, unplug it and plug it back in.", "Cancel", "Shut down", "btn-danger"))
+M["09-dev-mode-confirm-v2"] = ("Switch to dev mode? v2 (buttons pinned to the bottom)", CONFIRM2_CSS, confirm2("Switch to dev mode?",
+    "Phones on the frame's Wi-Fi will disconnect until you restart the frame.", "Cancel", "Switch", "btn-accent"))
+
 for name, (title, style, body) in M.items():
     with open(f"frame/{name}.html", "w") as f:
         f.write(HEAD.format(title=title, style=style) + body.strip("\n") + TAIL)

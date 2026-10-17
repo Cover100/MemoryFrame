@@ -5,7 +5,7 @@ root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FONT = "/usr/share/fonts/truetype/sand-box/google/Atkinson Hyperlegible/AtkinsonHyperlegible-Bold.ttf"
 if not os.path.exists(FONT): FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 def sheet(d, cols, scale, title):
-    files = sorted(glob.glob(os.path.join(root, d, "[0-9]*.png")))
+    files = sorted(f for f in glob.glob(os.path.join(root, d, "[0-9]*.png")) if "AvsB" not in f)  # skip the comparison board
     ims = [Image.open(f).convert("RGB") for f in files]
     w, h = int(ims[0].width * scale), int(ims[0].height * scale)
     pad, lab, head = 24, 34, 70

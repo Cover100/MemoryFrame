@@ -97,9 +97,92 @@ def test_menu_renders_stored_message_and_poll(paired, client):
 def test_settings_page_field_preview_counter_about(paired):
     put(paired, "Hi there")
     h = paired.get("/admin/settings", environ_base=PHONE).get_data(as_text=True)
-    assert 'id="frameMessage" maxlength="140"' in h and ">Hi there</textarea>" in h
+    assert 'id="frameMessage" maxlength="280"' in h and ">Hi there</textarea>" in h
     assert 'id="messageCount" aria-live="polite">8 / 140<' in h
     assert 'id="messagePreviewText">Hi there<' in h
     assert "Message on the frame" in h and "About this frame" in h
     assert 'id="aboutIp">10.42.0.1<' in h and 'id="aboutSite">http://10.42.0.1' in h
     assert 'id="aboutVersion">0.' in h
+
+
+# ---------------- #75 review (Juniper) ----------------
+
+def test_nfc_before_counting():
+    decomposed = "e\u0301" * 140                               # 280 code points, 140 after NFC
+    text, err = message.clean(decomposed)
+    assert err is None and text == "\u00e9" * 140
+
+
+def test_combining_marks_capped():
+    zalgo = "q" + "\u0300\u0301\u0302\u0303\u0304\u0305" + "b"
+    assert message.clean(zalgo)[0] == "q\u0300\u0301\u0302b"   # q has no precomposed forms
+    assert message.clean("\u0301\u0301x")[0] == "x"             # no base: dropped
+
+
+def test_preview_clipped_like_frame():
+    css = (ROOT / "static" / "settings.css").read_text()
+    rule = css[css.index(".msgPreview p{"):]
+    rule = rule[:rule.index("}")]
+    assert "-webkit-line-clamp:5" in rule and "overflow:hidden" in rule
+
+
+def test_invisible_fillers_count_as_empty(paired, mf_app):
+    put(paired, "Hi")
+    blank = "\u115f\u1160\u3164\uffa0\u2800 \u200b"
+    assert put(paired, blank).get_json()["message"] == ""
+    assert not os.path.exists(os.path.join(mf_app.config["DATA_DIR"], message.FILENAME))
+    assert message.clean("a\u3164b\u2800c")[0] == "abc"
+
+
+def test_body_over_4k_is_413(paired):
+    big = '{"message": "' + "x" * 5000 + '"}'
+    r = paired.put("/api/v1/message", data=big, content_type="application/json", environ_base=PHONE)
+    assert r.status_code == 413
+    ok = '{"message": "' + "x" * 140 + '"}'
+    assert paired.put("/api/v1/message", data=ok, content_type="application/json",
+                      environ_base=PHONE).status_code == 200
+    # other routes keep their own limits (uploads are big)
+    assert paired.put("/api/v1/settings", json={"shuffle": True}, environ_base=PHONE).status_code == 200
+
+
+def test_unchanged_message_skips_write(paired, mf_app, monkeypatch):
+    put(paired, "Same")
+    calls = []
+    monkeypatch.setattr(os, "fsync", lambda fd: calls.append(fd))
+    monkeypatch.setattr(os, "replace", lambda *a: calls.append(a))
+    assert put(paired, "  Same ").status_code == 200
+    assert calls == []
+    assert message.save(mf_app.config["DATA_DIR"], "Same") is False
+
+
+def test_joiners_only_between_joinable():
+    family = "\U0001F468\u200d\U0001F469\u200d\U0001F467"
+    assert message.clean(family)[0] == family
+    assert message.clean("\u0915\u094d\u200d\u0937")[0] == "\u0915\u094d\u200d\u0937"
+    assert message.clean("\u200dhi\u200d")[0] == "hi"
+    assert message.clean("a \u200c b")[0] == "a b"
+    assert message.clean("1\u200d2")[0] == "12"
+
+
+def test_stale_tmp_swept_on_startup(mf_app):
+    d = mf_app.config["DATA_DIR"]
+    stale = os.path.join(d, "frame_message.abc123.tmp")
+    open(stale, "w").write("half")
+    keep = os.path.join(d, "other.tmp")
+    open(keep, "w").write("x")
+    create_app({"TESTING": True, "DATA_DIR": d, "DB_PATH": mf_app.config["DB_PATH"]})
+    assert not os.path.exists(stale) and os.path.exists(keep)
+
+
+def test_delete_fsyncs_dir(paired, mf_app, monkeypatch):
+    put(paired, "Bye")
+    calls = []
+    real = os.fsync
+    monkeypatch.setattr(os, "fsync", lambda fd: (calls.append(fd), real(fd)))
+    put(paired, "")
+    assert calls                                                # directory fsync after unlink
+
+
+def test_phone_counter_mirrors_server():
+    js = (ROOT / "static" / "settings.js").read_text()
+    assert 'normalize("NFC")' in js and "\\u3164" in js and "[...v].length" in js

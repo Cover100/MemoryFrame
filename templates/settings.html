@@ -37,7 +37,7 @@
   <h2>Message on the frame</h2>
   <p class="hint">Shown in the frame's menu (double tap the photo). Up to {{ message_max }} characters.</p>
   <label for="frameMessage" class="sr-only">Message</label>
-  <textarea id="frameMessage" maxlength="{{ message_max }}" rows="3" data-max="{{ message_max }}"
+  <textarea id="frameMessage" maxlength="{{ message_max * 2 }}" rows="3" data-max="{{ message_max }}"
     placeholder="e.g. Happy birthday, Nana! Love from all of us.">{{ message }}</textarea>
   <div class="msgRow"><span id="messageCount" aria-live="polite">{{ message|length }} / {{ message_max }}</span>
     <button type="button" id="messageSave">Save</button> <button type="button" id="messageClear">Clear</button></div>

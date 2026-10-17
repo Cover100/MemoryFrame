@@ -47,7 +47,19 @@
 # The frame app reads $STATE_DIR/netmode.json (no secrets in it).
 # Test hooks: NMCLI, MEMORYFRAME_BOOT_DIR, MEMORYFRAME_STATE_DIR, MEMORYFRAME_HOTSPOT_SH,
 # MEMORYFRAME_DEV_WAIT, MEMORYFRAME_BOOT_ID_FILE.
+# As root (boot unit, the app's polkit-started units, sudo by hand) every hook above is IGNORED and
+# PATH is fixed, so an inherited environment can never point root at other code or directories.
+# MEMORYFRAME_AS_ROOT_TEST=1 only makes a non-root test run behave as root (it can't do the reverse).
 set -euo pipefail
+
+if [ "$(id -u)" = 0 ] || [ "${MEMORYFRAME_AS_ROOT_TEST:-}" = 1 ]; then
+    export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+    for _v in $(compgen -e); do
+        case "$_v" in MEMORYFRAME_*|NMCLI|IW|SYSTEMD_RUN|SUDO) unset "$_v" ;; esac
+    done
+    unset _v
+    MEMORYFRAME_HOTSPOT_SH=/usr/local/sbin/memoryframe-hotspot   # root-owned copy (install.sh)
+fi
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 NMCLI="${NMCLI:-nmcli}"

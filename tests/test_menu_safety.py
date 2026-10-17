@@ -60,7 +60,7 @@ def test_confirm_copy_and_size(ready):
     for b in ("confirmCancel", "confirmSignOut"):
         r = evaluate(ready, f"(()=>{{const r=document.getElementById('{b}').getBoundingClientRect();return [r.width,r.height];}})()")
         assert round(r[0]) >= 200 and round(r[1]) >= 64
-    assert evaluate(ready, "getComputedStyle(document.getElementById('confirmSignOut')).backgroundColor") == "rgb(198, 40, 40)"
+    assert evaluate(ready, "getComputedStyle(document.getElementById('confirmSignOut')).backgroundColor") == "rgb(168, 53, 42)"   # --mf-brick (restyle A)
 
 
 @pytest.mark.parametrize("how", ["cancel", "outside", "idle"])

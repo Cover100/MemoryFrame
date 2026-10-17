@@ -98,9 +98,14 @@ def test_menu_shutdown_safe_only_after_synced(page, server, mf_app, net, tmp_pat
     evaluate(page, "document.getElementById('menuShutdown').click()")
     evaluate(page, "document.getElementById('shutdownConfirm').click()")
     page.pump(0.4)
-    txt = cover(page)
+    txt = cover(page)                                           # shown before sync finishes
     assert txt and "Shutting down" in txt and "Don't unplug yet" in txt
     assert safe(page) is None and not out.exists()
+    st = evaluate(page, "(()=>{const c=document.getElementById('shuttingDown');const s=getComputedStyle(c);"
+                        "const r=c.getBoundingClientRect();return [s.backgroundColor,r.width,r.height,"
+                        "getComputedStyle(c.querySelector('.sdTitle')).fontSize,"
+                        "getComputedStyle(c.querySelector('.sdWarn')).color,c.querySelectorAll('button').length];})()")
+    assert st == ["rgb(14, 19, 17)", 800, 480, "48px", "rgb(214, 179, 106)", 0]   # --mf-ink / --mf-brass
     for y in range(400, 100, -20):                              # taps/drags on the cover do nothing
         page.call("Input.dispatchMouseEvent", {"type": "mouseMoved" if y < 400 else "mousePressed", "x": 400,
                                                "y": y, "button": "left", "buttons": 1, "clickCount": 1})

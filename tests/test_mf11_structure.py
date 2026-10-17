@@ -80,6 +80,7 @@ READ_ONLY_GET_ENDPOINTS = {
     "display.get_brightness", "display.shutdown_status", "admin.home", "api.status",
     "pairing.state", "pairing.pair_page", "pairing.frame_status", "admin.upload_page", "api.storage",
     "admin.library_page", "admin.settings_page", "api.get_settings", "wifi.page", "wifi.keep_page", "api.list_media", "api.thumb", "display.show_now_state",
+    "display.frame_fonts",
 }
 
 

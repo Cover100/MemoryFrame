@@ -5,10 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="csrf-token" content="{{ csrf_token() }}">
 <title>Frame Wi-Fi</title>
+<link rel="stylesheet" href="{{ static('tokens.css') }}">
 <link rel="stylesheet" href="{{ static('pair.css') }}">
 <link rel="stylesheet" href="{{ static('wifi.css') }}">
 </head>
-<body>
+<body class="mf-phone">
 {% if step == "waiting" %}
 <h1>Rejoin the new Wi-Fi</h1>
 <ol class="steps">

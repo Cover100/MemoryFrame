@@ -16,6 +16,12 @@
     </title>
 
 
+    <!-- Frame font: the preloads and the @font-face rules in /frame-fonts.css (templates/frame_fonts.css)
+         both use static(), so the URLs match exactly (same ?v= hash) and each font downloads once. -->
+    <link rel="preload" href="{{ static('fonts/atkinson-hyperlegible-400.woff2') }}" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="{{ static('fonts/atkinson-hyperlegible-700.woff2') }}" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="{{ url_for('display.frame_fonts') }}">
+    <link rel="stylesheet" href="{{ static('tokens.css') }}">
     <link rel="stylesheet"
           href="{{ static('style.css') }}">
 
@@ -140,10 +146,10 @@
                 <tr><th>Version</th><td id="menuVersion">-</td></tr>
             </table>
             <div class="menuButtons">
-                <button id="menuPair" type="button">Pair new device</button>
-                <button id="menuSignOut" type="button">Sign out all phones</button>
-                <button id="menuShutdown" type="button">Shut down</button>
-                <button id="menuClose" type="button">Close</button>
+                <button id="menuPair" class="mf-btn" type="button">Pair new device</button>
+                <button id="menuSignOut" class="mf-btn mf-btn-secondary" type="button">Sign out all phones</button>
+                <button id="menuShutdown" class="mf-btn mf-btn-danger" type="button">Shut down</button>
+                <button id="menuClose" class="mf-btn mf-btn-secondary" type="button">Close</button>
             </div>
         </div>
     </div>

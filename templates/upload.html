@@ -5,10 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="csrf-token" content="{{ csrf_token() }}">
 <title>Upload photos - Memory Frame</title>
+<link rel="stylesheet" href="{{ static('tokens.css') }}">
 <link rel="stylesheet" href="{{ static('pair.css') }}">
 <link rel="stylesheet" href="{{ static('upload.css') }}">
 </head>
-<body>
+<body class="mf-phone">
 <p><a href="/admin/">&larr; Memory Frame</a></p>
 <h1>Upload photos</h1>
 <p id="storage">Checking free space...</p>

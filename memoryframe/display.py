@@ -39,6 +39,15 @@ def index():
                            safe_copy=SAFE_SCREEN_COPY)
 
 
+@bp.route("/frame-fonts.css")
+def frame_fonts():
+    # @font-face for the kiosk, templated so src URLs use static() and match index.html's preloads.
+    # no-cache like the HTML: it is tiny and must follow the font hashes after a deploy.
+    resp = current_app.response_class(render_template("frame_fonts.css"), mimetype="text/css")
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
 @bp.route("/media")
 def media():
     return jsonify(get_media())

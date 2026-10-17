@@ -1,0 +1,6 @@
+/* Frame font @font-face rules (restyle A). Rendered by display.frame_fonts so the src URLs come from
+   static() and carry the same ?v= content hash as the <link rel="preload"> tags in index.html: one
+   download per font, cache-busted like every other asset. Not inline in index.html: the CSP
+   (default-src 'self') blocks inline <style>. */
+@font-face { font-family: "MF Frame"; font-weight: 400; src: url("{{ static('fonts/atkinson-hyperlegible-400.woff2') }}") format("woff2"); font-display: block; }
+@font-face { font-family: "MF Frame"; font-weight: 700; src: url("{{ static('fonts/atkinson-hyperlegible-700.woff2') }}") format("woff2"); font-display: block; }

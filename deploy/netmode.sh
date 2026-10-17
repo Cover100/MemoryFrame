@@ -347,10 +347,31 @@ wifi_rollback() {
     return "$ok"
 }
 
+# #62: the request file the app leaves in its own 0700 runtime dir (memoryframe-wifi-apply.service runs
+# `wifi-apply --request`). Read by the helper itself, never via systemd: no symlinks (nofollow), no
+# FIFOs/devices (regular files only, nonblock), and it must be owned by the dir's owner (the app user).
+APPLY_REQ="${MEMORYFRAME_APPLY_REQ:-/run/memoryframe-app/wifi-apply}"
+read_request() {
+    local f="$APPLY_REQ" dir owner
+    dir="$(dirname "$f")"
+    if [ -L "$f" ] || [ ! -f "$f" ]; then log "wifi change refused: request is not a regular file"; return 1; fi
+    owner="$(stat -c %u "$dir" 2>/dev/null)" || return 1
+    if [ "$owner" = 0 ] || [ "$(stat -c %u "$f" 2>/dev/null)" != "$owner" ]; then
+        log "wifi change refused: request not owned by the app user"; return 1
+    fi
+    dd if="$f" iflag=nofollow,nonblock bs=512 count=1 status=none 2>/dev/null
+}
+
 wifi_apply() {
-    local ssid="" psk="" f
-    IFS= read -r ssid || true
-    IFS= read -r psk || true
+    local ssid="" psk="" f req
+    if [ "${1:-}" = --request ]; then
+        if ! req="$(read_request)"; then rm -f "$APPLY_REQ"; exit 2; fi
+        rm -f "$APPLY_REQ"
+        { IFS= read -r ssid || true; IFS= read -r psk || true; } <<< "$req"
+    else
+        IFS= read -r ssid || true
+        IFS= read -r psk || true
+    fi
     require_product
     if ! valid_ssid "$ssid" || ! valid_psk "$psk"; then log "wifi change refused: invalid name or password"; exit 2; fi
     if ! profiles | grep -qxF "$HOTSPOT_CON"; then log "wifi change refused: no hotspot profile"; exit 1; fi
@@ -422,7 +443,7 @@ wifi_commit() {
 
 case "${1:-}" in
     status) status ;;
-    wifi-apply) take_lock; wifi_apply ;;
+    wifi-apply) take_lock; wifi_apply "${2:-}" ;;   # stdout (/run/memoryframe/*.out, 0644): uuid only, never the password
     wifi-commit) take_lock nopending; wifi_commit ;;
     wifi-rollback) take_lock nopending; wifi_rollback ;;
     product|dev)

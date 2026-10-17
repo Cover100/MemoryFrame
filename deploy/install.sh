@@ -24,7 +24,13 @@ APP_USER="$(id -un)"
 
 echo "== Packages"
 sudo apt-get update
-sudo apt-get install -y python3-venv curl
+# polkitd (#62): lets the app start its root units and power off without sudo. Installed here; if it
+# still isn't there, stop: without it Developer Wi-Fi, Wi-Fi change and Shut down can't work.
+sudo apt-get install -y python3-venv curl polkitd
+if ! command -v pkaction >/dev/null 2>&1; then
+    echo "ERROR: polkit (polkitd) is not installed and could not be installed: run 'sudo apt-get install polkitd', then re-run install.sh." >&2
+    exit 1
+fi
 command -v chromium-browser >/dev/null || command -v chromium >/dev/null || sudo apt-get install -y chromium-browser
 
 echo "== Python environment"
@@ -71,12 +77,9 @@ for u in devtemp wifi-apply wifi-commit wifi-rollback; do
 done
 POLKIT_TMP="$(mktemp)"
 sed -e "s#@USER@#$APP_USER#g" "$APP_DIR/deploy/memoryframe-polkit.rules" > "$POLKIT_TMP"
-sudo install -d -o root -g root -m 0755 /etc/polkit-1/rules.d
+[ -d /etc/polkit-1/rules.d ] || sudo install -d -o root -g root -m 0755 /etc/polkit-1/rules.d   # never re-perm the distro's dir
 sudo install -o root -g root -m 0644 "$POLKIT_TMP" /etc/polkit-1/rules.d/50-memoryframe.rules
 rm -f "$POLKIT_TMP"
-if ! command -v pkaction >/dev/null 2>&1; then
-    echo "WARNING: polkit (polkitd) not found; install it for Developer Wi-Fi, Wi-Fi change and Shut down" >&2
-fi
 # Old sudoers rules from before #62 (unused now).
 sudo rm -f /etc/sudoers.d/memoryframe /etc/sudoers.d/memoryframe-poweroff
 sudo systemctl daemon-reload

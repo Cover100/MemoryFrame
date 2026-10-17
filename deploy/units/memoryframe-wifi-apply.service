@@ -6,13 +6,13 @@ After=NetworkManager.service memoryframe-netmode.service
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/sbin/memoryframe-netmode wifi-apply
+ExecStart=/usr/local/sbin/memoryframe-netmode wifi-apply --request
 TimeoutStartSec=120
 RuntimeDirectory=memoryframe
 RuntimeDirectoryMode=0755
 RuntimeDirectoryPreserve=yes
 StandardOutput=truncate:/run/memoryframe/wifi-apply.out
 StandardError=journal
-# The app writes 'ssid\npassword\n' to its own 0700 RuntimeDirectory; the helper validates both.
-StandardInput=file:/run/memoryframe-app/wifi-apply
+# The app writes 'ssid\npassword\n' to its own 0700 RuntimeDirectory. The helper reads it itself
+# (no StandardInput=file:, which PID 1 opens as root following symlinks) and validates both.
 ExecStopPost=/bin/rm -f /run/memoryframe-app/wifi-apply

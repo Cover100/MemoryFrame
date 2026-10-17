@@ -32,12 +32,13 @@ def test_oneshot_units(u):
     text = (ROOT / "deploy" / "units" / f"memoryframe-{u}.service").read_text()
     d = directives(text)
     verb = VERB.get(u, u)
-    assert "Type=oneshot" in d and f"ExecStart=/usr/local/sbin/memoryframe-netmode {verb}" in d
+    extra = " --request" if u == "wifi-apply" else ""
+    assert "Type=oneshot" in d and f"ExecStart=/usr/local/sbin/memoryframe-netmode {verb}{extra}" in d
     assert "[Install]" not in d and not any(l.startswith(("User=", "Environment=")) for l in d)
     assert f"StandardOutput=truncate:/run/memoryframe/{verb}.out" in d
     assert privileged.UNITS[verb] == f"memoryframe-{u}.service"
     if u == "wifi-apply":
-        assert "StandardInput=file:/run/memoryframe-app/wifi-apply" in d
+        assert not any(l.startswith("StandardInput=") for l in d)   # helper reads it itself (nofollow)
         assert "ExecStopPost=/bin/rm -f /run/memoryframe-app/wifi-apply" in d
     else:
         assert not any(l.startswith("StandardInput=") for l in d)

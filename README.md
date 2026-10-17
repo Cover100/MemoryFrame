@@ -89,7 +89,7 @@ server is healthy:
 
 ```bash
 cd ~/MemoryFrame
-./deploy/install.sh     # run as the desktop user; uses sudo where needed
+./deploy/install.sh     # run as the desktop user (it becomes the app user); uses sudo where needed
 sudo reboot
 ```
 

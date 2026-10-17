@@ -68,6 +68,12 @@ sed -e "s#@USER@#$APP_USER#g" -e "s#@APP_DIR@#$APP_DIR#g" \
     "$APP_DIR/deploy/memoryframe.service" | sudo tee /etc/systemd/system/memoryframe.service >/dev/null
 # MF-36/MF-18: root-owned copy of the network helper (the checkout is writable by the app user).
 sudo install -o root -g root -m 0755 "$APP_DIR/deploy/netmode.sh" /usr/local/sbin/memoryframe-netmode
+# Root-owned hotspot.sh + config for the memoryframe-reset boot path (root never runs checkout files).
+sudo install -o root -g root -m 0755 "$APP_DIR/deploy/hotspot.sh" /usr/local/sbin/memoryframe-hotspot
+if [ -f "$APP_DIR/deploy/hotspot.conf" ]; then
+    sudo install -d -o root -g root -m 0755 /etc/memoryframe
+    sudo install -o root -g root -m 0600 "$APP_DIR/deploy/hotspot.conf" /etc/memoryframe/hotspot.conf
+fi
 sed -e "s#@APP_DIR@#$APP_DIR#g" \
     "$APP_DIR/deploy/memoryframe-netmode.service" | sudo tee /etc/systemd/system/memoryframe-netmode.service >/dev/null
 # #62: root oneshot units for the app's privileged actions + a polkit rule that lets only the app

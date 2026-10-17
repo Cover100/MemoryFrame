@@ -28,6 +28,8 @@ def create_app(config=None):
     app.config["DISPLAY_TARGET"] = imaging.target_or_default(app.config.get("DISPLAY_SIZE", imaging.DEFAULT_TARGET))
     storage.ensure_layout(app.config["DATA_DIR"])
     db.init_app(app)
+    from . import assets
+    assets.init_app(app)
     _sweep(app)
     if not app.config.get("TESTING") or app.config.get("WIFI_STARTUP_CHECK"):
         from . import wifi

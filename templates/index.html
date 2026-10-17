@@ -17,7 +17,7 @@
 
 
     <link rel="stylesheet"
-          href="/static/style.css">
+          href="{{ static('style.css') }}">
 
 </head>
 
@@ -234,11 +234,11 @@
 
 <script id="mediaData" type="application/json">{{ media | tojson }}</script>
 
-<script src="/static/media-data.js"></script>
+<script src="{{ static('media-data.js') }}"></script>
 
 
 
-<script src="/static/script.js"></script>
+<script src="{{ static('script.js') }}"></script>
 
 <!-- MF-36 (frame only): dev-mode banner, dev Wi-Fi fallback toast, hotspot error screen -->
 <div id="devBanner" class="dev-banner" hidden></div>
@@ -284,7 +284,7 @@
         <p>Phones can rejoin with the old password.</p>
     </div>
 </div>
-<script src="/static/pairing.js"></script>
+<script src="{{ static('pairing.js') }}"></script>
 
 
 

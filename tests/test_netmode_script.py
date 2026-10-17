@@ -33,6 +33,7 @@ if [ "$1" = -g ] && [ "$3 $4" = "connection show" ]; then
     802-11-wireless.ssid) cat "$f/ssid";; connection.autoconnect) cat "$f/autoconnect";;
     connection.timestamp) cat "$f/ts" 2>/dev/null || echo 0;;
     connection.uuid) cat "$f/uuid" 2>/dev/null || echo "uuid-$5";;
+    connection.interface-name) cat "$f/ifname" 2>/dev/null;;
   esac; exit 0
 fi
 case "$1 $2" in

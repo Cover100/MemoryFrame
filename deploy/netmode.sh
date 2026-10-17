@@ -139,7 +139,10 @@ client_profiles() {
     local n
     while IFS= read -r n; do
         if [ -z "$n" ] || [ "$n" = "$HOTSPOT_CON" ]; then continue; fi
+        case "$n" in MemoryFrame-*) continue ;; esac      # pending/old hotspot profiles are not clients
         [ "$(prop "$n" connection.type)" = 802-11-wireless ] || continue
+        local ifn; ifn="$(prop "$n" connection.interface-name)"
+        if [ -n "$ifn" ] && [ "$ifn" != "$IFACE" ]; then continue; fi   # saved for another interface
         if [ "$(prop "$n" 802-11-wireless.mode)" = ap ]; then continue; fi
         printf '%s\n' "$n"
     done < <(profiles)
@@ -428,7 +431,8 @@ case "${1:-}" in
         apply "$1" ;;
     dev-temp)   # MF-51: frame menu "Dev mode": home Wi-Fi until the next reboot. No file is written;
         take_lock   # /run is tmpfs, so nothing survives a reboot and boot returns to product.
-        apply_dev temp || exit 1 ;;
+        DEV_WAIT="${MEMORYFRAME_DEV_TEMP_WAIT:-30}"   # client must connect within ~30 s, else hotspot back
+        if apply_dev temp; then echo "ok: joined $(active)"; else echo "error: home Wi-Fi did not connect; hotspot kept on"; exit 1; fi ;;
     boot)
         take_lock nopending                   # a pending change is rolled back below
         if [ -e "$RESET_FILE" ]; then

@@ -229,24 +229,32 @@ DEV_MODE_CMD = ["sudo", "-n", "/usr/local/sbin/memoryframe-netmode", "dev-temp"]
 @bp.route("/frame/dev-mode", methods=["POST"])
 @localhost_only
 def dev_mode():
+    """Run the helper now and report the result as JSON: {"ok": bool, "reason": str}.
+    The kiosk is on localhost, so switching Wi-Fi doesn't cut this request."""
     import hmac
     import subprocess
-    import threading
     sent = request.headers.get("X-Frame-Token", "")
     if not sent or not hmac.compare_digest(sent.encode(), frame_token().encode()):
         abort(403)
     cmd = list(current_app.config.get("DEV_MODE_CMD") or DEV_MODE_CMD)
-
-    def run():
-        try:
-            r = subprocess.run(cmd, timeout=120, check=False, capture_output=True)
-            if r.returncode:
-                log.warning("dev mode switch failed (exit %s)", r.returncode)
-        except (OSError, subprocess.TimeoutExpired) as e:
-            log.warning("dev mode switch failed: %s", type(e).__name__)
-
     log.warning("dev mode (until reboot) requested from the frame menu")
-    t = threading.Timer(float(current_app.config.get("DEV_MODE_DELAY", 1.0)), run)
-    t.daemon = True
-    t.start()
-    return jsonify({"dev_mode": True})
+    try:
+        r = subprocess.run(cmd, timeout=float(current_app.config.get("DEV_MODE_TIMEOUT", 120)),
+                           check=False, capture_output=True, text=True)
+    except subprocess.TimeoutExpired:
+        return jsonify({"ok": False, "reason": "timed out"}), 502
+    except OSError as e:
+        return jsonify({"ok": False, "reason": f"could not run the helper ({type(e).__name__})"}), 502
+    if r.returncode == 0:
+        return jsonify({"ok": True, "reason": ""})
+    text = (r.stdout + "\n" + r.stderr).lower()
+    if "sudo" in text or "no new privileges" in text or "password" in text:
+        reason = "not permitted (sudo rule or service settings)"
+    elif r.returncode == 3:
+        reason = "busy (another network change is in progress)"
+    elif "no matching networkmanager wi-fi profile" in text:
+        reason = "no saved home Wi-Fi on this frame"
+    else:
+        reason = "home Wi-Fi did not connect"
+    log.warning("dev mode switch failed (exit %s): %s", r.returncode, reason)
+    return jsonify({"ok": False, "reason": reason}), 502

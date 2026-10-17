@@ -212,13 +212,44 @@ def test_horizontal_swipe_never_changes_brightness(ready, backlight):
 
 def test_brightness_drag_then_still_hold_never_opens_dev_confirm(ready, backlight):
     press(ready, 400, 300)
-    for i in range(1, 5):                      # 16 px up: brightness starts (still < the 20 px hold cancel)
+    for i in range(1, 21):                     # slow 80 px drag (past the 72 px start)
         move(ready, 400, 300 - i * 4)
-        time.sleep(0.02)
-    ready.pump(3.5)                            # then held still past 3 s
-    release(ready, 400, 284)
+        time.sleep(0.05)
+    ready.pump(3.5)                            # then rests past 3 s
+    release(ready, 400, 220)
     ready.pump(0.5)
     assert not dev_confirm_open(ready) and not menu_open(ready)
+
+
+def test_slow_drag_past_hold_tolerance_below_start_never_opens_dev(ready, backlight):
+    press(ready, 400, 300)
+    for i in range(1, 11):                     # 40 px: cancels the hold (20 px), no brightness (72 px)
+        move(ready, 400, 300 - i * 4)
+        time.sleep(0.1)
+    ready.pump(3.5)
+    release(ready, 400, 260)
+    ready.pump(0.5)
+    assert not dev_confirm_open(ready) and bright(backlight) == "100"
+
+
+def test_50px_move_leaves_brightness(ready, backlight):
+    press(ready, 400, 300)
+    for i in range(1, 11):
+        move(ready, 400, 300 - i * 5)
+        time.sleep(0.02)
+    release(ready, 400, 250)
+    ready.pump(0.8)
+    assert bright(backlight) == "100"
+
+
+def test_80px_move_changes_brightness(ready, backlight):
+    press(ready, 400, 300)
+    for i in range(1, 17):
+        move(ready, 400, 300 - i * 5)
+        time.sleep(0.02)
+    release(ready, 400, 220)
+    ready.pump(0.8)
+    assert bright(backlight) != "100"
 
 
 def bright(backlight):
@@ -272,3 +303,46 @@ def test_slideshow_drag_still_changes_brightness(ready, backlight):
     release(ready, 400, 155)
     ready.pump(1.0)
     assert bright(backlight) != before
+
+
+@pytest.mark.parametrize("kind", ["touch", "mouse"])
+def test_shut_down_then_confirm_sends_no_brightness_request(ready, backlight, mf_app, tmp_path, kind):
+    """On-device report (main 53c438c): Shut down dropped brightness to ~48 %. No /brightness POST
+    may be sent and the backlight must not change through Shut down -> Confirm."""
+    out = tmp_path / "po.log"
+    mf_app.config["SYNC_CMD"] = ["true"]
+    mf_app.config["POWEROFF_CMD"] = ["sh", "-c", f"echo poweroff >> {out}"]
+    mf_app.config["POWEROFF_DELAY"] = 0.05
+    evaluate(ready, "window.__bri=[];const f=window.fetch;window.fetch=(u,o)=>{"
+                    "if(String(u).includes('/brightness')&&o&&o.method==='POST'){window.__bri.push(o.body);}"
+                    "return f(u,o);}")
+    before = bright(backlight)
+    tap(ready, 400, 440); time.sleep(0.1); tap(ready, 400, 440)       # double tap low: stale start far below
+    ready.pump(0.5)
+    assert menu_open(ready)
+    for el in ("menuShutdown", "shutdownConfirm"):
+        r = evaluate(ready, f"(()=>{{const b=document.getElementById('{el}').getBoundingClientRect();"
+                            "return [b.left+b.width/2,b.top+b.height/2];})()")
+        # mouse-type panels (labwc) move the pointer to the new spot BEFORE pressing, with no button down
+        ready.call("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": r[0], "y": r[1], "buttons": 0})
+        tap_el(ready, el, kind)
+    ready.pump(1.0)
+    assert out.read_text().strip() == "poweroff"
+    assert evaluate(ready, "window.__bri") == []
+    assert bright(backlight) == before
+
+
+def test_first_move_after_threshold_is_small(ready, backlight):
+    """Delta is measured from where the 72 px threshold is crossed: no jump on the first frame."""
+    evaluate(ready, "window.__bri=[];const f=window.fetch;window.fetch=(u,o)=>{"
+                    "if(String(u).includes('/brightness')&&o&&o.method==='POST'){window.__bri.push(JSON.parse(o.body).value);}"
+                    "return f(u,o);}")
+    press(ready, 400, 300)
+    move(ready, 400, 300 - 74)                 # crosses the threshold in one step
+    ready.pump(0.6)
+    after_cross = int(bright(backlight))
+    move(ready, 400, 300 - 79)                 # 5 px more
+    release(ready, 400, 221)
+    ready.pump(0.8)
+    assert after_cross == 100                  # crossing alone changes nothing
+    assert 0 < abs(int(bright(backlight)) - 100) <= 10   # 5 px * 0.7 -> a few units, not ~50

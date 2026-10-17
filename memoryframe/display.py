@@ -143,7 +143,7 @@ def set_brightness():
 
 # ---------------- MF-49: shut down (kiosk only) ----------------
 
-POWEROFF_CMD = ["sudo", "-n", "/usr/bin/systemctl", "poweroff"]
+POWEROFF_CMD = ["systemctl", "poweroff"]   # #62: logind via polkit (no sudo; the service keeps NoNewPrivileges)
 SYNC_CMD = ["sync"]
 POWEROFF_DELAY = 1.0          # let the kiosk paint "Shutting down…" first
 
@@ -223,7 +223,7 @@ def shutdown():
 
 # ---------------- MF-51: Dev mode until reboot (kiosk only) ----------------
 
-DEV_MODE_CMD = ["sudo", "-n", "/usr/local/sbin/memoryframe-netmode", "dev-temp"]
+DEV_MODE_UNIT = "memoryframe-devtemp.service"   # #62: root oneshot started via polkit
 
 
 @bp.route("/frame/dev-mode", methods=["POST"])
@@ -231,30 +231,37 @@ DEV_MODE_CMD = ["sudo", "-n", "/usr/local/sbin/memoryframe-netmode", "dev-temp"]
 def dev_mode():
     """Run the helper now and report the result as JSON: {"ok": bool, "reason": str}.
     The kiosk is on localhost, so switching Wi-Fi doesn't cut this request."""
-    import hmac
-    import subprocess
-    sent = request.headers.get("X-Frame-Token", "")
-    if not sent or not hmac.compare_digest(sent.encode(), frame_token().encode()):
-        abort(403)
-    cmd = list(current_app.config.get("DEV_MODE_CMD") or DEV_MODE_CMD)
+    from . import privileged
+    _check_token()
     log.warning("dev mode (until reboot) requested from the frame menu")
-    try:
-        r = subprocess.run(cmd, timeout=float(current_app.config.get("DEV_MODE_TIMEOUT", 120)),
-                           check=False, capture_output=True, text=True)
-    except subprocess.TimeoutExpired:
+    cfg = current_app.config
+    timeout = float(cfg.get("DEV_MODE_TIMEOUT", 120))
+    if cfg.get("DEV_MODE_CMD"):                    # tests: a stub argv instead of the unit
+        import subprocess
+        try:
+            p = subprocess.run(list(current_app.config["DEV_MODE_CMD"]), timeout=timeout, check=False,
+                               capture_output=True, text=True)
+            rc, text = p.returncode, p.stdout + "\n" + p.stderr
+        except subprocess.TimeoutExpired:
+            rc, text = 124, ""
+        except OSError:
+            rc, text = 99, ""
+    else:
+        rc, text = privileged.run(cfg, "dev-temp", timeout=timeout)
+    if rc == 124:
         return jsonify({"ok": False, "reason": "timed out"}), 502
-    except OSError as e:
-        return jsonify({"ok": False, "reason": f"could not run the helper ({type(e).__name__})"}), 502
-    if r.returncode == 0:
+    if rc == 99:
+        return jsonify({"ok": False, "reason": "could not run the helper"}), 502
+    if rc == 0:
         return jsonify({"ok": True, "reason": ""})
-    text = (r.stdout + "\n" + r.stderr).lower()
-    if "sudo" in text or "no new privileges" in text or "password" in text:
-        reason = "not permitted (sudo rule or service settings)"
-    elif r.returncode == 3:
+    text = text.lower()
+    if "access denied" in text or "interactive authentication" in text or "not authorized" in text:
+        reason = "not permitted (polkit rule missing)"
+    elif rc == 3 or "busy" in text:
         reason = "busy (another network change is in progress)"
     elif "no matching networkmanager wi-fi profile" in text:
         reason = "no saved home Wi-Fi on this frame"
     else:
         reason = "home Wi-Fi did not connect"
-    log.warning("dev mode switch failed (exit %s): %s", r.returncode, reason)
+    log.warning("dev mode switch failed (exit %s): %s", rc, reason)
     return jsonify({"ok": False, "reason": reason}), 502

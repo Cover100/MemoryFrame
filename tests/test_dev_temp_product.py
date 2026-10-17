@@ -15,24 +15,13 @@ NETPLAN = "netplan-wlan0-Oversclan_5G"
 LOCAL = {"REMOTE_ADDR": "127.0.0.1"}
 
 
-# ---------- suspect 1: the service unit blocks sudo ----------
+# ---------- the service keeps its hardening; privileged actions are polkit-started units ----------
+# (unit/polkit/install details: tests/test_privileged_units.py)
 
-def test_service_unit_does_not_block_sudo():
-    unit = (ROOT / "deploy" / "memoryframe.service").read_text()
-    active_lines = [l for l in unit.splitlines() if not l.lstrip().startswith("#")]
-    assert not any(l.startswith("NoNewPrivileges=") for l in active_lines)
-    assert not any(l.startswith("CapabilityBoundingSet=") for l in active_lines)
-    assert "AmbientCapabilities=CAP_NET_BIND_SERVICE" in unit
-
-
-# ---------- suspect 2: sudoers / install path / exact argv ----------
-
-def test_sudoers_and_install_path_match_the_app_command():
-    from memoryframe import display
-    assert display.DEV_MODE_CMD == ["sudo", "-n", "/usr/local/sbin/memoryframe-netmode", "dev-temp"]
-    rule = (ROOT / "deploy" / "memoryframe-sudoers").read_text()
-    assert "/usr/local/sbin/memoryframe-netmode dev-temp" in rule
-    assert "/usr/local/sbin/memoryframe-netmode" in (ROOT / "deploy" / "install.sh").read_text()
+def test_app_starts_the_devtemp_unit_not_sudo():
+    from memoryframe import display, privileged
+    assert display.DEV_MODE_UNIT == privileged.UNITS["dev-temp"] == "memoryframe-devtemp.service"
+    assert "sudo" not in (ROOT / "memoryframe" / "display.py").read_text().split("MF-51: Dev mode", 1)[1]
 
 
 # ---------- suspect 3: helper picks the netplan client and never modifies it ----------
@@ -91,7 +80,7 @@ def _token(client):
 
 @pytest.mark.parametrize("script,code,ok,reason", [
     ("echo 'ok: joined X'", 200, True, ""),
-    ("echo 'sudo: The \"no new privileges\" flag is set' >&2; exit 1", 502, False, "not permitted"),
+    ("echo 'Failed to start memoryframe-devtemp.service: Access denied' >&2; exit 4", 502, False, "not permitted"),
     ("exit 3", 502, False, "busy"),
     ("echo 'error: home Wi-Fi did not connect; hotspot kept on'; exit 1", 502, False, "did not connect"),
 ])

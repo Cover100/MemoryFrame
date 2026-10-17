@@ -6,7 +6,7 @@
 #   deploy/netmode.sh status         # requested mode, applied mode, active connection
 #   deploy/netmode.sh boot           # what memoryframe-netmode.service runs at boot
 #
-# MF-18 (the app calls these through sudo; the only commands in the sudoers rule):
+# MF-18 (the app starts these as root oneshot units via polkit, deploy/units + memoryframe-polkit.rules):
 #   netmode.sh wifi-apply      # reads "ssid\npassword\n" on STDIN (never argv), writes a root-only
 #                              # MemoryFrame-AP-pending keyfile and switches to it; old profile kept
 #   netmode.sh wifi-commit     # pending becomes the hotspot profile, old profile deleted

@@ -64,14 +64,21 @@ sed -e "s#@USER@#$APP_USER#g" -e "s#@APP_DIR@#$APP_DIR#g" \
 sudo install -o root -g root -m 0755 "$APP_DIR/deploy/netmode.sh" /usr/local/sbin/memoryframe-netmode
 sed -e "s#@APP_DIR@#$APP_DIR#g" \
     "$APP_DIR/deploy/memoryframe-netmode.service" | sudo tee /etc/systemd/system/memoryframe-netmode.service >/dev/null
-SUDOERS_TMP="$(mktemp)"
-sed -e "s#@USER@#$APP_USER#g" "$APP_DIR/deploy/memoryframe-sudoers" > "$SUDOERS_TMP"
-if sudo visudo -cf "$SUDOERS_TMP" >/dev/null; then
-    sudo install -o root -g root -m 0440 "$SUDOERS_TMP" /etc/sudoers.d/memoryframe
-else
-    echo "WARNING: sudoers rule failed visudo -c; Frame Wi-Fi changes will be unavailable" >&2
+# #62: root oneshot units for the app's privileged actions + a polkit rule that lets only the app
+# user start them (and power off). No sudoers rules: the app service keeps NoNewPrivileges.
+for u in devtemp wifi-apply wifi-commit wifi-rollback; do
+    sudo install -o root -g root -m 0644 "$APP_DIR/deploy/units/memoryframe-$u.service" "/etc/systemd/system/memoryframe-$u.service"
+done
+POLKIT_TMP="$(mktemp)"
+sed -e "s#@USER@#$APP_USER#g" "$APP_DIR/deploy/memoryframe-polkit.rules" > "$POLKIT_TMP"
+sudo install -d -o root -g root -m 0755 /etc/polkit-1/rules.d
+sudo install -o root -g root -m 0644 "$POLKIT_TMP" /etc/polkit-1/rules.d/50-memoryframe.rules
+rm -f "$POLKIT_TMP"
+if ! command -v pkaction >/dev/null 2>&1; then
+    echo "WARNING: polkit (polkitd) not found; install it for Developer Wi-Fi, Wi-Fi change and Shut down" >&2
 fi
-rm -f "$SUDOERS_TMP"
+# Old sudoers rules from before #62 (unused now).
+sudo rm -f /etc/sudoers.d/memoryframe /etc/sudoers.d/memoryframe-poweroff
 sudo systemctl daemon-reload
 # MF-51 deploy guard: boot now defaults to product (hotspot). A Pi that is on a home Wi-Fi
 # client connection and has no mode file is a dev Pi: write "dev" so its next reboot keeps
@@ -84,14 +91,6 @@ if [ ! -e "$MODE_FILE" ] && [ -n "$CUR_WIFI" ] && [ "$CUR_WIFI" != "MemoryFrame-
 fi
 # MF-36: applied at the NEXT boot (enabling does not switch the network now).
 sudo systemctl enable memoryframe-netmode.service
-# MF-49: narrow sudoers rule for the frame's "Shut down" menu item (only systemctl poweroff).
-sed -e "s#@USER@#$APP_USER#g" "$APP_DIR/deploy/memoryframe-poweroff-sudoers" > "/tmp/memoryframe-poweroff.$$"
-if sudo visudo -cf "/tmp/memoryframe-poweroff.$$" >/dev/null; then
-    sudo install -o root -g root -m 0440 "/tmp/memoryframe-poweroff.$$" /etc/sudoers.d/memoryframe-poweroff
-else
-    echo "WARNING: poweroff sudoers rule failed visudo; Shut down from the menu will not work." >&2
-fi
-rm -f "/tmp/memoryframe-poweroff.$$"
 sudo systemctl enable memoryframe.service
 sudo systemctl restart memoryframe.service
 

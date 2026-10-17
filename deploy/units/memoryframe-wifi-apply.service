@@ -1,0 +1,18 @@
+# #62: root oneshot started by the app via polkit (deploy/memoryframe-polkit.rules); no sudo.
+# No [Install]: it can only be started on demand. Output goes to /run/memoryframe/wifi-apply.out for the app.
+[Unit]
+Description=Memory Frame: apply a pending frame Wi-Fi change
+After=NetworkManager.service memoryframe-netmode.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/memoryframe-netmode wifi-apply
+TimeoutStartSec=120
+RuntimeDirectory=memoryframe
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+StandardOutput=truncate:/run/memoryframe/wifi-apply.out
+StandardError=journal
+# The app writes 'ssid\npassword\n' to its own 0700 RuntimeDirectory; the helper validates both.
+StandardInput=file:/run/memoryframe-app/wifi-apply
+ExecStopPost=/bin/rm -f /run/memoryframe-app/wifi-apply

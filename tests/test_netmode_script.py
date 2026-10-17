@@ -356,15 +356,6 @@ def test_service_unit():
     assert "memoryframe-netmode boot" in unit and "Restart=" not in unit
 
 
-def test_sudoers_only_the_three_wifi_commands():
-    rule = [l for l in (ROOT / "deploy" / "memoryframe-sudoers").read_text().splitlines()
-            if l.strip() and not l.startswith("#")]
-    assert len(rule) == 1
-    cmds = [c.strip() for c in rule[0].split("NOPASSWD:", 1)[1].split(",")]
-    assert cmds == [f"/usr/local/sbin/memoryframe-netmode {c}" for c in ("wifi-apply", "wifi-commit", "wifi-rollback", "dev-temp")]
-    assert "ALL=(root)" in rule[0] and "*" not in rule[0]
-
-
 # ---------- MF-18 helper: wifi-apply / wifi-commit / wifi-rollback ----------
 
 PENDING = "MemoryFrame-AP-pending"

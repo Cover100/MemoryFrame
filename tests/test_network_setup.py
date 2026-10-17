@@ -104,7 +104,7 @@ def test_service_binds_port_80_without_root():
     unit = (ROOT_DIR / "deploy" / "memoryframe.service").read_text()
     assert "Environment=MEMORYFRAME_PORTS=80,5000" in unit
     assert "AmbientCapabilities=CAP_NET_BIND_SERVICE" in unit
-    assert "NoNewPrivileges=true" not in unit   # would break the sudo helpers (#62)
+    assert "CapabilityBoundingSet=CAP_NET_BIND_SERVICE" in unit and "NoNewPrivileges=true" in unit
     assert "User=@USER@" in unit
 
 

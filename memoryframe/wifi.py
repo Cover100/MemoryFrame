@@ -1,7 +1,7 @@
 """MF-18 (reduced): change the frame's hotspot name/password from a paired phone.
 
 Flow: POST /admin/wifi (validated) -> row `pending` in wifi_change (current profile untouched)
--> after the response the restricted helper (deploy/netmode.sh via sudo, password on stdin)
+-> after the response the restricted helper (deploy/netmode.sh as a root oneshot unit started via polkit, password via the app's 0700 runtime dir)
 starts MemoryFrame-AP-pending -> the frame shows the new Wi-Fi QR + countdown -> a paired phone
 on the new network taps "Keep new Wi-Fi" -> commit. Otherwise rollback on timeout, activation
 failure or restart. The password is never logged and never returned by any endpoint; it is
@@ -12,7 +12,6 @@ import ipaddress
 import logging
 import os
 import re
-import subprocess
 import threading
 import time
 
@@ -26,7 +25,6 @@ log = logging.getLogger(__name__)
 WINDOW = 300                       # seconds to confirm
 OLD_PROFILE, NEW_PROFILE = "MemoryFrame-hotspot", "MemoryFrame-AP-pending"
 HOTSPOT_NET = ipaddress.ip_network("10.42.0.0/24")
-DEFAULT_HELPER = ["sudo", "-n", "/usr/local/sbin/memoryframe-netmode"]
 LOCK_PATH = "/run/memoryframe/netmode.lock"
 COMMITTED_SHOW = 3                 # frame shows "Wi-Fi updated" for 3 s
 
@@ -100,19 +98,15 @@ def unavailable():
 # ---------------- helper ----------------
 
 def _helper(app, cmd, stdin=None, out=None):
-    argv = list(app.config.get("NET_HELPER") or DEFAULT_HELPER) + [cmd]
-    try:
-        r = subprocess.run(argv, input=stdin, capture_output=True, text=True, timeout=120)
-    except (OSError, subprocess.TimeoutExpired) as e:
-        log.warning("network helper %s failed to run: %s", cmd, type(e).__name__)
-        return 99
-    if r.returncode:
-        log.warning("network helper %s exited %d", cmd, r.returncode)   # output not logged (may echo input)
+    from . import privileged
+    rc, text = privileged.run(app.config, cmd, stdin=stdin)
+    if rc:
+        log.warning("network helper %s exited %d", cmd, rc)   # output not logged (may echo input)
     if out is not None:
-        for line in (r.stdout or "").splitlines():
+        for line in (text or "").splitlines():
             if line.startswith("uuid=") and re.fullmatch(r"[0-9A-Za-z-]{1,64}", line[5:]):
                 out["uuid"] = line[5:]
-    return r.returncode
+    return rc
 
 
 def _set_state(conn, state, reason=None, only_if="pending"):

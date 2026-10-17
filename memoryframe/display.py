@@ -37,7 +37,13 @@ def index():
         return redirect("/admin/", code=302)
     return render_template("index.html", media=get_media(), frame_token=frame_token(),
                            safe_copy=SAFE_SCREEN_COPY,
-                           frame_message=current_app.config.get("FRAME_MESSAGE"))   # #73 feeds this
+                           frame_message=frame_message())
+
+
+def frame_message():
+    """#73: the giver's message (plain text; autoescaped in index.html, textContent in script.js)."""
+    from . import message
+    return message.get(current_app.config["DATA_DIR"])
 
 
 @bp.route("/frame-fonts.css")
@@ -77,9 +83,12 @@ def show_now_state():
                                  (name,)).fetchone() is None:
         name = None                                  # deleted or hidden since
     from . import settings
-    return jsonify({"seq": state["seq"], "filename": name,
-                    "rev": current_app.extensions.get("mf_media_rev", 0),
-                    "settings": settings.get_all(get_db())})       # MF-17: applied live by the frame
+    out = {"seq": state["seq"], "filename": name,
+           "rev": current_app.extensions.get("mf_media_rev", 0),
+           "settings": settings.get_all(get_db())}       # MF-17: applied live by the frame
+    if is_local_request():                           # #73: the menu follows phone edits live;
+        out["message"] = frame_message()             # unpaired LAN clients never see it
+    return jsonify(out)
 
 
 def clear_show_now(app, stored_name):

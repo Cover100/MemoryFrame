@@ -1358,6 +1358,17 @@ function applySettings(st){
                                   playlist: playlist.map((x)=> x.filename), index: currentIndex};
 }
 
+// #73: the giver's message, edited on the phone, follows within one poll. textContent only.
+function applyMessage(msg){
+    if(typeof msg !== "string"){ return; }
+    const p = document.getElementById("menuMessage");
+    const card = document.getElementById("menuNote"), empty = document.getElementById("menuNoteEmpty");
+    if(!p || !card || !empty){ return; }
+    if(p.textContent !== msg){ p.textContent = msg; }
+    card.hidden = !msg;
+    empty.hidden = !!msg;
+}
+
 async function pollControl(){
 
     try{
@@ -1367,6 +1378,7 @@ async function pollControl(){
         }
         controlRev = c.rev;
         applySettings(c.settings);
+        applyMessage(c.message);
         if(controlSeq !== null && c.seq !== controlSeq && c.filename){
             console.log("Show now:", c.filename);
             jumpTo(c.filename);

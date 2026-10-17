@@ -40,5 +40,11 @@ def library_page():
 
 @bp.route("/settings")
 def settings_page():
-    from . import settings
-    return render_template("settings.html", s=settings.get_all(get_db()), slides=settings.SLIDE_SECONDS)
+    from flask import current_app
+    from . import frameinfo, message, settings
+    net = frameinfo.network()
+    about = {"ip": ", ".join(net.get("ips") or []) or net.get("lan_ip") or "Unknown",
+             "site": frameinfo.site_urls(net)["primary"], "version": frameinfo.version()}
+    return render_template("settings.html", s=settings.get_all(get_db()), slides=settings.SLIDE_SECONDS,
+                           message=message.get(current_app.config["DATA_DIR"]),
+                           message_max=message.MAX_LEN, about=about)

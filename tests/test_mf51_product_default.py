@@ -116,13 +116,6 @@ def test_endpoint_rejects_phone_and_missing_token(client, stub):
     assert not stub.exists()
 
 
-def test_sudoers_allows_dev_temp_only_addition():
-    from pathlib import Path
-    s = (Path(__file__).resolve().parents[1] / "deploy" / "memoryframe-sudoers").read_text()
-    assert "memoryframe-netmode dev-temp" in s
-    assert not re.search(r"memoryframe-netmode (product|dev|boot)\b(?!-)", s)
-
-
 PE = ("(t,x,y)=>{const el=document.elementFromPoint(x,y)||document.body;"
       "el.dispatchEvent(new PointerEvent(t,{bubbles:true,cancelable:true,clientX:x,clientY:y,pointerId:7,"
       "pointerType:'touch',isPrimary:true}));}")

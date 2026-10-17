@@ -1,0 +1,16 @@
+# #62: root oneshot started by the app via polkit (deploy/memoryframe-polkit.rules); no sudo.
+# No [Install]: it can only be started on demand. Output goes to /run/memoryframe/dev-temp.out for the app.
+[Unit]
+Description=Memory Frame: developer Wi-Fi until reboot
+After=NetworkManager.service memoryframe-netmode.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/memoryframe-netmode dev-temp
+TimeoutStartSec=90
+RuntimeDirectory=memoryframe
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+StandardOutput=truncate:/run/memoryframe/dev-temp.out
+StandardError=journal
+

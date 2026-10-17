@@ -33,6 +33,7 @@ if [ "$1" = -g ] && [ "$3 $4" = "connection show" ]; then
     802-11-wireless.ssid) cat "$f/ssid";; connection.autoconnect) cat "$f/autoconnect";;
     connection.timestamp) cat "$f/ts" 2>/dev/null || echo 0;;
     connection.uuid) cat "$f/uuid" 2>/dev/null || echo "uuid-$5";;
+    connection.interface-name) cat "$f/ifname" 2>/dev/null;;
   esac; exit 0
 fi
 case "$1 $2" in
@@ -353,15 +354,6 @@ def test_service_unit():
     unit = (ROOT / "deploy" / "memoryframe-netmode.service").read_text()
     assert "Type=oneshot" in unit and "Before=memoryframe.service" in unit
     assert "memoryframe-netmode boot" in unit and "Restart=" not in unit
-
-
-def test_sudoers_only_the_three_wifi_commands():
-    rule = [l for l in (ROOT / "deploy" / "memoryframe-sudoers").read_text().splitlines()
-            if l.strip() and not l.startswith("#")]
-    assert len(rule) == 1
-    cmds = [c.strip() for c in rule[0].split("NOPASSWD:", 1)[1].split(",")]
-    assert cmds == [f"/usr/local/sbin/memoryframe-netmode {c}" for c in ("wifi-apply", "wifi-commit", "wifi-rollback", "dev-temp")]
-    assert "ALL=(root)" in rule[0] and "*" not in rule[0]
 
 
 # ---------- MF-18 helper: wifi-apply / wifi-commit / wifi-rollback ----------

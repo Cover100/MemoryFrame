@@ -103,11 +103,18 @@ reboot → hotspot; dev-temp with wrong home password → hotspot back + toast; 
 
 ## MF-18: changing the hotspot name/password from a phone
 
-Phone: admin home → `Frame Wi-Fi`. The app never touches the network itself; it calls the
-root-owned helper through one sudoers rule (`/etc/sudoers.d/memoryframe`, from
-`deploy/memoryframe-sudoers`): `sudo -l -U <app user>` must list only
-`/usr/local/sbin/memoryframe-netmode wifi-apply|wifi-commit|wifi-rollback|dev-temp` . The new password goes
-to the helper on stdin (never argv/logs), into a root-only keyfile `MemoryFrame-AP-pending`.
+Phone: admin home → `Frame Wi-Fi`. The app never touches the network itself, and it has no sudo rules
+(#62: its service keeps `NoNewPrivileges`). It starts root oneshot units (`memoryframe-wifi-apply`,
+`-wifi-commit`, `-wifi-rollback`, `-devtemp`), and power-off goes through logind. The polkit rule
+`/etc/polkit-1/rules.d/50-memoryframe.rules` allows only the app user to start exactly those units and
+power off. The new password goes in the app's 0700 `/run/memoryframe-app/wifi-apply`, which the root
+helper reads itself (regular file owned by the app user only, no symlinks or FIFOs) and deletes, into a
+root-only keyfile `MemoryFrame-AP-pending`. It never appears in argv, logs or `/run/memoryframe/*.out`.
+
+**Note:** the app user is also the desktop/kiosk user (install.sh runs as the desktop user). So any
+process in the desktop session can start those four fixed units or power off the frame. That is
+accepted because the commands are fixed; a dedicated system user would be a later improvement.
+`install.sh` installs `polkitd` and stops with an error if polkit is still missing.
 
 - Pending: old profile kept, frame shows the new Wi-Fi QR and a 5:00 countdown.
 - Keep: a paired phone on the new hotspot (10.42.0.0/24) taps `Keep new Wi-Fi` → pending becomes

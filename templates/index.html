@@ -161,8 +161,11 @@
                 </div>
             </div>
             <div id="devModeDone" hidden>
-                <div class="confirmTitle">Joining developer Wi-Fi…</div>
-                <div class="confirmBody">Restart the frame to go back to its own Wi-Fi.</div>
+                <div class="confirmTitle" id="devModeStatus">Joining home Wi-Fi…</div>
+                <div class="confirmBody" id="devModeDetail">This can take up to 30 seconds.</div>
+                <div class="shutdownButtons" id="devModeAfter" hidden>
+                    <button id="devModeOk" type="button">OK</button>
+                </div>
             </div>
             <div id="devModeError" hidden>Couldn't switch. Try again.</div>
         </div>

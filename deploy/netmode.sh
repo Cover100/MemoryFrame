@@ -6,7 +6,7 @@
 #   deploy/netmode.sh status         # requested mode, applied mode, active connection
 #   deploy/netmode.sh boot           # what memoryframe-netmode.service runs at boot
 #
-# MF-18 (the app calls these through sudo; the only commands in the sudoers rule):
+# MF-18 (the app starts these as root oneshot units via polkit, deploy/units + memoryframe-polkit.rules):
 #   netmode.sh wifi-apply      # reads "ssid\npassword\n" on STDIN (never argv), writes a root-only
 #                              # MemoryFrame-AP-pending keyfile and switches to it; old profile kept
 #   netmode.sh wifi-commit     # pending becomes the hotspot profile, old profile deleted
@@ -151,7 +151,10 @@ client_profiles() {
     local n
     while IFS= read -r n; do
         if [ -z "$n" ] || [ "$n" = "$HOTSPOT_CON" ]; then continue; fi
+        case "$n" in MemoryFrame-*) continue ;; esac      # pending/old hotspot profiles are not clients
         [ "$(prop "$n" connection.type)" = 802-11-wireless ] || continue
+        local ifn; ifn="$(prop "$n" connection.interface-name)"
+        if [ -n "$ifn" ] && [ "$ifn" != "$IFACE" ]; then continue; fi   # saved for another interface
         if [ "$(prop "$n" 802-11-wireless.mode)" = ap ]; then continue; fi
         printf '%s\n' "$n"
     done < <(profiles)
@@ -356,10 +359,31 @@ wifi_rollback() {
     return "$ok"
 }
 
+# #62: the request file the app leaves in its own 0700 runtime dir (memoryframe-wifi-apply.service runs
+# `wifi-apply --request`). Read by the helper itself, never via systemd: no symlinks (nofollow), no
+# FIFOs/devices (regular files only, nonblock), and it must be owned by the dir's owner (the app user).
+APPLY_REQ="${MEMORYFRAME_APPLY_REQ:-/run/memoryframe-app/wifi-apply}"
+read_request() {
+    local f="$APPLY_REQ" dir owner
+    dir="$(dirname "$f")"
+    if [ -L "$f" ] || [ ! -f "$f" ]; then log "wifi change refused: request is not a regular file"; return 1; fi
+    owner="$(stat -c %u "$dir" 2>/dev/null)" || return 1
+    if [ "$owner" = 0 ] || [ "$(stat -c %u "$f" 2>/dev/null)" != "$owner" ]; then
+        log "wifi change refused: request not owned by the app user"; return 1
+    fi
+    dd if="$f" iflag=nofollow,nonblock bs=512 count=1 status=none 2>/dev/null
+}
+
 wifi_apply() {
-    local ssid="" psk="" f
-    IFS= read -r ssid || true
-    IFS= read -r psk || true
+    local ssid="" psk="" f req
+    if [ "${1:-}" = --request ]; then
+        if ! req="$(read_request)"; then rm -f "$APPLY_REQ"; exit 2; fi
+        rm -f "$APPLY_REQ"
+        { IFS= read -r ssid || true; IFS= read -r psk || true; } <<< "$req"
+    else
+        IFS= read -r ssid || true
+        IFS= read -r psk || true
+    fi
     require_product
     if ! valid_ssid "$ssid" || ! valid_psk "$psk"; then log "wifi change refused: invalid name or password"; exit 2; fi
     if ! profiles | grep -qxF "$HOTSPOT_CON"; then log "wifi change refused: no hotspot profile"; exit 1; fi
@@ -431,7 +455,7 @@ wifi_commit() {
 
 case "${1:-}" in
     status) status ;;
-    wifi-apply) take_lock; wifi_apply ;;
+    wifi-apply) take_lock; wifi_apply "${2:-}" ;;   # stdout (/run/memoryframe/*.out, 0644): uuid only, never the password
     wifi-commit) take_lock nopending; wifi_commit ;;
     wifi-rollback) take_lock nopending; wifi_rollback ;;
     product|dev)
@@ -440,7 +464,8 @@ case "${1:-}" in
         apply "$1" ;;
     dev-temp)   # MF-51: frame menu "Dev mode": home Wi-Fi until the next reboot. No file is written;
         take_lock   # /run is tmpfs, so nothing survives a reboot and boot returns to product.
-        apply_dev temp || exit 1 ;;
+        DEV_WAIT="${MEMORYFRAME_DEV_TEMP_WAIT:-30}"   # client must connect within ~30 s, else hotspot back
+        if apply_dev temp; then echo "ok: joined $(active)"; else echo "error: home Wi-Fi did not connect; hotspot kept on"; exit 1; fi ;;
     boot)
         take_lock nopending                   # a pending change is rolled back below
         if [ -e "$RESET_FILE" ]; then

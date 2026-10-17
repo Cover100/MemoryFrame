@@ -7,8 +7,8 @@
 
 /* Local font for the frame (offline). Atkinson Hyperlegible, SIL OFL, Regular + Bold only (~2 x 30 KB
    woff2 when subset to Latin). Bundled in /static/fonts/ (subset to Latin, OFL.txt alongside). */
-@font-face { font-family: "MF Frame"; font-weight: 400; src: url("/static/fonts/atkinson-hyperlegible-400.woff2") format("woff2"); font-display: swap; }
-@font-face { font-family: "MF Frame"; font-weight: 700; src: url("/static/fonts/atkinson-hyperlegible-700.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "MF Frame"; font-weight: 400; src: url("/static/fonts/atkinson-hyperlegible-400.woff2") format("woff2"); font-display: block; }
+@font-face { font-family: "MF Frame"; font-weight: 700; src: url("/static/fonts/atkinson-hyperlegible-700.woff2") format("woff2"); font-display: block; }
 
 :root {
   /* ---- Frame palette (dark: the screen should melt into the black surround) ---- */

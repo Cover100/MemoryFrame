@@ -93,7 +93,7 @@ def test_menu_shutdown_cover_immediately_until_poweroff(page, server, mf_app, ne
                         "const r=c.getBoundingClientRect();return [s.backgroundColor,r.width,r.height,"
                         "getComputedStyle(c.querySelector('.sdTitle')).fontSize,"
                         "getComputedStyle(c.querySelector('.sdWarn')).color,c.querySelectorAll('button').length];})()")
-    assert st == ["rgb(17, 17, 17)", 800, 480, "48px", "rgb(255, 176, 0)", 0]
+    assert st == ["rgb(14, 19, 17)", 800, 480, "48px", "rgb(214, 179, 106)", 0]   # --mf-ink / --mf-brass
     # taps/drags on the cover do nothing (no menu, no brightness)
     for y in range(400, 100, -20):
         page.call("Input.dispatchMouseEvent", {"type": "mouseMoved" if y < 400 else "mousePressed", "x": 400,

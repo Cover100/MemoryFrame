@@ -605,6 +605,9 @@ video {
 #menuInfo td{font-weight:600}
 .menuButtons{margin-top:8px;display:flex;gap:8px}
 .menuButtons button{margin:0!important;padding:8px 14px!important}
+.overlay button.mf-btn{min-height:var(--mf-touch-frame);font-weight:700}
+.overlay button.mf-btn-secondary{border:2px solid var(--mf-forest-700)}
+#confirmCancel,#shutdownCancel,#devModeCancel{outline:var(--mf-ring-width) solid var(--mf-brass);outline-offset:3px}   /* default button */
 #pairUrlAlt{display:block;font-size:20px;opacity:.85}
 #pairHint{position:fixed;right:12px;bottom:10px;z-index:40;display:none;padding:6px 12px;border-radius:8px;
   background:rgba(0,0,0,.45);color:rgba(255,255,255,.85);font:18px var(--mf-font-frame);pointer-events:none}
@@ -627,7 +630,7 @@ video {
 #pairSuccess{text-align:center}
 .successTitle{font-size:40px;font-weight:700}
 .successText{font-size:26px;margin-top:10px}
-.confirmError{font-size:20px;color:#ff8a80;font-weight:600}
+.confirmError{font-size:20px;color:var(--mf-brick-text);font-weight:600}
 .confirmError[hidden]{display:none}
 /* ---------- MF-36: product / developer mode (frame only) ---------- */
 .dev-banner{position:fixed;left:12px;bottom:12px;z-index:9000;font-size:14px;line-height:1.3;
@@ -661,7 +664,7 @@ video {
 .shutdownButtons button{width:200px;min-height:64px;margin:0!important}
 #shutdownCancel{background:var(--mf-forest-800);color:var(--mf-linen);border:2px solid var(--mf-forest-700)}
 #shutdownConfirm{background:var(--mf-brick);color:#fff}
-#shutdownError{font-size:20px;color:#ff8a80;margin-top:10px}
+#shutdownError{font-size:20px;color:var(--mf-brick-text);margin-top:10px}
 #shutdownAsk[hidden],#shutdownDone[hidden],#shutdownError[hidden]{display:none}
 /* ---------- MF-18: hotspot change (frame) ---------- */
 .wifi-overlay{position:fixed;inset:0;z-index:8700;background:rgba(0,0,0,.85);display:flex;
@@ -684,7 +687,7 @@ video {
 #devModeBox .confirmBody{font-size:20px;line-height:1.3;margin:8px 0 16px}
 #devModeCancel{background:var(--mf-forest-800);color:var(--mf-linen);border:2px solid var(--mf-forest-700)}
 #devModeConfirm{background:var(--mf-brass);color:var(--mf-ink)}
-#devModeError{font-size:20px;color:#ff8a80;margin-top:10px}
+#devModeError{font-size:20px;color:var(--mf-brick-text);margin-top:10px}
 #devModeAsk[hidden],#devModeDone[hidden],#devModeError[hidden]{display:none}
 #devRing{position:fixed;z-index:9500;width:72px;height:72px;margin:-36px 0 0 -36px;border-radius:50%;
   pointer-events:none;border:3px solid rgba(255,255,255,0);transform:scale(.6)}
@@ -692,13 +695,13 @@ video {
 #devRing[hidden]{display:none}
 
 /* MF-49 "Shutting down" cover (Designer spec) */
-#shuttingDown{position:fixed;inset:0;z-index:99999;background:#111111;display:flex;flex-direction:column;
+#shuttingDown{position:fixed;inset:0;z-index:99999;background:var(--mf-ink);display:flex;flex-direction:column;
   align-items:center;justify-content:center;font-family:var(--mf-font-frame);touch-action:none}
 #shuttingDown[hidden]{display:none}
-#shuttingDown .sdTitle{font-size:48px;font-weight:700;color:#fff}
-#shuttingDown .sdWarn{font-size:32px;color:#FFB000;margin-top:16px}
+#shuttingDown .sdTitle{font-size:48px;font-weight:700;color:var(--mf-linen)}
+#shuttingDown .sdWarn{font-size:32px;color:var(--mf-brass);margin-top:16px}
 #shuttingDown .sdDots{margin-top:28px;display:flex;gap:14px}
-#shuttingDown .sdDots span{width:14px;height:14px;border-radius:50%;background:#fff;opacity:.5;
+#shuttingDown .sdDots span{width:14px;height:14px;border-radius:50%;background:var(--mf-linen);opacity:.5;
   animation:sdPulse 1s infinite ease-in-out}
 #shuttingDown .sdDots span:nth-child(2){animation-delay:.2s}
 #shuttingDown .sdDots span:nth-child(3){animation-delay:.4s}

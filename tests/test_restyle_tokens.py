@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from test_frontend_browser import evaluate, net, page, server  # noqa: F401  (fixtures)
+
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "static"
 TOKENS = (STATIC / "tokens.css").read_text()
@@ -72,3 +74,39 @@ def test_font_served_locally(client, w):
 def test_phone_pages_use_tokens(client, paired):
     html = client.get("/admin/", environ_base={"REMOTE_ADDR": "10.42.0.23"}).get_data(as_text=True)
     assert "/static/tokens.css" in html and 'class="mf-phone"' in html
+
+
+def _rules(sel_regex):
+    css = (STATIC / "style.css").read_text()
+    return [m.group(0) for m in re.finditer(sel_regex + r"[^{]*\{[^}]*\}", css)]
+
+
+def test_font_display_block():
+    assert TOKENS.count("font-display: block") == 2 and "swap" not in TOKENS
+
+
+def test_shutdown_cover_and_errors_use_tokens_no_hex():
+    rules = _rules(r"#shuttingDown") + _rules(r"\.confirmError") + _rules(r"#shutdownError") + _rules(r"#devModeError")
+    assert len(rules) >= 6
+    for r in rules:
+        assert not re.search(r"#[0-9a-fA-F]{3,8}\b(?![-\w])", r.split("{", 1)[1]), r
+    css = (STATIC / "style.css").read_text()
+    assert "ff8a80" not in css.lower() and css.count("var(--mf-brick-text)") >= 3
+
+
+def test_menu_buttons_use_shared_classes(client):
+    html = client.get("/", environ_base=LOCAL).get_data(as_text=True)
+    for i, c in (("menuPair", "mf-btn"), ("menuSignOut", "mf-btn mf-btn-secondary"),
+                 ("menuShutdown", "mf-btn mf-btn-danger"), ("menuClose", "mf-btn mf-btn-secondary")):
+        assert f'id="{i}" class="{c}"' in html
+    css = (STATIC / "style.css").read_text()
+    assert ".overlay button.mf-btn{min-height:var(--mf-touch-frame)" in css
+    assert "#confirmCancel,#shutdownCancel,#devModeCancel{outline:var(--mf-ring-width) solid var(--mf-brass)" in css
+
+
+def test_menu_buttons_render_in_palette(page, server, net):
+    page.pump(2.5)
+    evaluate(page, "memoryFramePairing.openMenu()")
+    got = evaluate(page, "['menuPair','menuSignOut','menuShutdown','menuClose'].map(i=>{const e=document.getElementById(i);"
+                         "const c=getComputedStyle(e);return [c.backgroundColor, Math.round(e.getBoundingClientRect().height)>=56];})")
+    assert got == [["rgb(42, 97, 64)", True], ["rgb(36, 56, 44)", True], ["rgb(168, 53, 42)", True], ["rgb(36, 56, 44)", True]]

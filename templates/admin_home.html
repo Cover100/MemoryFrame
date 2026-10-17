@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="csrf-token" content="{{ csrf_token() }}">
 <title>Memory Frame</title>
-<link rel="stylesheet" href="/static/tokens.css">
-<link rel="stylesheet" href="/static/pair.css">
+<link rel="stylesheet" href="{{ static('tokens.css') }}">
+<link rel="stylesheet" href="{{ static('pair.css') }}">
 </head>
 <body class="mf-phone">
 <h1>Memory Frame</h1>
@@ -27,6 +27,6 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <button type="submit">Sign out all phones</button>
 </form>
-<script src="/static/admin.js"></script>
+<script src="{{ static('admin.js') }}"></script>
 </body>
 </html>

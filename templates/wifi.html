@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="csrf-token" content="{{ csrf_token() }}">
 <title>Frame Wi-Fi</title>
-<link rel="stylesheet" href="/static/tokens.css">
-<link rel="stylesheet" href="/static/pair.css">
-<link rel="stylesheet" href="/static/wifi.css">
+<link rel="stylesheet" href="{{ static('tokens.css') }}">
+<link rel="stylesheet" href="{{ static('pair.css') }}">
+<link rel="stylesheet" href="{{ static('wifi.css') }}">
 </head>
 <body class="mf-phone">
 {% if step == "waiting" %}
@@ -46,7 +46,7 @@
     </div>
   </div>
 </form>
-<script src="/static/wifi.js"></script>
+<script src="{{ static('wifi.js') }}"></script>
 {% endif %}
 {% endif %}
 <p><a href="/admin/">Back</a></p>

@@ -115,4 +115,18 @@ sed -e "s#@APP_DIR@#$APP_DIR#g" "$APP_DIR/deploy/memoryframe-kiosk.desktop" \
     > "$HOME/.config/autostart/memoryframe-kiosk.desktop"
 
 echo "== Session type: ${XDG_SESSION_TYPE:-unknown} (record this in the MF-04 PR)"
+echo "== Kiosk reload (new JS/CSS)"
+# The kiosk page never reloads by itself, so after a deploy it would keep running the old JS. If the kiosk
+# Chromium is running (matched by its own profile dir), end it; kiosk.sh's loop relaunches it and it loads
+# the new page (asset URLs carry a content hash, see memoryframe/assets.py). Skipped on CI / headless runs.
+KIOSK_PROFILE="${MEMORYFRAME_STATE_DIR:-$HOME/.cache/memoryframe}/chromium-profile"
+if [ -n "${CI:-}" ] || [ "${MEMORYFRAME_NO_KIOSK_RELOAD:-}" = 1 ]; then
+    echo "skipped (CI or MEMORYFRAME_NO_KIOSK_RELOAD=1)"
+elif "${PGREP:-pgrep}" -u "$APP_USER" -f -- "--user-data-dir=$KIOSK_PROFILE" >/dev/null 2>&1; then
+    "${PKILL:-pkill}" -u "$APP_USER" -f -- "--user-data-dir=$KIOSK_PROFILE" || true
+    echo "kiosk browser restarted by kiosk.sh with the new assets"
+else
+    echo "no kiosk running; nothing to reload"
+fi
+
 echo "Done. Reboot to verify: sudo reboot"

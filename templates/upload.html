@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="csrf-token" content="{{ csrf_token() }}">
 <title>Upload photos - Memory Frame</title>
-<link rel="stylesheet" href="/static/tokens.css">
-<link rel="stylesheet" href="/static/pair.css">
-<link rel="stylesheet" href="/static/upload.css">
+<link rel="stylesheet" href="{{ static('tokens.css') }}">
+<link rel="stylesheet" href="{{ static('pair.css') }}">
+<link rel="stylesheet" href="{{ static('upload.css') }}">
 </head>
 <body class="mf-phone">
 <p><a href="/admin/">&larr; Memory Frame</a></p>
@@ -18,6 +18,6 @@
 </label>
 <p id="summary" aria-live="polite"></p>
 <ul id="list"></ul>
-<script src="/static/upload.js"></script>
+<script src="{{ static('upload.js') }}"></script>
 </body>
 </html>

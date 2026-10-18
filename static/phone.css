@@ -199,11 +199,13 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
 .mf-phone .acts { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .mf-phone .acts #messageSave { min-width: 120px; }
 /* 04b: "Remove message" is a red text button; the inline confirm keeps Keep (focused) as the safe choice */
-.mf-phone .msgRemove { background: transparent; color: var(--mf-red); padding: 0 12px; }
+.mf-phone .msgRemove { background: transparent; color: var(--mf-red); padding: 8px 12px; min-height: 0; }
 .mf-phone .msgConfirm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 10px; padding: 10px 12px;
   background: var(--mf-red-50); border-radius: var(--mf-r-md); color: var(--mf-red); font-weight: 600; }
 .mf-phone .msgConfirm span { flex: 1 1 100%; }
-.mf-phone .msgRemoveYes { background: var(--mf-red); color: #fff; }
+.mf-phone .msgRemoveYes { background: var(--mf-red); color: #fff; min-width: 104px; }
+.mf-phone .msgKeep { background: transparent; color: var(--mf-green); border: 1.5px solid var(--mf-green); min-width: 104px; }
+.mf-phone #messageSave[aria-disabled="true"] { background: var(--mf-green-50); color: var(--mf-green); cursor: default; transform: none; }
 .mf-phone .prev { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--mf-line); font-size: var(--mf-p-small);
   color: var(--mf-text-2); }
 /* Mini frame note: the frame's menu note card at 75 % so line breaks and the 5-line cap match the frame. */

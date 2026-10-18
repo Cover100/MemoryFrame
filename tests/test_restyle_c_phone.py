@@ -200,7 +200,8 @@ def test_settings_message_states_and_remove_confirm(page, server, mf_app):
     assert evaluate(page, f"{js}('messageRemove').hidden")
     evaluate(page, f"{js}('messageSave').click()")
     page.pump(1)
-    assert evaluate(page, f"{js}('messageSave').disabled") and evaluate(page, f"{js}('messageSave').textContent") == "Saved"
+    assert evaluate(page, f"{js}('messageSave').getAttribute('aria-disabled')") == "true"
+    assert evaluate(page, f"{js}('messageSave').textContent") == "Saved"
     assert evaluate(page, f"{js}('messageDirty').hidden") and not evaluate(page, f"{js}('messageRemove').hidden")
     assert evaluate(page, f"{js}('messagePreviewLabel').textContent") == "On the frame now"
     evaluate(page, f"{js}('messageRemove').click()")
@@ -213,6 +214,13 @@ def test_settings_message_states_and_remove_confirm(page, server, mf_app):
     page.pump(1)
     assert evaluate(page, f"{js}('frameMessage').value") == "" and not evaluate(page, f"{js}('messagePreviewEmpty').hidden")
     assert evaluate(page, f"{js}('messageRemove').hidden") and evaluate(page, f"{js}('messageConfirm').hidden")
+    assert not evaluate(page, f"{js}('messageSave').disabled")           # nothing stored: Save is free again
+    css = "getComputedStyle(document.getElementById('messageRemoveNo'))"
+    evaluate(page, f"{js}('frameMessage').value='x'; {js}('messageSave').click()")
+    page.pump(1)
+    evaluate(page, f"{js}('messageRemove').click()")
+    assert evaluate(page, f"{css}.color") == "rgb(42, 97, 64)" and evaluate(page, f"{css}.borderTopColor") == "rgb(42, 97, 64)"
+    assert evaluate(page, "getComputedStyle(document.getElementById('messageRemoveYes')).backgroundColor") == "rgb(168, 53, 42)"
     assert page.exceptions() == []
 
 

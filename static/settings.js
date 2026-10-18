@@ -67,8 +67,12 @@
             prevText.textContent = v;
             prev.hidden = !v; prevEmpty.hidden = !!v;
             const same = v === saved;
-            save.disabled = same;                          // nothing new to save (or nothing at all)
-            save.textContent = same && saved ? "Saved" : "Save";
+            // #75 guard: an empty box never silently clears the message (use "Remove message" for that).
+            save.disabled = !v && !!saved;
+            // 04b: unchanged text shows a muted "Saved" (aria-disabled; a tap does nothing).
+            const done = same && !!saved;
+            save.setAttribute("aria-disabled", done ? "true" : "false");
+            save.textContent = done ? "Saved" : "Save";
             dirtyEl.hidden = same;
             removeBtn.hidden = !saved || !confirmBox.hidden;
             label.textContent = same && saved ? "On the frame now" : "Preview: how it will look on the frame";
@@ -89,7 +93,10 @@
                 if(e instanceof TypeError && window.memoryFramePhone){ memoryFramePhone.offline(); }
             }
         }
-        save.addEventListener("click", ()=> saveMessage(ta.value));
+        save.addEventListener("click", ()=>{
+            if(save.disabled || save.getAttribute("aria-disabled") === "true"){ return; }
+            saveMessage(ta.value);
+        });
         // One-tap clear replaced by "Remove message" + inline confirm (Keep is focused, the safe default).
         removeBtn.addEventListener("click", ()=>{ confirmBox.hidden = false; removeBtn.hidden = true; document.getElementById("messageRemoveNo").focus(); });
         document.getElementById("messageRemoveNo").addEventListener("click", ()=>{ confirmBox.hidden = true; preview(); removeBtn.focus(); });

@@ -25,8 +25,14 @@ h2{font-size:1.1rem;margin:0 0 .4rem}
 .about dt{font-weight:600}
 .about dd{margin:0;overflow-wrap:anywhere}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
-/* 04b-settings-message-saved: "Remove message" as a red text button, with an inline confirm */
-.msgRemove{background:none;border:0;color:var(--mf-red);font-weight:600;padding:.4rem .2rem}
-.msgRemove[hidden],.msgConfirm[hidden]{display:none}
+/* 04b-settings-message-saved: "Remove message" as a red text button, with an inline confirm.
+   .mf-phone-scoped so these beat tokens.css `.mf-phone button` and pair.css `button{width:100%}`. */
+.mf-phone .msgRemove{background:none;border:0;color:var(--mf-red);font-weight:600;padding:.4rem .2rem;
+  width:auto;min-height:0;margin:0}
+.mf-phone .msgRemove[hidden],.msgConfirm[hidden]{display:none}
 .msgConfirm{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;margin-top:.4rem}
-.msgRemoveYes{background:var(--mf-red);color:#fff;border:0;border-radius:8px;padding:.4rem .9rem;font-weight:600}
+.msgConfirm span{flex-basis:100%}
+.mf-phone .msgRemoveYes{background:var(--mf-red);color:#fff;border:0;width:auto;margin:0;padding:.5rem 1.1rem;font-weight:600}
+.mf-phone .msgKeep{background:transparent;color:var(--mf-green);border:1.5px solid var(--mf-green);width:auto;margin:0;padding:.5rem 1.1rem;font-weight:600}
+.mf-phone #messageSave{width:auto;margin:0;padding:.5rem 1.4rem}
+.mf-phone #messageSave:disabled{background:var(--mf-green-50);color:var(--mf-green);opacity:.7}

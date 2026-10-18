@@ -51,8 +51,12 @@
             .replace(/[\u115F\u1160\u3164\uFFA0\u2800]/g, "")
             .replace(/[\p{Cc}\p{Cf}]/gu, (m)=> (/[\n\r\t\u200C\u200D]/.test(m) ? (m === "\u200C" || m === "\u200D" ? m : " ") : ""))
             .replace(/\s+/g, " ").trim();
+        const saveBtn = document.getElementById("messageSave");
+        let stored = norm(ta.value);              // what the frame shows now (server-rendered)
         const preview = ()=>{
             const v = norm(ta.value);
+            // An empty box never silently clears the message: use "Remove message" for that.
+            saveBtn.disabled = !v && !!stored;
             const n = [...v].length;
             count.textContent = `${n} / ${max}`;
             count.classList.toggle("err", n > max);
@@ -68,7 +72,7 @@
                     body: JSON.stringify({message: value})});
                 const j = await r.json().catch(()=> ({}));
                 if(!r.ok){ throw new Error(j.error || String(r.status)); }
-                ta.value = j.message; preview();
+                stored = j.message; ta.value = j.message; preview();
                 removeBtn.hidden = !j.message; confirmBox.hidden = true;
                 status("message", j.message ? "Saved" : "Cleared");
             }catch(e){

@@ -139,7 +139,7 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
 .mf-phone #grid img { display: block; width: 100%; height: auto; aspect-ratio: 1; object-fit: cover; background: var(--mf-line); }
 .mf-phone #grid .name { font-size: var(--mf-p-small); padding: 6px 8px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mf-phone #grid .actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; }
-.mf-phone #grid .actions button { flex: 1 1 40%; min-height: 40px; padding: 0 8px; font-size: var(--mf-p-small);
+.mf-phone #grid .actions button { flex: 1 1 auto; min-height: 40px; padding: 0 8px; white-space: nowrap; font-size: var(--mf-p-small);
   background: var(--mf-card); color: var(--mf-text); border: 1.5px solid var(--mf-line); }
 .mf-phone #grid .actions button:last-child { color: var(--mf-red); }
 .mf-phone #grid .actions button[disabled] { color: var(--mf-text-2); opacity: .6; }

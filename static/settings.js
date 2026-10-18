@@ -67,8 +67,8 @@
             prevText.textContent = v;
             prev.hidden = !v; prevEmpty.hidden = !!v;
             const same = v === saved;
-            save.disabled = same && !!saved;
-            save.textContent = save.disabled ? "Saved" : "Save";
+            save.disabled = same;                          // nothing new to save (or nothing at all)
+            save.textContent = same && saved ? "Saved" : "Save";
             dirtyEl.hidden = same;
             removeBtn.hidden = !saved || !confirmBox.hidden;
             label.textContent = same && saved ? "On the frame now" : "Preview: how it will look on the frame";

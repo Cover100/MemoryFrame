@@ -9,7 +9,11 @@
   <textarea id="frameMessage" maxlength="{{ message_max * 2 }}" rows="4" data-max="{{ message_max }}" data-saved="{{ message }}"
     aria-describedby="msgHelp messageCount" placeholder="e.g. Happy birthday, Nana! Love from all of us.">{{ message }}</textarea>
   <div class="meta"><span id="msgHelp">Shown in the frame's menu</span><span id="messageCount" aria-live="polite">{{ message|length }} / {{ message_max }}</span></div>
-  <div class="acts"><button type="button" id="messageSave">Save</button><span class="small muted" id="messageDirty" hidden>Not saved yet</span><button type="button" id="messageClear" class="btn-text-danger"{% if not message %} hidden{% endif %}>Remove message</button></div>
+  <div class="acts"><button type="button" id="messageSave">Save</button><span class="small muted" id="messageDirty" hidden>Not saved yet</span><button type="button" id="messageRemove" class="msgRemove"{% if not message %} hidden{% endif %}>Remove message</button></div>
+  <div id="messageConfirm" class="msgConfirm" role="alertdialog" aria-labelledby="messageConfirmText" hidden>
+    <span id="messageConfirmText">Remove the message from the frame?</span>
+    <button type="button" id="messageRemoveYes" class="msgRemoveYes">Remove</button>
+    <button type="button" id="messageRemoveNo" class="secondary">Keep</button></div>
   <div class="prev"><span id="messagePreviewLabel">{{ "On the frame now" if message else "Preview: how it will look on the frame" }}</span>
     <figure class="msgPreview" id="messagePreview"><span class="q" aria-hidden="true">“</span><p id="messagePreviewText">{{ message }}</p></figure>
     <div class="msgPreview empty" id="messagePreviewEmpty"><b>No message yet</b></div></div>

@@ -186,3 +186,21 @@ def test_delete_fsyncs_dir(paired, mf_app, monkeypatch):
 def test_phone_counter_mirrors_server():
     js = (ROOT / "static" / "settings.js").read_text()
     assert 'normalize("NFC")' in js and "\\u3164" in js and "[...v].length" in js
+
+
+def test_remove_message_needs_confirm(paired):
+    h = paired.get("/admin/settings", environ_base=PHONE).get_data(as_text=True)
+    assert 'id="messageClear"' not in h
+    assert 'id="messageRemove" class="msgRemove" hidden>Remove message<' in h      # nothing to remove yet
+    put(paired, "Hi")
+    h = paired.get("/admin/settings", environ_base=PHONE).get_data(as_text=True)
+    assert 'id="messageRemove" class="msgRemove">Remove message<' in h
+    assert 'id="messageConfirm" class="msgConfirm" role="alertdialog"' in h and 'hidden>' in h.split('id="messageConfirm"')[1][:120]
+    assert 'rows="4"' in h
+    js = (ROOT / "static" / "settings.js").read_text()
+    remove_handler = js[js.index('removeBtn.addEventListener("click"'):].split("\n")[0]
+    assert 'saveMessage("")' not in remove_handler                    # first tap only asks
+    assert 'getElementById("messageRemoveYes").addEventListener("click", ()=> saveMessage(""))' in js
+    css = (ROOT / "static" / "phone.css").read_text().replace(" ", "")   # restyle C: one phone stylesheet
+    assert "white-space:nowrap" in css[css.index("#messageCount{"):].split("}")[0]
+    assert ".msgRemove{" in css and "color:var(--mf-red)" in css[css.index(".msgRemove{"):].split("}")[0]

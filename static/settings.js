@@ -52,7 +52,9 @@
             .replace(/[\u115F\u1160\u3164\uFFA0\u2800]/g, "")
             .replace(/[\p{Cc}\p{Cf}]/gu, (m)=> (/[\n\r\t\u200C\u200D]/.test(m) ? (m === "\u200C" || m === "\u200D" ? m : " ") : ""))
             .replace(/\s+/g, " ").trim();
-        const save = document.getElementById("messageSave"), clear = document.getElementById("messageClear");
+        const save = document.getElementById("messageSave");
+        const removeBtn = document.getElementById("messageRemove");
+        const confirmBox = document.getElementById("messageConfirm");
         const dirtyEl = document.getElementById("messageDirty"), label = document.getElementById("messagePreviewLabel");
         let saved = norm(ta.dataset.saved || "");
         // #70 mocks 04-settings-v2 / 04b: "Save" + "Not saved yet" while editing, a disabled "Saved" and
@@ -68,7 +70,7 @@
             save.disabled = same && !!saved;
             save.textContent = save.disabled ? "Saved" : "Save";
             dirtyEl.hidden = same;
-            clear.hidden = !saved;
+            removeBtn.hidden = !saved || !confirmBox.hidden;
             label.textContent = same && saved ? "On the frame now" : "Preview: how it will look on the frame";
         };
         ta.addEventListener("input", preview);
@@ -80,7 +82,7 @@
                     body: JSON.stringify({message: value})});
                 const j = await r.json().catch(()=> ({}));
                 if(!r.ok){ throw new Error(j.error || String(r.status)); }
-                ta.value = j.message; saved = norm(j.message); preview();
+                ta.value = j.message; saved = norm(j.message); confirmBox.hidden = true; preview();
                 status("message", j.message ? "✓ Saved" : "Removed");
             }catch(e){
                 status("message", "Couldn't save. Try again.", true);
@@ -88,6 +90,9 @@
             }
         }
         save.addEventListener("click", ()=> saveMessage(ta.value));
-        clear.addEventListener("click", ()=> saveMessage(""));
+        // One-tap clear replaced by "Remove message" + inline confirm (Keep is focused, the safe default).
+        removeBtn.addEventListener("click", ()=>{ confirmBox.hidden = false; removeBtn.hidden = true; document.getElementById("messageRemoveNo").focus(); });
+        document.getElementById("messageRemoveNo").addEventListener("click", ()=>{ confirmBox.hidden = true; preview(); removeBtn.focus(); });
+        document.getElementById("messageRemoveYes").addEventListener("click", ()=> saveMessage(""));
     }
 })();

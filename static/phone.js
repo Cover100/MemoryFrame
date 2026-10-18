@@ -17,12 +17,16 @@
         strips().forEach((s)=>{ s.hidden = true; });
         box.hidden = false;
         window.scrollTo(0, 0);
+        const h = box.querySelector("h1");                 // move focus so screen readers announce the swap
+        h.tabIndex = -1; h.focus();
     }
     function online(){
         lines.length = 0;
         box.hidden = true; still.hidden = true; detail.hidden = true;
         page.hidden = false;
         strips().forEach((s)=>{ s.hidden = false; });
+        const h = page.querySelector("h1, h2") || page;
+        h.tabIndex = -1; h.focus();
     }
     document.getElementById("offlineRetry").addEventListener("click", async ()=>{
         still.hidden = true;

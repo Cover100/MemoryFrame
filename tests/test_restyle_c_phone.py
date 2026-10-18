@@ -33,8 +33,8 @@ def test_every_phone_page_uses_paper_theme_and_one_stylesheet(client, url):
     assert re.search(r'href="/static/tokens\.css\?v=\w+"', h) and re.search(r'href="/static/phone\.css\?v=\w+"', h)
     for old in ("pair.css", "library.css", "upload.css", "wifi.css", "settings.css"):
         assert old not in h
-    # system fonts only: no frame font stylesheet, preload or woff2 on phone pages
-    assert "frame-fonts.css" not in h and "woff2" not in h and "preload" not in h
+    # system fonts only: no preload or woff2; only Settings links the frame font, for the mini-frame preview
+    assert ("frame-fonts.css" in h) == (url == "/admin/settings") and "woff2" not in h and "preload" not in h
     assert "<style" not in h and " style=" not in h
 
 
@@ -242,3 +242,109 @@ def test_network_failure_shows_offline_view_and_try_again_recovers(page, server,
     # the failed tap was reverted, not silently kept
     assert evaluate(page, "document.querySelector('#transitionSeg button[data-value=\"fade\"]').getAttribute('aria-checked')") == "true"
     assert page.exceptions() == []
+
+
+def test_frame_font_only_used_by_the_preview():
+    flat = re.sub(r"/\*.*?\*/", "", CSS, flags=re.S)
+    uses = [m.group(0) for m in re.finditer(r"[^{}]+\{[^}]*--mf-font-frame[^}]*\}", flat)]
+    assert len(uses) == 1 and ".msgPreview" in uses[0]
+
+
+@pytest.mark.skipif(BROWSER is None, reason="no Chromium/Chrome installed")
+@pytest.mark.parametrize("zoom", [1.0, 1.3])
+def test_360_wide_and_130_percent_text_fit(page, server, mf_app, zoom):
+    """Wren M3: 360 px phones with 130 % OS font scale: no sideways scroll, no clipped headings."""
+    for path in ("admin/", "admin/library", "admin/upload", "admin/settings", "admin/wifi/", "pair"):
+        _phone(page, server, mf_app, path)
+        page.call("Emulation.setDeviceMetricsOverride", {"width": 360, "height": 800, "deviceScaleFactor": 1, "mobile": True})
+        evaluate(page, f"document.documentElement.style.zoom = '{zoom}'")      # how Android Chrome applies font scale
+        page.pump(0.3)
+        assert evaluate(page, "document.documentElement.scrollWidth <= document.documentElement.clientWidth"), (path, zoom)
+        clipped = evaluate(page, """JSON.stringify([...document.querySelectorAll('h1,h2,button,.seg button,label')]
+            .filter(e=>e.offsetParent && !e.closest('.sr-only') && e.scrollWidth > e.clientWidth + 1).map(e=>e.id||e.textContent.trim().slice(0,20)))""")
+        assert clipped == "[]", (path, zoom, clipped)
+    if True:   # the Wi-Fi sheet's buttons stay on screen
+        _phone(page, server, mf_app, "admin/wifi/")
+        page.call("Emulation.setDeviceMetricsOverride", {"width": 360, "height": 800, "deviceScaleFactor": 1, "mobile": True})
+        evaluate(page, f"document.documentElement.style.zoom = '{zoom}'")
+        if evaluate(page, "!!document.getElementById('wifiForm')"):
+            evaluate(page, "document.getElementById('confirmStep').hidden = false")
+            r = evaluate(page, "document.getElementById('confirmBtn').getBoundingClientRect().right * "
+                               "(parseFloat(document.documentElement.style.zoom) || 1)")
+            assert r <= 360.5, r
+
+
+@pytest.mark.skipif(BROWSER is None, reason="no Chromium/Chrome installed")
+def test_touch_targets_at_least_48(page, server, mf_app, lib):
+    """Wren M2 / DIRECTION §3: phone targets >= 48 px (hit area, incl. ::after / transparent border)."""
+    lib.add("c.jpg", PNG)
+    def hit(sel):
+        return evaluate(page, f"""JSON.stringify([...document.querySelectorAll('{sel}')].filter(e=>e.offsetParent).map(e=>{{
+            const r=e.getBoundingClientRect(), a=getComputedStyle(e,'::after');
+            const t = parseFloat(a.top) || 0, extra = a.content !== 'none' && a.position === 'absolute' && t < 0 ? -2 * t : 0;
+            return [Math.round(r.width), Math.round(r.height + extra)];}}))""")
+    import json
+    _phone(page, server, mf_app, "admin/settings")
+    for sel in ("#slideSeg button", "#transitionSeg button", "#shuffle", "#messageSave", ".bar .back"):
+        sizes = json.loads(hit(sel))
+        assert sizes and all(h >= 48 for w, h in sizes), (sel, sizes)
+    assert json.loads(hit("#shuffle"))[0][0] >= 48
+    _phone(page, server, mf_app, "admin/")
+    assert all(h >= 48 for w, h in json.loads(hit(".sec a"))), hit(".sec a")
+    assert all(h >= 48 for w, h in json.loads(hit(".row-link")))
+    _phone(page, server, mf_app, "admin/library")
+    page.pump(1)
+    sizes = json.loads(hit("#grid .actions button"))
+    assert sizes and all(h >= 48 for w, h in sizes), sizes
+
+
+@pytest.mark.skipif(BROWSER is None, reason="no Chromium/Chrome installed")
+def test_empty_box_never_saves_over_a_message(page, server, mf_app):
+    """Wren M1 / #75: clearing the box while a message is saved disables Save (Remove message is the way)."""
+    from memoryframe import message
+    message.save(mf_app.config["DATA_DIR"], "Hi Nana")
+    _phone(page, server, mf_app, "admin/settings")
+    js = "document.getElementById"
+    assert evaluate(page, f"{js}('messageSave').getAttribute('aria-disabled')") == "true"      # 04b "Saved"
+    evaluate(page, f"{js}('frameMessage').value=''; {js}('frameMessage').dispatchEvent(new Event('input'))")
+    assert evaluate(page, f"{js}('messageSave').disabled") is True
+    assert evaluate(page, f"{js}('messageDirty').textContent") == "Use Remove message to clear it"
+    evaluate(page, f"{js}('messageSave').click()")
+    page.pump(0.5)
+    assert message.get(mf_app.config["DATA_DIR"]) == "Hi Nana"
+    # "Saved" is inert too: a tap sends nothing
+    evaluate(page, f"{js}('frameMessage').value='Hi Nana'; {js}('frameMessage').dispatchEvent(new Event('input'))")
+    evaluate(page, "window.__puts = 0; const f = window.fetch; window.fetch = (u, o) => { window.__puts++; return f(u, o); }")
+    evaluate(page, f"{js}('messageSave').click()")
+    page.pump(0.3)
+    assert evaluate(page, "window.__puts") == 0
+    assert "btn-default" in evaluate(page, f"{js}('messageRemoveNo').className")
+
+
+@pytest.mark.skipif(BROWSER is None, reason="no Chromium/Chrome installed")
+def test_wifi_sheet_traps_header_esc_cancels_and_errors_mark_field(page, server, mf_app, monkeypatch, tmp_path):
+    monkeypatch.setenv("MEMORYFRAME_NETMODE_STATE", str(tmp_path / "nm.json"))
+    (tmp_path / "nm.json").write_text('{"mode": "product"}')
+    _phone(page, server, mf_app, "admin/wifi/")
+    js = "document.getElementById"
+    if not evaluate(page, f"!!{js}('wifiForm')"):
+        pytest.skip("Wi-Fi change unavailable in this environment")
+    evaluate(page, f"{js}('ssid').value='Garden'; {js}('password').value='short'; {js}('changeBtn').click()")
+    assert evaluate(page, f"{js}('password').getAttribute('aria-invalid')") == "true"
+    assert evaluate(page, f"{js}('password').getAttribute('aria-describedby')") == "pwHint error"
+    assert evaluate(page, f"getComputedStyle({js}('password')).borderTopColor") == "rgb(168, 53, 42)"
+    evaluate(page, f"{js}('password').value='long-enough-1'; {js}('changeBtn').click()")
+    assert not evaluate(page, f"{js}('confirmStep').hidden")
+    assert evaluate(page, f"{js}('password').getAttribute('aria-invalid')") is None
+    assert evaluate(page, "document.querySelector('.bar').inert") is True
+    evaluate(page, "document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape'}))")
+    assert evaluate(page, f"{js}('confirmStep').hidden") and evaluate(page, "document.querySelector('.bar').inert") is False
+
+
+@pytest.mark.skipif(BROWSER is None, reason="no Chromium/Chrome installed")
+def test_offline_view_takes_focus(page, server, mf_app):
+    _phone(page, server, mf_app, "admin/upload")
+    evaluate(page, "memoryFramePhone.offline('x.jpg failed')")
+    assert evaluate(page, "document.activeElement.tagName + '|' + document.activeElement.textContent") == "H1|Can't reach the frame"
+    evaluate(page, "memoryFramePhone.online()")
+    assert evaluate(page, "document.activeElement.closest('#page') !== null")

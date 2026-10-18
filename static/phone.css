@@ -11,8 +11,8 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
 /* Header band (forest) + status strip (walnut) */
 .mf-phone .bar { background: var(--mf-forest-900); color: var(--mf-linen); height: 56px; padding: 0 8px 0 16px;
   display: flex; align-items: center; gap: 12px; }
-.mf-phone .bar .back { color: var(--mf-linen); text-decoration: none; font-size: 26px; width: 40px; height: 48px;
-  display: grid; place-items: center; margin-left: -8px; }
+.mf-phone .bar .back { color: var(--mf-linen); text-decoration: none; font-size: 26px; width: 48px; height: 48px;
+  display: grid; place-items: center; margin-left: -12px; }
 .mf-phone .bar .name { font-weight: 700; font-size: 18px; flex: 1; display: flex; align-items: center; gap: 10px;
   margin: 0; min-width: 0; }
 .mf-phone .bar .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--mf-brass); flex: none; }
@@ -64,6 +64,7 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
   background: var(--mf-card); padding: 0 14px; font: inherit; color: var(--mf-text); }
 .mf-phone .field:focus, .mf-phone textarea:focus { outline: 3px solid var(--mf-green); outline-offset: 1px;
   border-color: var(--mf-green); }
+.mf-phone .field[aria-invalid="true"] { border-color: var(--mf-red); }
 .mf-phone .pw { display: flex; gap: 8px; }
 .mf-phone .pw .field { flex: 1; min-width: 0; }
 .mf-phone .pw button { height: 52px; }
@@ -100,6 +101,8 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
 .mf-phone .rows form { margin: 0; }
 .mf-phone .rows button.row-link { background: transparent; color: var(--mf-red); border-radius: 0; justify-content: flex-start;
   font-weight: 600; }
+.mf-phone .rows .row-link:focus-visible, .mf-phone details.about summary:focus-visible {
+  outline: var(--mf-ring-width) solid var(--mf-green); outline-offset: -3px; }   /* .rows clips outer rings */
 .mf-phone .rows button.row-link:active { transform: none; background: var(--mf-red-50); }
 
 /* 01 Pair */
@@ -113,13 +116,13 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
   border-radius: var(--mf-r-sm); background: var(--mf-card); color: var(--mf-text); font: inherit; font-size: 30px;
   font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: .5em; text-indent: .5em; text-align: center; }
 .mf-phone .code:focus { outline: 3px solid var(--mf-green); outline-offset: 1px; border-color: var(--mf-green); }
-.mf-phone .code::placeholder { color: var(--mf-line); }
+.mf-phone .code::placeholder { color: var(--mf-text-2); }
 .mf-phone form.tok { margin-bottom: 20px; }
 
 /* 02 Home: library preview */
 .mf-phone .sec { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin: 22px 0 10px; }
 .mf-phone .sec h2 { margin: 0; }
-.mf-phone .sec a { font-weight: 600; text-decoration: none; font-size: var(--mf-p-small); }
+.mf-phone .sec a { font-weight: 600; text-decoration: none; font-size: var(--mf-p-small); padding: 14px 0; margin: -14px 0; }
 .mf-phone .grid { list-style: none; margin: 0 0 12px; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
 .mf-phone .grid li { aspect-ratio: 1; border-radius: 6px; overflow: hidden; background: var(--mf-line); position: relative; }
 .mf-phone .grid a { display: block; height: 100%; }
@@ -139,7 +142,7 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
 .mf-phone #grid img { display: block; width: 100%; height: auto; aspect-ratio: 1; object-fit: cover; background: var(--mf-line); }
 .mf-phone #grid .name { font-size: var(--mf-p-small); padding: 6px 8px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mf-phone #grid .actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; }
-.mf-phone #grid .actions button { flex: 1 1 auto; min-height: 40px; padding: 0 8px; white-space: nowrap; font-size: var(--mf-p-small);
+.mf-phone #grid .actions button { flex: 1 1 auto; min-height: var(--mf-touch-phone); padding: 0 8px; white-space: nowrap; font-size: var(--mf-p-small);
   background: var(--mf-card); color: var(--mf-text); border: 1.5px solid var(--mf-line); }
 .mf-phone #grid .actions button:last-child { color: var(--mf-red); }
 .mf-phone #grid .actions button[disabled] { color: var(--mf-text-2); opacity: .6; }
@@ -152,8 +155,10 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
 .mf-phone .files, .mf-phone #list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .mf-phone #list li { background: var(--mf-card); border: 1px solid var(--mf-line); border-radius: var(--mf-r-md); padding: 10px;
   display: flex; gap: 12px; align-items: center; }
-.mf-phone #list .th { width: 52px; height: 52px; border-radius: 8px; flex: none; background: var(--mf-green-50); object-fit: cover;
-  display: block; }
+.mf-phone #list .th { width: 52px; height: 52px; border-radius: 8px; flex: none; background: var(--mf-paper);
+  border: 1px solid var(--mf-line); object-fit: cover; display: block; }
+.mf-phone #list img.th { border: 0; }
+.mf-phone #list .bad .th { background: var(--mf-red-50); border-color: transparent; }
 .mf-phone #list .t { flex: 1; min-width: 0; }
 .mf-phone #list .name { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 16px; }
 .mf-phone #list .msg { display: block; font-size: var(--mf-p-small); color: var(--mf-text-2); margin-top: 2px; }
@@ -170,26 +175,30 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
 .mf-phone #list progress::-moz-progress-bar { background: var(--mf-green); }
 
 /* 04 Settings (v2 + 04b) */
-.mf-phone .card h2.hd { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
-.mf-phone .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.mf-phone .card h2.hd { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 0 12px; }
+.mf-phone .row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.mf-phone .row h2.grow { flex: 1 0 auto; }
 .mf-phone .row h2 { margin: 0; }
 .mf-phone .row .grow { flex: 1; min-width: 0; }
 .mf-phone .row h2 + .small { margin-top: 2px; }
-.mf-phone .seg { display: flex; background: var(--mf-paper); border: 1.5px solid var(--mf-line); border-radius: var(--mf-r-md);
-  padding: 3px; gap: 3px; }
-.mf-phone .seg button { flex: 1; min-height: 40px; border: 0; background: transparent; color: var(--mf-text);
-  border-radius: 9px; padding: 0 4px; }
+.mf-phone .seg { display: flex; flex-wrap: wrap; background: var(--mf-paper); border: 1.5px solid var(--mf-line);
+  border-radius: var(--mf-r-md); padding: 3px; gap: 3px; }
+.mf-phone .seg button { flex: 1 0 auto; white-space: nowrap; min-height: 44px; border: 0; background: transparent;
+  color: var(--mf-text); border-radius: 9px; padding: 0 4px; position: relative; }
+.mf-phone .seg button::after { content: ""; position: absolute; inset: -2px 0; }     /* 48 px hit area (44 = mock) */
 .mf-phone .seg button[aria-checked="true"] { background: var(--mf-green); color: #fff; }
-.mf-phone .seg.narrow { width: 180px; flex: none; }
+.mf-phone .seg.narrow { width: 180px; max-width: 100%; flex: none; }
 .mf-phone .status { color: var(--mf-green); font-size: var(--mf-p-small); font-weight: 600; white-space: nowrap; }
 .mf-phone .status.err { background: none; padding: 0; margin: 0; color: var(--mf-red); white-space: normal; }
-.mf-phone input.switch { -webkit-appearance: none; appearance: none; width: 52px; height: 32px; border-radius: 16px; margin: 0;
+.mf-phone input.switch { -webkit-appearance: none; appearance: none; width: 52px; height: 32px; border-radius: 24px;
+  box-sizing: content-box; border: 8px solid transparent; margin: -8px;          /* 68x48 hit area, 52x32 pill */
   background: var(--mf-line); position: relative; flex: none; cursor: pointer; }
+.mf-phone input.switch, .mf-phone input.switch:checked { background-clip: padding-box; }
 .mf-phone input.switch::after { content: ""; position: absolute; width: 24px; height: 24px; border-radius: 50%; background: #fff;
   top: 4px; left: 4px; transition: transform var(--mf-t-fast) var(--mf-ease); }
 .mf-phone input.switch:checked { background: var(--mf-green); }
 .mf-phone input.switch:checked::after { transform: translateX(20px); }
-.mf-phone input.switch:focus-visible { outline: 3px solid var(--mf-green); outline-offset: 3px; }
+.mf-phone input.switch:focus-visible { outline: 3px solid var(--mf-green); outline-offset: -5px; }
 .mf-phone #frameMessage { width: 100%; resize: none; border: 1.5px solid var(--mf-line); border-radius: var(--mf-r-sm);
   background: var(--mf-card); padding: 10px 14px; font: inherit; color: var(--mf-text); line-height: 1.4; display: block; }
 .mf-phone .meta { display: flex; justify-content: space-between; gap: 12px; margin: 6px 0 10px; font-size: var(--mf-p-small);
@@ -199,7 +208,7 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
 .mf-phone .acts { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .mf-phone .acts #messageSave { min-width: 120px; }
 /* 04b: "Remove message" is a red text button; the inline confirm keeps Keep (focused) as the safe choice */
-.mf-phone .msgRemove { background: transparent; color: var(--mf-red); padding: 8px 12px; min-height: 0; }
+.mf-phone .msgRemove { background: transparent; color: var(--mf-red); padding: 12px; min-height: 0; }   /* 12+24+12 = 48 px */
 .mf-phone .msgConfirm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 10px; padding: 10px 12px;
   background: var(--mf-red-50); border-radius: var(--mf-r-md); color: var(--mf-red); font-weight: 600; }
 .mf-phone .msgConfirm span { flex: 1 1 100%; }
@@ -229,11 +238,11 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
 /* 06 Confirm sheet */
 .mf-phone .scrim { position: fixed; inset: 0; background: rgba(31, 42, 36, .55); display: flex; align-items: flex-end; z-index: 10; }
 .mf-phone .sheet { background: var(--mf-card); width: 100%; max-width: 34rem; margin: 0 auto; border-radius: 20px 20px 0 0;
-  padding: 24px 20px 28px; }
+  padding: 24px 20px 28px; max-height: 100%; overflow-y: auto; }
 .mf-phone .sheet h2 { font-size: 24px; }
 .mf-phone .sheet .warn { margin: 12px 0; }
 .mf-phone .rowb { display: flex; gap: 12px; margin-top: 20px; }
-.mf-phone .rowb button { flex: 1; }
+.mf-phone .rowb button { flex: 1; min-width: 0; }
 
 /* 07 Keep new Wi-Fi: static ring (decorative; the text below carries the time) */
 .mf-phone .ring { width: 120px; height: 120px; border-radius: 50%; border: 8px solid var(--mf-line); display: grid;

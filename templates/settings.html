@@ -1,6 +1,9 @@
 {% extends "_phone.html" %}
 {% block title %}Settings{% endblock %}
 {% block heading %}Settings{% endblock %}
+{% block meta %}{{ super() }}
+<!-- the mini-frame preview uses the frame's font so its line breaks and 5-line cap match the frame -->
+<link rel="stylesheet" href="/frame-fonts.css">{% endblock %}
 {% block main_class %}dense{% endblock %}
 {% block content %}
 <section class="card" id="messageSection">
@@ -13,7 +16,7 @@
   <div id="messageConfirm" class="msgConfirm" role="alertdialog" aria-labelledby="messageConfirmText" hidden>
     <span id="messageConfirmText">Remove the message from the frame?</span>
     <button type="button" id="messageRemoveYes" class="msgRemoveYes">Remove</button>
-    <button type="button" id="messageRemoveNo" class="msgKeep">Keep</button></div>
+    <button type="button" id="messageRemoveNo" class="msgKeep btn-default">Keep</button></div>
   <div class="prev"><span id="messagePreviewLabel">{{ "On the frame now" if message else "Preview: how it will look on the frame" }}</span>
     <figure class="msgPreview" id="messagePreview"><span class="q" aria-hidden="true">“</span><p id="messagePreviewText">{{ message }}</p></figure>
     <div class="msgPreview empty" id="messagePreviewEmpty"><b>No message yet</b></div></div>

@@ -74,6 +74,7 @@
             save.setAttribute("aria-disabled", done ? "true" : "false");
             save.textContent = done ? "Saved" : "Save";
             dirtyEl.hidden = same;
+            dirtyEl.textContent = save.disabled ? "Use Remove message to clear it" : "Not saved yet";
             removeBtn.hidden = !saved || !confirmBox.hidden;
             label.textContent = same && saved ? "On the frame now" : "Preview: how it will look on the frame";
         };

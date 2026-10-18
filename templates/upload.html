@@ -1,23 +1,12 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="csrf-token" content="{{ csrf_token() }}">
-<title>Upload photos - Memory Frame</title>
-<link rel="stylesheet" href="{{ static('tokens.css') }}">
-<link rel="stylesheet" href="{{ static('pair.css') }}">
-<link rel="stylesheet" href="{{ static('upload.css') }}">
-</head>
-<body class="mf-phone">
-<p><a href="/admin/">&larr; Memory Frame</a></p>
-<h1>Upload photos</h1>
-<p id="storage">Checking free space...</p>
-<label class="pick">Choose photos
+{% extends "_phone.html" %}
+{% block title %}Upload photos - Memory Frame{% endblock %}
+{% block heading %}Upload photos{% endblock %}
+{% block content %}
+<p id="storage" class="muted small">Checking free space...</p>
+<label class="pick btn btn-neutral block big"><span id="pickLabel">Choose photos</span>
   <input id="files" type="file" accept="image/*,.heic,.heif" multiple>
 </label>
-<p id="summary" aria-live="polite"></p>
-<ul id="list"></ul>
-<script src="{{ static('upload.js') }}"></script>
-</body>
-</html>
+<div id="summary" class="ok-box" aria-live="polite"></div>
+<ul id="list" class="mt"></ul>
+{% endblock %}
+{% block scripts %}<script src="{{ static('upload.js') }}"></script>{% endblock %}

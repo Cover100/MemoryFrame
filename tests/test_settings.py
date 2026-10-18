@@ -20,7 +20,7 @@ def test_defaults_and_page(paired):
     assert 'id="shuffle" data-key="shuffle" checked' in h
     assert h.count('data-key="') == 8                       # 5 + 2 + 1: exactly three controls
     home = paired.get("/admin/", environ_base=PHONE).get_data(as_text=True)
-    assert 'href="/admin/settings">Settings</a>' in home
+    assert 'class="row-link" href="/admin/settings"' in home and "<small>10 s · Fade · Shuffle on</small>" in home
 
 
 def test_unpaired(client):

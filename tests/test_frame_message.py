@@ -120,7 +120,7 @@ def test_combining_marks_capped():
 
 
 def test_preview_clipped_like_frame():
-    css = (ROOT / "static" / "settings.css").read_text()
+    css = (ROOT / "static" / "phone.css").read_text()
     rule = css[css.index(".msgPreview p{"):]
     rule = rule[:rule.index("}")]
     assert "-webkit-line-clamp:5" in rule and "overflow:hidden" in rule

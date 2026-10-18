@@ -1,9 +1,0 @@
-body{max-width:60rem}
-#grid{list-style:none;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
-#grid li{border:1px solid var(--mf-line);border-radius:8px;overflow:hidden;background:var(--mf-card)}
-#grid li.hidden img{opacity:.35}
-#grid img{display:block;width:100%;aspect-ratio:1/1;object-fit:cover;background:#ddd}
-#grid .name{font-size:.8rem;padding:2px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#grid .actions{display:flex;flex-wrap:wrap;gap:4px;padding:4px}
-#grid button{font-size:.85rem;width:auto;margin:0;padding:.35rem .5rem;flex:1}
-#grid .badge{font-size:.75rem;padding:0 6px;color:var(--mf-text-2)}

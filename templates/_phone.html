@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#16261D">
+{% block meta %}<meta name="csrf-token" content="{{ csrf_token() }}">{% endblock %}
+<title>{% block title %}Memory Frame{% endblock %}</title>
+<link rel="stylesheet" href="{{ static('tokens.css') }}">
+<link rel="stylesheet" href="{{ static('phone.css') }}">
+</head>
+<body class="mf-phone">
+<header class="bar">{% block back %}<a class="back" href="/admin/" aria-label="Back to Memory Frame">‹</a>{% endblock %}<p class="name"><span class="dot" aria-hidden="true"></span>{% block heading %}Memory Frame{% endblock %}</p>{% block icon %}{% endblock %}</header>
+{% block strip %}{% endblock %}
+<main class="{% block main_class %}{% endblock %}" id="page">
+{% block content %}{% endblock %}
+</main>
+{% block offline %}{% set w = phone_wifi() %}
+<!-- #70 mock 08: shown by phone.js when a request can't reach the frame (the page itself is already loaded). -->
+<div id="offline" hidden>
+<div class="strip down"><span class="ok" aria-hidden="true"></span>Not connected to the frame</div>
+<div class="page">
+  <div class="big-ico" aria-hidden="true">!</div>
+  <h1 class="center">Can't reach the frame</h1>
+  <p class="muted center">Network error. Are you still on the frame's Wi‑Fi?</p>
+  <div class="card">
+    <ol class="steps">
+      <li>Open your phone's Wi-Fi settings.</li>
+      {% if w.ssid %}<li>Join <b>{{ w.ssid }}</b>{% if w.mode == "hotspot" %} (or scan the Wi-Fi QR on the frame){% endif %}.</li>{% else %}<li>Join the frame's Wi-Fi.</li>{% endif %}
+      <li>Come back and tap <b>Try again</b>.</li>
+    </ol>
+    {% if w.mode == "hotspot" %}<p class="small muted flush">Your phone may say "No internet". That's normal: the frame has its own Wi-Fi.</p>{% endif %}
+  </div>
+  <button type="button" class="block big" id="offlineRetry">Try again</button>
+  <p class="small muted center mt" id="offlineStill" role="status" hidden>Still can't reach the frame.</p>
+  <div class="err mt" id="offlineDetail" role="alert" hidden></div>
+</div>
+</div>
+<script src="{{ static('phone.js') }}"></script>
+{% endblock %}
+{% block scripts %}{% endblock %}
+</body>
+</html>

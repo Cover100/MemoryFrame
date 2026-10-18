@@ -94,7 +94,10 @@ def upload_media():
         return jsonify({"status": "duplicate", "name": name,
                         "message": "This photo is already on the frame."}), 200
     bump_media_rev(current_app)
-    return jsonify({"status": "added", "name": name, "id": stored}), 201
+    row = get_db().execute("SELECT id FROM media WHERE stored_name = ?", (stored,)).fetchone()
+    # "id" stays the stored name (existing contract); media_id lets the phone show the new thumbnail.
+    return jsonify({"status": "added", "name": name, "id": stored,
+                    "media_id": row["id"] if row else None}), 201
 
 
 @bp.app_errorhandler(RequestEntityTooLarge)

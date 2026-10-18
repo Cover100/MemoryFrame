@@ -31,13 +31,16 @@
         showError(err);
         if(err){ return; }
         $("confirmName").textContent = $("ssid").value;
-        $("formStep").hidden = true;
+        // Restyle PR C (#70 mock 06): a bottom sheet over the (inert) form, Cancel focused as the default.
+        $("formStep").inert = true;
         $("confirmStep").hidden = false;
+        $("cancelBtn").focus();
     });
     $("cancelBtn").addEventListener("click", ()=>{
         $("password").value = "";                  // values kept, password cleared
         $("confirmStep").hidden = true;
-        $("formStep").hidden = false;
+        $("formStep").inert = false;
+        $("password").focus();
     });
     $("confirmBtn").addEventListener("click", ()=>{ confirmed = true; form.submit(); });
     window.memoryFrameWifi = {check: check, MSG_SAME: MSG_SAME};

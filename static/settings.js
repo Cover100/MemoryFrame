@@ -15,9 +15,10 @@
                 headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf},
                 body: JSON.stringify({[key]: value})});
             if(!r.ok){ throw new Error(String(r.status)); }
-            status(key, "Saved");
+            status(key, "✓ Saved");
         }catch(e){
             revert();
+            if(e instanceof TypeError && window.memoryFramePhone){ memoryFramePhone.offline(); }
             status(key, "Couldn't save. Try again.", true);
         }
     }
@@ -51,6 +52,11 @@
             .replace(/[\u115F\u1160\u3164\uFFA0\u2800]/g, "")
             .replace(/[\p{Cc}\p{Cf}]/gu, (m)=> (/[\n\r\t\u200C\u200D]/.test(m) ? (m === "\u200C" || m === "\u200D" ? m : " ") : ""))
             .replace(/\s+/g, " ").trim();
+        const save = document.getElementById("messageSave"), clear = document.getElementById("messageClear");
+        const dirtyEl = document.getElementById("messageDirty"), label = document.getElementById("messagePreviewLabel");
+        let saved = norm(ta.dataset.saved || "");
+        // #70 mocks 04-settings-v2 / 04b: "Save" + "Not saved yet" while editing, a disabled "Saved" and
+        // "Remove message" once the text matches what the frame shows.
         const preview = ()=>{
             const v = norm(ta.value);
             const n = [...v].length;
@@ -58,6 +64,12 @@
             count.classList.toggle("err", n > max);
             prevText.textContent = v;
             prev.hidden = !v; prevEmpty.hidden = !!v;
+            const same = v === saved;
+            save.disabled = same && !!saved;
+            save.textContent = save.disabled ? "Saved" : "Save";
+            dirtyEl.hidden = same;
+            clear.hidden = !saved;
+            label.textContent = same && saved ? "On the frame now" : "Preview: how it will look on the frame";
         };
         ta.addEventListener("input", preview);
         preview();
@@ -68,13 +80,14 @@
                     body: JSON.stringify({message: value})});
                 const j = await r.json().catch(()=> ({}));
                 if(!r.ok){ throw new Error(j.error || String(r.status)); }
-                ta.value = j.message; preview();
-                status("message", j.message ? "Saved" : "Cleared");
+                ta.value = j.message; saved = norm(j.message); preview();
+                status("message", j.message ? "✓ Saved" : "Removed");
             }catch(e){
                 status("message", "Couldn't save. Try again.", true);
+                if(e instanceof TypeError && window.memoryFramePhone){ memoryFramePhone.offline(); }
             }
         }
-        document.getElementById("messageSave").addEventListener("click", ()=> saveMessage(ta.value));
-        document.getElementById("messageClear").addEventListener("click", ()=> saveMessage(""));
+        save.addEventListener("click", ()=> saveMessage(ta.value));
+        clear.addEventListener("click", ()=> saveMessage(""));
     }
 })();

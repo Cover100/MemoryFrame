@@ -77,13 +77,13 @@ def start_pending(app, c):
 
 def test_admin_home_links_frame_wifi(paired):
     html = htmlmod.unescape(paired.get("/admin/", environ_base=PHONE).get_data(as_text=True))
-    assert '<a class="big" href="/admin/wifi">Frame Wi-Fi</a>' in html
+    assert '<a class="row-link" href="/admin/wifi">' in html and ">Frame Wi-Fi<" in html
     assert html.index("/admin/library") < html.index("/admin/wifi")
 
 
 def test_page_prefills_name_not_password(paired, helper):
     html = htmlmod.unescape(paired.get("/admin/wifi/", environ_base=PHONE).get_data(as_text=True))
-    assert "Current Wi-Fi: <span id=\"currentName\">MemoryFrame-AP</span>" in html
+    assert "Current Wi-Fi: <b class=\"strong\" id=\"currentName\">MemoryFrame-AP</b>" in html
     assert 'id="ssid" name="ssid" value="MemoryFrame-AP"' in html
     assert 'id="password" name="password" type="password" value=""' in html
     assert OLD_PW not in html
@@ -186,7 +186,7 @@ def test_keep_page_and_commit(paired, helper, mf_app, client):
     start_pending(mf_app, paired)
     html = htmlmod.unescape(paired.get("/admin/wifi/keep", environ_base=PHONE).get_data(as_text=True))
     assert "Keep new Wi-Fi?" in html
-    assert 'You\'re connected to "Frame Home". Tap to keep it. Other phones will need to join it too.' in html
+    assert 'You\'re connected to <b>"Frame Home"</b>. Tap to keep it. Other phones will need to join it too.' in html
     assert "Old Wi-Fi returns in" in html
     r = paired.post("/admin/wifi/keep", environ_base=PHONE)
     assert r.status_code == 200 and "✓ Wi-Fi updated" in htmlmod.unescape(r.get_data(as_text=True))

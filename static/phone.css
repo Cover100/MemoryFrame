@@ -183,7 +183,7 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
 .mf-phone .row h2 + .small { margin-top: 2px; }
 .mf-phone .seg { display: flex; flex-wrap: wrap; background: var(--mf-paper); border: 1.5px solid var(--mf-line);
   border-radius: var(--mf-r-md); padding: 3px; gap: 3px; }
-.mf-phone .seg button { flex: 1 0 auto; white-space: nowrap; min-height: 44px; border: 0; background: transparent;
+.mf-phone .seg button { flex: 1 0 0; min-width: max-content; white-space: nowrap; min-height: 44px; border: 0; background: transparent;
   color: var(--mf-text); border-radius: 9px; padding: 0 4px; position: relative; }
 .mf-phone .seg button::after { content: ""; position: absolute; inset: -2px 0; }     /* 48 px hit area (44 = mock) */
 .mf-phone .seg button[aria-checked="true"] { background: var(--mf-green); color: #fff; }
@@ -192,11 +192,10 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
 .mf-phone .status.err { background: none; padding: 0; margin: 0; color: var(--mf-red); white-space: normal; }
 .mf-phone input.switch { -webkit-appearance: none; appearance: none; width: 52px; height: 32px; border-radius: 24px;
   box-sizing: content-box; border: 8px solid transparent; margin: -8px;          /* 68x48 hit area, 52x32 pill */
-  background: var(--mf-line); position: relative; flex: none; cursor: pointer; }
-.mf-phone input.switch, .mf-phone input.switch:checked { background-clip: padding-box; }
+  background: var(--mf-line) padding-box; position: relative; flex: none; cursor: pointer; }
 .mf-phone input.switch::after { content: ""; position: absolute; width: 24px; height: 24px; border-radius: 50%; background: #fff;
   top: 4px; left: 4px; transition: transform var(--mf-t-fast) var(--mf-ease); }
-.mf-phone input.switch:checked { background: var(--mf-green); }
+.mf-phone input.switch:checked { background-color: var(--mf-green); }
 .mf-phone input.switch:checked::after { transform: translateX(20px); }
 .mf-phone input.switch:focus-visible { outline: 3px solid var(--mf-green); outline-offset: -5px; }
 .mf-phone #frameMessage { width: 100%; resize: none; border: 1.5px solid var(--mf-line); border-radius: var(--mf-r-sm);

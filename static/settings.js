@@ -69,12 +69,18 @@
                 const j = await r.json().catch(()=> ({}));
                 if(!r.ok){ throw new Error(j.error || String(r.status)); }
                 ta.value = j.message; preview();
+                removeBtn.hidden = !j.message; confirmBox.hidden = true;
                 status("message", j.message ? "Saved" : "Cleared");
             }catch(e){
                 status("message", "Couldn't save. Try again.", true);
             }
         }
         document.getElementById("messageSave").addEventListener("click", ()=> saveMessage(ta.value));
-        document.getElementById("messageClear").addEventListener("click", ()=> saveMessage(""));
+        // One-tap clear replaced by "Remove message" + inline confirm (Keep is focused, the safe default).
+        const removeBtn = document.getElementById("messageRemove");
+        const confirmBox = document.getElementById("messageConfirm");
+        removeBtn.addEventListener("click", ()=>{ confirmBox.hidden = false; document.getElementById("messageRemoveNo").focus(); });
+        document.getElementById("messageRemoveNo").addEventListener("click", ()=>{ confirmBox.hidden = true; removeBtn.focus(); });
+        document.getElementById("messageRemoveYes").addEventListener("click", ()=> saveMessage(""));
     }
 })();

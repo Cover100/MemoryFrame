@@ -11,7 +11,7 @@ h2{font-size:1.1rem;margin:0 0 .4rem}
 /* #73: message on the frame (preview mirrors the frame's menu card, MENU-V2.md) and About */
 #frameMessage{width:100%;box-sizing:border-box;font:inherit;font-size:1.1rem;padding:.5rem;border-radius:8px}
 .msgRow{display:flex;align-items:center;gap:.5rem;margin-top:.3rem}
-#messageCount{margin-right:auto;font-variant-numeric:tabular-nums}
+#messageCount{margin-right:auto;white-space:nowrap;font-variant-numeric:tabular-nums}
 #messageCount.err{color:var(--mf-red)}
 .msgPreview{margin:.3rem 0 0;background:var(--mf-walnut-900);border:1px solid var(--mf-walnut);border-radius:12px;padding:10px 14px 12px;max-width:26rem}
 .msgPreview .q{display:block;color:var(--mf-brass);font-size:2.2rem;line-height:.6;height:1.1rem;font-weight:700}
@@ -25,3 +25,8 @@ h2{font-size:1.1rem;margin:0 0 .4rem}
 .about dt{font-weight:600}
 .about dd{margin:0;overflow-wrap:anywhere}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+/* 04b-settings-message-saved: "Remove message" as a red text button, with an inline confirm */
+.msgRemove{background:none;border:0;color:var(--mf-red);font-weight:600;padding:.4rem .2rem}
+.msgRemove[hidden],.msgConfirm[hidden]{display:none}
+.msgConfirm{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;margin-top:.4rem}
+.msgRemoveYes{background:var(--mf-red);color:#fff;border:0;border-radius:8px;padding:.4rem .9rem;font-weight:600}

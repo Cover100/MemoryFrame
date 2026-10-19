@@ -147,6 +147,8 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
   background: var(--mf-card); color: var(--mf-text); border: 1.5px solid var(--mf-line); }
 .mf-phone #grid .actions button.del { flex: 1 0 100%; margin: 2px -8px -8px; background: none; border: 0;
   border-top: 1px solid var(--mf-line); border-radius: 0; color: var(--mf-red); font-weight: 600; }   /* polish (Wren N4): calmer, separated */
+/* Keep Delete focus ring inside the card's overflow:hidden. */
+.mf-phone #grid .actions button.del:focus-visible { outline-offset: -3px; }
 .mf-phone #grid .actions button[disabled] { color: var(--mf-text-2); opacity: .6; }
 
 /* 03 Upload */

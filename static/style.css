@@ -471,6 +471,7 @@ video {
   background:var(--mf-pill);color:var(--mf-linen);font:var(--mf-f-small) var(--mf-font-frame);pointer-events:none}
 #pairHint::before{content:"";width:12px;height:12px;border-radius:50%;background:var(--mf-brass);flex:none}
 #pairHint.visible{display:flex}
+body.mf-brightness-active #pairHint{opacity:0}   /* #74 follow-up: never overlaps the brightness pill */
 
 /* MF-17: transition "None" = instant cut */
 .mf-no-fade .media{transition:none!important}
@@ -598,12 +599,18 @@ body:has(.overlay.visible,#shuttingDown:not([hidden]),#safeScreen:not([hidden]),
 #pairDevTemp .successTitle{font-size:40px}
 #pairDevTemp[hidden]{display:none}
 
-/* #65 B safe screen (#70 10-shutting-down): shown only after "synced"; the panel freezes on it after halt */
-#safeScreen{position:fixed;inset:0;z-index:100000;background:var(--mf-ink);color:var(--mf-linen);display:flex;
-  flex-direction:column;align-items:center;justify-content:center;text-align:center;
-  font-family:var(--mf-font-frame);touch-action:none}
+/* #70 mock 14: final screen. Walnut card, brass frame, static plug + stopwatch. Fully static (frozen after halt). */
+#safeScreen{position:fixed;inset:0;z-index:100000;background:var(--mf-ink);color:var(--mf-linen);font-family:var(--mf-font-frame);
+  touch-action:none;padding:20px;box-sizing:border-box}
 #safeScreen[hidden]{display:none}
-#safeScreen .safeSpin{animation:none;transform:rotate(35deg)}   /* static: no mid-update frame to freeze on */
-#safeScreen .safeTitle{font-size:44px;font-weight:700;line-height:1.15}
-#safeScreen .safeSub{font-size:32px;font-weight:700;color:var(--mf-brass);margin-top:16px}
-#safeScreen .safeNote{font-size:var(--mf-f-small);color:var(--mf-oat);margin-top:12px}
+#safeScreen .safeCard{height:100%;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:32px;padding:0 32px;
+  background:var(--mf-walnut-900);border:3px solid var(--mf-brass);border-radius:var(--mf-r-lg)}
+#safeScreen .safePlug{flex:none;color:var(--mf-brass);width:144px;height:144px;display:block}
+#safeScreen .safeText{flex:none;text-align:left}
+#safeScreen .safeTitle{font-size:44px;font-weight:700;line-height:1.1;color:var(--mf-linen)}
+#safeScreen .safeRule{height:3px;width:72px;background:var(--mf-brass);margin:18px 0 20px;border-radius:2px}
+#safeScreen .safeSub{display:flex;align-items:center;gap:12px;font-size:30px;font-weight:700;line-height:1.15;white-space:nowrap;color:var(--mf-brass)}
+#safeScreen .safeClock{flex:none;color:var(--mf-brass);width:38px;height:38px;display:block}
+#safeScreen .safeNote{font-size:20px;color:var(--mf-oat);margin-top:16px}
+/* AC2: document.getAnimations() is empty on the final screen, so stop the Ken Burns / fade under the cover */
+body.mf-safe-final .media{animation:none!important;transition:none!important}

@@ -1,7 +1,8 @@
 # 09 Library redesign (#80)
 
 Mocks: `09-library-grid.png`, `09b-library-select.png` (3 selected), `09c-library-delete-confirm.png`, `09-library-360-130.png`, `09-library-sheet.png`.
-Source: `09-*.html` + `library.css` (on top of `phone.css` / tokens.css). Rendered with `render-09.py` (Playwright, 412x915; 360x915 for the 130% text check).
+Source: `09-*.html` + `library.css` (on top of `phone.css` / tokens.css). Rendered with `render-10.py` (Playwright, 412x915; 360x915 for the 130% text check).
+**Status: approved by the user 19 Oct 2026** (tap selects, Select all stays, no month grouping). Theme/font still open, see 10-theme-compare.png.
 Follows the #70 phone direction and #79 (buttons only, no text links). This replaces the PR #77 "See all" 2-column `#grid` with filenames, Show now and Hide.
 
 ## Removed
@@ -11,13 +12,13 @@ Show now, Hide, the Hidden tag and filenames. Hidden state is not shown (see ope
 - Forest bar: Back button (`‹`, aria-label "Back to home"), title "Photos", Settings button. Walnut status strip as on home.
 - Primary `btn btn-primary btn-big block` "＋ Upload photos" (56px, button).
 - Header row: "Library" + "128 photos on the frame", and a visible **Select** button (`btn btn-neutral`, 48px).
-- Optional month label ("October 2026"), 15px bold, text-2. Kit may drop it if upload dates aren't stored.
+- No month grouping (user decision): one continuous grid, newest first.
 - Grid: full-bleed (`margin: 0 -16px`), 3 columns at 360 and 412, 3px gap, square tiles, `object-fit: cover`, no radius (Gallery style).
 - Thumbnails: `<img loading="lazy" decoding="async" alt="">` inside a `<button class="tile">`; fixed aspect-ratio squares so lazy loading causes no layout shift.
 - Missing thumbnail: `.tile.plain` = paper background, 1px line border, a small outlined picture glyph (CSS only), same as PR #77's plain tile.
 
 ## Interactions
-- **Single tap in normal mode = enter selection mode with that photo selected.** Rationale: the user's brief says "on photo press show it has been pressed … multiple are selectable"; it needs no extra preview screen, no larger image download and no new server route, so it stays simple and offline. (Option: full-screen preview, see open question 1.)
+- **Single tap in normal mode = enter selection mode with that photo selected (approved).** Rationale: the user's brief says "on photo press show it has been pressed … multiple are selectable"; it needs no extra preview screen, no larger image download and no new server route, so it stays simple and offline.
 - **Long press (500 ms)** also enters selection mode with that photo selected; call `navigator.vibrate?.(15)` if available. Cancel the long press if the pointer moves > 10px (that's a scroll). Set `-webkit-touch-callout: none; user-select: none` on tiles so Android doesn't show the image context menu.
 - **Select** button enters selection mode with nothing selected (accessible, discoverable path).
 - In selection mode, a tap toggles the tile. Selecting the last selected photo off keeps the mode on (N=0, Delete disabled); only Cancel, Back, or a finished delete exits.
@@ -25,7 +26,7 @@ Show now, Hide, the Hidden tag and filenames. Hidden state is not shown (see ope
 - Delete (N) opens the confirm sheet. Confirm sends one bulk request; on success, removed tiles disappear (opacity fade 150ms), the mode exits and the header count updates. On failure, keep the selection and show the `.err` box "Couldn't delete the photos. Check you're connected to the frame and try again."
 
 ## Selection mode (09b)
-- Top bar replaced: `.bar.selbar` with "**N selected**" (`aria-live="polite"`) and **Select all** (`.btn-onbar`, outlined on forest, 48px). When all are selected it reads "Unselect all".
+- Top bar replaced: `.bar.selbar` with "**N selected**" (`aria-live="polite"`) and **Select all** (approved) (`.btn-onbar`, outlined on forest, 48px). When all are selected it reads "Unselect all".
 - The Upload button and header row are hidden; a hint "Tap photos to select or unselect them." sits above the grid.
 - Unselected tile: an empty white ring (26px, 2px white border on a 35% ink fill, for contrast over light photos) top-left.
 - Selected tile (not colour alone, 3 cues): filled forest-green circle with a white tick (inline SVG data URI), image scaled to 0.88 with 6px radius, 3px green border, green-50 behind the inset.
@@ -57,7 +58,7 @@ See `library.css` (all values are tokens.css tokens, plus `--mf-lib-gap: 3px`, `
 Use the PR #77/#78 `.mf-phone` prefixes when porting. Add `viewport-fit=cover` to the viewport meta for the safe-area inset.
 
 ## Accessibility
-- Tiles are `<button>`s. aria-label: "Photo 4 of 128, added 18 Oct" (index + date, never the filename). In selection mode they get `aria-pressed="true|false"`; in normal mode no aria-pressed.
+- Tiles are `<button>`s. aria-label: "Photo 4 of 128" (index; a date may be appended if stored; never the filename). In selection mode they get `aria-pressed="true|false"`; in normal mode no aria-pressed.
 - Grid tile focus ring is a 3px green outline (on top tiles inset with `outline-offset:-3px` if clipped); bar buttons use brass.
 - Contrast: white on green 7.3:1, white on brick 6.6:1, text on paper ≥ 7:1, text-2 on paper 6.9:1, linen on forest-900 13:1, the tick circle green on photo + white edge.
 - 360 px with 130% text (09-library-360-130): bar, hint, and toolbar fit on one line each; the grid stays 3 columns; the sheet's buttons wrap (`flex: 1 1 8rem`) instead of truncating.
@@ -78,9 +79,9 @@ No blur, backdrop-filter, shadows or gradients. Only `transform` (tile inset) an
 9. Server: bulk delete for paired clients only, CSRF protected, valid IDs only, size limit (Juniper reviews).
 10. Matches mocks within the usual tolerance at 412x915 and 360 at 130% text; no animation other than transform/opacity.
 
+## Decisions (user, 19 Oct 2026)
+1. Tapping a photo starts selecting with it. 2. Select all stays. 3. No month grouping.
+
 ## Open questions for the user
-1. Tapping a photo (when not selecting): **(a)** starts selecting with it (designed) or **(b)** opens a full-screen preview.
-2. Include **Select all**? **(a)** yes (designed) or **(b)** no.
-3. With Hide gone, what happens to photos already hidden? **(a)** they show again in the slideshow and library (simplest) or **(b)** keep them hidden but don't show it on the phone.
-4. Font: the #80 text says Atkinson Hyperlegible, but the approved #70 phone direction uses the phone's system font (no download). **(a)** keep the system font (designed) or **(b)** use Atkinson on the phone too.
-5. Group by month ("October 2026")? **(a)** yes if dates are available or **(b)** one plain grid.
+1. **Theme and font:** the user wants the whole phone to keep the frame's look and feel, including Atkinson Hyperlegible. See `10-theme-compare.png`: **(a)** Light: paper theme + Atkinson, or **(b)** Dark: frame theme (`theme-dark.css`) + Atkinson. Either way Atkinson is self-hosted via `/frame-fonts.css` (font-display: block). The 09 mocks stay on the light/system-font look until this is picked.
+2. Photos already hidden, now that Hide is gone: **(a)** they show again (simplest) or **(b)** stay hidden, not shown on the phone.

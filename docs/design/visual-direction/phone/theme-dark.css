@@ -1,0 +1,23 @@
+/* Variant B: frame (dark) theme on the phone. Semantic phone tokens remapped to frame tokens. */
+:root {
+  --mf-paper: var(--mf-ink);          /* page */
+  --mf-card: var(--mf-forest-800);    /* cards, rows, inputs, sheet */
+  --mf-line: var(--mf-forest-700);    /* borders */
+  --mf-text: var(--mf-linen);
+  --mf-text-2: var(--mf-oat);
+  --mf-green: var(--mf-forest-600);   /* primary fill */
+  --mf-green-50: var(--mf-forest-900);
+  --mf-accent-text: var(--mf-leaf);   /* NEW: green text/focus on dark (forest-600 text is 2.6:1 on ink) */
+  --mf-red-50: #3A1F1B;
+  --mf-scrim-phone: rgba(0,0,0,.6);
+  --mf-font-phone: var(--mf-font-frame);
+}
+.bar { background: var(--mf-forest-900); border-bottom: 1px solid var(--mf-forest-700); }
+.btn-danger { background: var(--mf-brick); }
+.btn-text-danger, .rows .t[style*="mf-red"] { color: var(--mf-brick-text) !important; }
+.btn-neutral { background: var(--mf-forest-800); color: var(--mf-linen); border-color: var(--mf-forest-700); }
+.rows .ico { background: var(--mf-forest-900); color: var(--mf-leaf); }
+.btn:focus-visible, .tile:focus-visible, .focus { outline-color: var(--mf-brass); }
+.selecting .tile[aria-pressed="true"] { border-color: var(--mf-leaf); }
+.btn-danger:disabled { background: var(--mf-forest-800); color: var(--mf-oat); }
+.sheet { border-top: 1px solid var(--mf-forest-700); }

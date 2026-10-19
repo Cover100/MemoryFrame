@@ -29,6 +29,35 @@ def put_settings():
     return jsonify(settings.get_all(conn))
 
 
+@bp.route("/message", methods=["GET"])
+def get_message():
+    from . import message
+    return jsonify({"message": message.get(current_app.config["DATA_DIR"]), "max": message.MAX_LEN})
+
+
+@bp.route("/message", methods=["PUT"])
+def put_message():
+    """#73: set (or clear with "") the frame message. Paired session + CSRF like /settings."""
+    import json
+    from . import message
+    if (request.content_length or 0) > message.MAX_BODY:
+        return jsonify({"error": "request too large"}), 413
+    raw = request.stream.read(message.MAX_BODY + 1)          # chunked bodies: bounded read
+    if len(raw) > message.MAX_BODY:
+        return jsonify({"error": "request too large"}), 413
+    try:
+        data = json.loads(raw.decode("utf-8")) if request.is_json else None
+    except (ValueError, UnicodeDecodeError):
+        data = None
+    if not isinstance(data, dict) or set(data) != {"message"}:
+        return jsonify({"error": "expected a JSON object with message"}), 400
+    text, err = message.clean(data["message"])
+    if err:
+        return jsonify({"error": err}), 400
+    message.save(current_app.config["DATA_DIR"], text)
+    return jsonify({"message": text, "max": message.MAX_LEN})
+
+
 @bp.route("/status")
 def status():
     db = get_db()

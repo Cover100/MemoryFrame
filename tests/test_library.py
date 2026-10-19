@@ -96,6 +96,7 @@ def test_reupload_after_delete(paired, item):
 def show_now(client):
     d = client.get("/show-now").get_json()
     d.pop("settings")                                  # MF-17, covered in test_settings.py
+    d.pop("message", None)                             # #73, covered in test_frame_message.py
     return d
 
 

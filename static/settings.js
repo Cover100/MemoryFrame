@@ -37,4 +37,54 @@
         const v = sh.checked;
         save("shuffle", v, ()=>{ sh.checked = !v; });
     });
+
+    // #73: message on the frame. Live preview via textContent (never as HTML); saved on Save.
+    const ta = document.getElementById("frameMessage");
+    if(ta){
+        const max = Number(ta.dataset.max) || 140;
+        const count = document.getElementById("messageCount");
+        const prev = document.getElementById("messagePreview"), prevText = document.getElementById("messagePreviewText");
+        const prevEmpty = document.getElementById("messagePreviewEmpty");
+        // Approximates memoryframe/message.clean (the server is authoritative): NFC, strip
+        // controls/format/invisible fillers, collapse spaces, count code points.
+        const norm = (v)=> v.normalize("NFC")
+            .replace(/[\u115F\u1160\u3164\uFFA0\u2800]/g, "")
+            .replace(/[\p{Cc}\p{Cf}]/gu, (m)=> (/[\n\r\t\u200C\u200D]/.test(m) ? (m === "\u200C" || m === "\u200D" ? m : " ") : ""))
+            .replace(/\s+/g, " ").trim();
+        const saveBtn = document.getElementById("messageSave");
+        let stored = norm(ta.value);              // what the frame shows now (server-rendered)
+        const preview = ()=>{
+            const v = norm(ta.value);
+            // An empty box never silently clears the message: use "Remove message" for that.
+            saveBtn.disabled = !v && !!stored;
+            const n = [...v].length;
+            count.textContent = `${n} / ${max}`;
+            count.classList.toggle("err", n > max);
+            prevText.textContent = v;
+            prev.hidden = !v; prevEmpty.hidden = !!v;
+        };
+        ta.addEventListener("input", preview);
+        preview();
+        async function saveMessage(value){
+            try{
+                const r = await fetch("/api/v1/message", {method: "PUT", credentials: "same-origin",
+                    headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf},
+                    body: JSON.stringify({message: value})});
+                const j = await r.json().catch(()=> ({}));
+                if(!r.ok){ throw new Error(j.error || String(r.status)); }
+                stored = j.message; ta.value = j.message; preview();
+                removeBtn.hidden = !j.message; confirmBox.hidden = true;
+                status("message", j.message ? "Saved" : "Cleared");
+            }catch(e){
+                status("message", "Couldn't save. Try again.", true);
+            }
+        }
+        document.getElementById("messageSave").addEventListener("click", ()=> saveMessage(ta.value));
+        // One-tap clear replaced by "Remove message" + inline confirm (Keep is focused, the safe default).
+        const removeBtn = document.getElementById("messageRemove");
+        const confirmBox = document.getElementById("messageConfirm");
+        removeBtn.addEventListener("click", ()=>{ confirmBox.hidden = false; document.getElementById("messageRemoveNo").focus(); });
+        document.getElementById("messageRemoveNo").addEventListener("click", ()=>{ confirmBox.hidden = true; removeBtn.focus(); });
+        document.getElementById("messageRemoveYes").addEventListener("click", ()=> saveMessage(""));
+    }
 })();

@@ -27,6 +27,8 @@ def create_app(config=None):
     from . import imaging
     app.config["DISPLAY_TARGET"] = imaging.target_or_default(app.config.get("DISPLAY_SIZE", imaging.DEFAULT_TARGET))
     storage.ensure_layout(app.config["DATA_DIR"])
+    from . import message
+    message.sweep_tmp(app.config["DATA_DIR"])        # #73: crash leftovers
     db.init_app(app)
     from . import assets
     assets.init_app(app)

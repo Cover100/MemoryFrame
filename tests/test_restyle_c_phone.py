@@ -309,6 +309,10 @@ def test_empty_box_never_saves_over_a_message(page, server, mf_app):
     evaluate(page, f"{js}('frameMessage').value=''; {js}('frameMessage').dispatchEvent(new Event('input'))")
     assert evaluate(page, f"{js}('messageSave').disabled") is True
     assert evaluate(page, f"{js}('messageDirty').textContent") == "Use Remove message to clear it"
+    # the preview keeps showing what the frame shows until Remove is confirmed (Hollis, 48cdae8)
+    assert evaluate(page, f"{js}('messagePreviewText').textContent") == "Hi Nana"
+    assert not evaluate(page, f"{js}('messagePreview').hidden") and evaluate(page, f"{js}('messagePreviewEmpty').hidden")
+    assert evaluate(page, f"{js}('messagePreviewLabel').textContent") == "On the frame now"
     evaluate(page, f"{js}('messageSave').click()")
     page.pump(0.5)
     assert message.get(mf_app.config["DATA_DIR"]) == "Hi Nana"
@@ -348,3 +352,49 @@ def test_offline_view_takes_focus(page, server, mf_app):
     assert evaluate(page, "document.activeElement.tagName + '|' + document.activeElement.textContent") == "H1|Can't reach the frame"
     evaluate(page, "memoryFramePhone.online()")
     assert evaluate(page, "document.activeElement.closest('#page') !== null")
+
+
+def test_wifi_buttons_use_non_breaking_hyphen(paired, monkeypatch, tmp_path):
+    """Hollis 48cdae8: 'Wi- / Fi' at 360 px. U+2011 keeps 'Wi-Fi' whole; the space still wraps at 130 %."""
+    monkeypatch.setenv("MEMORYFRAME_NETMODE_STATE", str(tmp_path / "nm.json"))
+    (tmp_path / "nm.json").write_text('{"mode": "product"}')
+    h = htmlmod.unescape(body(paired, "/admin/wifi/"))
+    if 'id="wifiForm"' not in h:
+        pytest.skip("Wi-Fi change unavailable in this environment")
+    for i in ("changeBtn", "confirmBtn"):
+        assert f'id="{i}" class="' in h and h.split(f'id="{i}"')[1].split("</button>")[0].endswith("Change Wi\u2011Fi")
+
+
+def test_script_focused_headings_have_no_outline():
+    assert '.mf-phone [tabindex="-1"]:focus { outline: none; }' in CSS
+
+
+@pytest.mark.skipif(BROWSER is None, reason="no Chromium/Chrome installed")
+def test_offline_heading_focus_draws_no_outline(page, server, mf_app):
+    _phone(page, server, mf_app, "admin/upload")
+    evaluate(page, "memoryFramePhone.offline()")
+    assert evaluate(page, "getComputedStyle(document.activeElement).outlineStyle") == "none"
+
+
+@pytest.mark.skipif(BROWSER is None, reason="no Chromium/Chrome installed")
+@pytest.mark.parametrize("zoom", [1.0, 1.3])
+def test_wifi_sheet_buttons_keep_wi_fi_whole_at_360(page, server, mf_app, monkeypatch, tmp_path, zoom):
+    monkeypatch.setenv("MEMORYFRAME_NETMODE_STATE", str(tmp_path / "nm.json"))
+    (tmp_path / "nm.json").write_text('{"mode": "product"}')
+    _phone(page, server, mf_app, "admin/wifi/")
+    page.call("Emulation.setDeviceMetricsOverride", {"width": 360, "height": 800, "deviceScaleFactor": 1, "mobile": True})
+    evaluate(page, f"document.documentElement.style.zoom = '{zoom}'")
+    if not evaluate(page, "!!document.getElementById('wifiForm')"):
+        pytest.skip("Wi-Fi change unavailable in this environment")
+    evaluate(page, "document.getElementById('confirmStep').hidden = false")
+    page.pump(0.2)
+    # no line starts with "Fi": measure each text line of the button label
+    lines = evaluate(page, """JSON.stringify((()=>{const b=document.getElementById('confirmBtn'); const t=b.firstChild;
+        const r=document.createRange(); const out=[]; let top=null, cur='';
+        for(let i=0;i<t.length;i++){ r.setStart(t,i); r.setEnd(t,i+1); const y=Math.round(r.getBoundingClientRect().top);
+          if(top!==null && Math.abs(y-top)>2){ out.push(cur); cur=''; } top=y; cur+=t.data[i]; }
+        out.push(cur); return out;})())""")
+    import json
+    assert not any(line.strip().startswith("Fi") for line in json.loads(lines)), lines
+    assert evaluate(page, "document.documentElement.scrollWidth <= document.documentElement.clientWidth")
+    assert evaluate(page, "(()=>{const b=document.getElementById('confirmBtn'); return b.scrollWidth <= b.clientWidth + 1;})()")

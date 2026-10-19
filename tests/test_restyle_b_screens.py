@@ -56,17 +56,18 @@ def test_dev_confirm_copy_and_phone_button_font():
 
 
 def _menu(client, mf_app, msg):
-    mf_app.config["FRAME_MESSAGE"] = msg
+    from memoryframe import message
+    message.save(mf_app.config["DATA_DIR"], msg or "")
     return client.get("/", environ_base={"REMOTE_ADDR": "127.0.0.1"}).get_data(as_text=True)
 
 
 def test_menu_v2_message_card_and_empty_state(client, mf_app):
     html = _menu(client, mf_app, None)
-    assert "No message yet" in html and 'id="menuMessage"' not in html
+    assert '<div class="menuNote empty" id="menuNoteEmpty">' in html and 'id="menuNote" hidden' in html
     for gone in ("menuIp", "menuSsid", "menuSite", "menuPaired", "menuVersion"):
         assert gone not in html
     html = _menu(client, mf_app, "Happy 80th, Nana! <b>xx</b>")
-    assert "Happy 80th, Nana! &lt;b&gt;xx&lt;/b&gt;" in html and "No message yet" not in html   # text, never HTML
+    assert "Happy 80th, Nana! &lt;b&gt;xx&lt;/b&gt;" in html and 'id="menuNoteEmpty" hidden' in html   # text, never HTML
     assert 'role="meter"' in html and html.index('id="menuClose"') < html.index('id="menuShutdown"')
 
 

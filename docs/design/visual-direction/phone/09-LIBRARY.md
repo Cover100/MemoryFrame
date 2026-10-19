@@ -6,7 +6,7 @@ Source: `09-*.html` + `library.css` (on top of `phone.css` / tokens.css). Render
 Follows the #70 phone direction and #79 (buttons only, no text links). This replaces the PR #77 "See all" 2-column `#grid` with filenames, Show now and Hide.
 
 ## Removed
-Show now, Hide, the Hidden tag and filenames. Hidden state is not shown (see open question 3).
+Show now, Hide, the Hidden tag and filenames. Previously hidden photos all show again (user decision).
 
 ## Layout (normal mode, 09)
 - Forest bar: Back button (`‹`, aria-label "Back to home"), title "Photos", Settings button. Walnut status strip as on home.
@@ -78,10 +78,11 @@ No blur, backdrop-filter, shadows or gradients. Only `transform` (tile inset) an
 8. Confirm sheet copy as above, Cancel focused by default, Esc/scrim/Back cancel; one bulk request; failure keeps selection and shows the error.
 9. Server: bulk delete for paired clients only, CSRF protected, valid IDs only, size limit (Juniper reviews).
 10. Matches mocks within the usual tolerance at 412x915 and 360 at 130% text; no animation other than transform/opacity.
+11. Existing hidden flags are cleared (migration) or ignored, so every photo appears in the grid and the slideshow; nothing on the phone can hide a photo.
 
 ## Decisions (user, 19 Oct 2026)
 1. Tapping a photo starts selecting with it. 2. Select all stays. 3. No month grouping.
+4. Photos already hidden all show again (resolved, recorded on #80).
 
 ## Open questions for the user
 1. **Theme and font:** the user wants the whole phone to keep the frame's look and feel, including Atkinson Hyperlegible. See `10-theme-compare.png`: **(a)** Light: paper theme + Atkinson, or **(b)** Dark: frame theme (`theme-dark.css`) + Atkinson. Either way Atkinson is self-hosted via `/frame-fonts.css` (font-display: block). The 09 mocks stay on the light/system-font look until this is picked.
-2. Photos already hidden, now that Hide is gone: **(a)** they show again (simplest) or **(b)** stay hidden, not shown on the phone.

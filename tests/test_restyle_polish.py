@@ -185,3 +185,62 @@ def test_n4_library_actions_row(page, server, mf_app, lib):
     assert st["text"] == "Delete" and st["cls"] == "del" and st["below"] and st["full"] and st["h"] >= 48, st
     assert st["bg"] == "rgba(0, 0, 0, 0)" and st["bl"] == "0px" and st["bt"] == "1px", st
     assert st["color"] == "rgb(168, 53, 42)" and float(st["showBorder"][:-2]) >= 1, st   # --mf-red; Show now/Hide stay outlined
+
+
+# ---------------- Juniper's #77 security review: offline-panel SSID ----------------
+
+def _wifi_hint(mf_app, cookie=None):
+    from flask import render_template_string
+    headers = {"Cookie": f"mf_session={cookie}"} if cookie else {}
+    with mf_app.test_request_context("/admin/", headers=headers, environ_base=PHONE):
+        return render_template_string("{% set w = phone_wifi() %}[{{ w.ssid }}]")
+
+
+@pytest.fixture
+def product(tmp_path, monkeypatch):
+    monkeypatch.setenv("MEMORYFRAME_SSID", "Secret-Hotspot-4F2A")
+    monkeypatch.setenv("MEMORYFRAME_NETMODE_STATE", str(tmp_path / "nm.json"))
+    (tmp_path / "nm.json").write_text('{"mode": "product"}')
+    return tmp_path / "nm.json"
+
+
+def test_ssid_lookup_is_empty_for_an_unpaired_visitor(mf_app, product):
+    assert _wifi_hint(mf_app) == "[]"                                    # no cookie
+    assert _wifi_hint(mf_app, "not-a-real-token") == "[]"                # bogus cookie
+    conn = mfdb.connect(mf_app.config["DB_PATH"])
+    tok = auth.create_session(conn, "phone")
+    conn.close()
+    assert _wifi_hint(mf_app, tok) == "[Secret-Hotspot-4F2A]"            # paired: the name to rejoin
+    conn = mfdb.connect(mf_app.config["DB_PATH"])
+    auth.sign_out_all(conn)
+    conn.close()
+    assert _wifi_hint(mf_app, tok) == "[]"                               # revoked session: nothing again
+
+
+def test_unpaired_pages_never_carry_the_ssid(client, product):
+    for url in ("/pair", "/pair?t=x", "/admin/", "/admin/settings"):
+        r = client.get(url, environ_base=PHONE)
+        assert "Secret-Hotspot-4F2A" not in r.get_data(as_text=True), url
+
+
+def test_dev_mode_offline_hint_does_not_name_the_hotspot(paired, product):
+    h = offline_panel(paired, "/admin/")
+    assert "Join <b>Secret-Hotspot-4F2A</b>" in h                         # product mode: named
+    product.write_text('{"mode": "dev"}')
+    for url in ("/admin/", "/admin/settings", "/admin/upload", "/admin/library"):
+        h = offline_panel(paired, url)
+        assert "Secret-Hotspot-4F2A" not in h, url
+        assert "<li>Join the frame's Wi-Fi.</li>" in h and "scan the Wi-Fi QR" not in h, url
+    product.unlink()                                                     # no netmode file = dev (safe default)
+    assert "Secret-Hotspot-4F2A" not in offline_panel(paired, "/admin/")
+
+
+def offline_panel(c, url):
+    h = body_ok(c, url)
+    return h[h.index('<div id="offline" hidden>'):h.index('id="offlineRetry"')]
+
+
+def body_ok(c, url):
+    r = c.get(url, environ_base=PHONE)
+    assert r.status_code == 200, (url, r.status_code)
+    return r.get_data(as_text=True)

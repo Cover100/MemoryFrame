@@ -3,7 +3,7 @@
 Every route requires a paired session (MF-12); unauthenticated requests are
 redirected to /pair. Upload (MF-14) and the library (MF-16) add the real pages.
 """
-from flask import Blueprint, redirect, render_template, request
+from flask import Blueprint, g, redirect, render_template, request
 
 from . import auth
 from .db import get_db
@@ -23,11 +23,16 @@ def slide_label(v):
 def _phone_context():
     def phone_wifi():
         # Offline panel (#70 mock 08): which Wi-Fi to rejoin. Paired pages only (pair.html leaves it out).
+        # Juniper's #77 review: no SSID unless this visitor is paired, and never the hotspot SSID in dev
+        # mode (the frame is on the developer's Wi-Fi then, and the hotspot name would be wrong and leak).
         from . import frameinfo, wifi
         try:
             mode = frameinfo.network().get("mode")
         except Exception:  # noqa: BLE001 - never break a page over this hint
             mode = "unknown"
+        device = g.get("device_id") or auth.current_device()
+        if device is None or frameinfo.dev_mode():
+            return {"ssid": "", "mode": mode}
         return {"ssid": wifi.current_wifi(get_db())[0] or "", "mode": mode}
     return {"phone_wifi": phone_wifi, "slide_label": slide_label}
 

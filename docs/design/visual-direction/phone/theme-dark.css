@@ -21,3 +21,14 @@
 .selecting .tile[aria-pressed="true"] { border-color: var(--mf-leaf); }
 .btn-danger:disabled { background: var(--mf-forest-800); color: var(--mf-oat); }
 .sheet { border-top: 1px solid var(--mf-forest-700); }
+/* Decided 19 Oct 2026 (user): dark is the phone direction. Additions for non-text contrast >= 3:1 */
+.btn-neutral, .btn-onbar { border: 1.5px solid var(--mf-oat); }
+.selecting .tile, .tile.plain { background: var(--mf-forest-900); border-color: var(--mf-forest-700); }
+.tile.plain::before { border-color: var(--mf-oat); opacity: .6; }
+.selecting .tile[aria-pressed="true"] { background: var(--mf-forest-900); }
+.sheet { background: var(--mf-forest-800); }
+.sheet h2 { color: var(--mf-linen); } .sheet p { color: var(--mf-oat); }
+.sheet .btn-neutral { background: transparent; }
+.toolbar { background: var(--mf-forest-900); border-top-color: var(--mf-forest-700); }
+.toolbar .btn-neutral { background: transparent; }
+.libhead h1 small, .muted { color: var(--mf-oat); }

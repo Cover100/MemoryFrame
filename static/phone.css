@@ -6,6 +6,7 @@ html, body.mf-phone { margin: 0; }
 body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh; -webkit-font-smoothing: antialiased;
   -webkit-text-size-adjust: 100%; }
 .mf-phone [hidden] { display: none !important; }
+.mf-phone [tabindex="-1"]:focus { outline: none; }   /* headings focused by script (offline view) */
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 /* Header band (forest) + status strip (walnut) */

@@ -64,9 +64,12 @@
             const n = [...v].length;
             count.textContent = `${n} / ${max}`;
             count.classList.toggle("err", n > max);
-            prevText.textContent = v;
-            prev.hidden = !v; prevEmpty.hidden = !!v;
             const same = v === saved;
+            // An empty box isn't a removal: until Remove is confirmed the frame still shows the saved message.
+            const kept = !v && !!saved;
+            const shown = kept ? saved : v;
+            prevText.textContent = shown;
+            prev.hidden = !shown; prevEmpty.hidden = !!shown;
             // #75 guard: an empty box never silently clears the message (use "Remove message" for that).
             save.disabled = !v && !!saved;
             // 04b: unchanged text shows a muted "Saved" (aria-disabled; a tap does nothing).
@@ -76,7 +79,7 @@
             dirtyEl.hidden = same;
             dirtyEl.textContent = save.disabled ? "Use Remove message to clear it" : "Not saved yet";
             removeBtn.hidden = !saved || !confirmBox.hidden;
-            label.textContent = same && saved ? "On the frame now" : "Preview: how it will look on the frame";
+            label.textContent = (same && saved) || kept ? "On the frame now" : "Preview: how it will look on the frame";
         };
         ta.addEventListener("input", preview);
         preview();

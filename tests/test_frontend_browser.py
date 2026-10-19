@@ -345,7 +345,7 @@ def test_upload_page_uploads_files_with_progress(page, server, mf_app, tmp_path)
     assert all(r[1] == 100 for r in rows)
     assert "not a photo" in rows[3][2]
     assert "4 of 4 done" in evaluate(page, "document.getElementById('summary').textContent")
-    assert "Free space" in evaluate(page, "document.getElementById('storage').textContent")
+    assert re.search(r"\d+\.\d GB free of \d+\.\d GB", evaluate(page, "document.getElementById('storage').textContent"))
     conn = mfdb.connect(mf_app.config["DB_PATH"])
     assert conn.execute("SELECT COUNT(*) FROM media WHERE original_name LIKE 'up_.jpg'").fetchone()[0] == 3
     conn.close()

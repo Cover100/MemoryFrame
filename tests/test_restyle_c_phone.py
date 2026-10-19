@@ -66,9 +66,9 @@ def test_home_merges_library_preview_and_rows(paired, lib, mf_app):
     h = htmlmod.unescape(body(paired, "/admin/"))
     assert h.count('/thumb" alt=') == 9 and f'/api/v1/media/{newest}/thumb' in h
     assert '<li class="hid">' in h and '<span class="tag">Hidden</span>' in h
-    assert "See all 12 photos ›" in h and 'href="/admin/library"' in h
+    assert '<a class="btn btn-neutral block see-all" href="/admin/library"><span>See all 12 photos</span>' in h
     assert h.index("Upload photos") < h.index("Library") < h.index("Frame Wi-Fi") < h.index("Settings<small>")
-    assert "Connected to the frame · " in h and " GB free" in h
+    assert "Connected to the frame</p>" in h and 'role="meter"' in h and " GB free <span>of " in h
     form = h[h.index('id="signOutForm"'):h.index("</form>", h.index('id="signOutForm"'))]
     assert 'name="csrf_token" value="' in form and "Sign out all phones" in form
 
@@ -290,7 +290,7 @@ def test_touch_targets_at_least_48(page, server, mf_app, lib):
         assert sizes and all(h >= 48 for w, h in sizes), (sel, sizes)
     assert json.loads(hit("#shuffle"))[0][0] >= 48
     _phone(page, server, mf_app, "admin/")
-    assert all(h >= 48 for w, h in json.loads(hit(".sec a"))), hit(".sec a")
+    assert all(h >= 48 for w, h in json.loads(hit(".see-all"))), hit(".see-all")
     assert all(h >= 48 for w, h in json.loads(hit(".row-link")))
     _phone(page, server, mf_app, "admin/library")
     page.pump(1)
@@ -398,3 +398,181 @@ def test_wifi_sheet_buttons_keep_wi_fi_whole_at_360(page, server, mf_app, monkey
     assert not any(line.strip().startswith("Fi") for line in json.loads(lines)), lines
     assert evaluate(page, "document.documentElement.scrollWidth <= document.documentElement.clientWidth")
     assert evaluate(page, "(()=>{const b=document.getElementById('confirmBtn'); return b.scrollWidth <= b.clientWidth + 1;})()")
+
+
+# ---------------- #79: no text links, styled upload picker, paper theme everywhere, storage meter ----------------
+
+TEMPLATES = ROOT / "templates"
+FRAME_ONLY = {"index.html"}                         # the frame's own screen (dark slideshow), not a phone page
+PARTIALS = {"_phone.html", "_storage.html"}
+LINK_CLASSES = {"btn", "row-link", "back", "icon"}  # buttons, row cards, the header chevron and gear
+PHONE_JS = ["admin.js", "library.js", "upload.js", "settings.js", "wifi.js", "phone.js"]
+
+
+def _phone_templates():
+    return sorted(p for p in TEMPLATES.glob("*.html") if p.name not in FRAME_ONLY | PARTIALS)
+
+
+def test_every_phone_template_uses_the_shared_phone_base():
+    names = [p.name for p in _phone_templates()]
+    assert "phone_error.html" in names and "upload.html" in names
+    for p in _phone_templates():
+        assert p.read_text().lstrip().startswith('{% extends "_phone.html" %}'), p.name
+
+
+@pytest.mark.parametrize("tpl", [p.name for p in sorted(TEMPLATES.glob("*.html")) if p.name not in FRAME_ONLY])
+def test_phone_templates_have_no_unstyled_text_links_or_visible_file_inputs(tpl):
+    src = (TEMPLATES / tpl).read_text()
+    for m in re.finditer(r"<a\b([^>]*)>(.*?)</a>", src, flags=re.S):
+        attrs, inner = m.groups()
+        cls = set((re.search(r'class="([^"]*)"', attrs) or [None, ""])[1].split())
+        image_only = re.fullmatch(r"\s*<img\b[^>]*>\s*", inner) is not None      # tappable thumbnail
+        assert cls & LINK_CLASSES or image_only, (tpl, m.group(0)[:120])
+    for m in re.finditer(r'<input\b[^>]*type="file"[^>]*>', src):
+        before = src[:m.start()]
+        assert before.rfind('<label class="pick') > before.rfind("</label>"), (tpl, "file input outside the picker")
+    flat = re.sub(r"/\*.*?\*/", "", CSS, flags=re.S)
+    assert re.search(r"\.pick input \{[^}]*width: 1px; height: 1px; opacity: 0;", flat)
+
+
+@pytest.mark.parametrize("js", PHONE_JS)
+def test_phone_scripts_never_build_text_links(js):
+    src = (ROOT / "static" / js).read_text()
+    assert 'createElement("a")' not in src and "createElement('a')" not in src and "<a " not in src, js
+
+
+def test_phone_error_pages_stay_on_the_paper_theme(client, paired):
+    for url, code in (("/admin/nope", 404), ("/pair/nope", 404)):
+        r = client.get(url, environ_base=PHONE)
+        h = r.get_data(as_text=True)
+        assert r.status_code == code and 'class="mf-phone"' in h and '<header class="bar">' in h, url
+        assert '<a class="btn block big mt" href="/admin/">Back to Memory Frame</a>' in h
+    r = client.post("/admin/library", environ_base=PHONE, headers={"X-CSRF-Token": "x"})
+    assert r.status_code in (403, 405)
+    r = client.get("/api/v1/nope", environ_base=PHONE)
+    assert r.status_code == 404 and "mf-phone" not in r.get_data(as_text=True)     # API keeps its default
+    assert "mf-phone" not in client.get("/uploads/nope.jpg").get_data(as_text=True)
+
+
+def _fake_disk(monkeypatch, total, free):
+    import collections
+    import shutil
+    du = collections.namedtuple("du", "total used free")(total, total - free, free)
+    monkeypatch.setattr(shutil, "disk_usage", lambda _p: du)
+
+
+@pytest.mark.parametrize("url", ["/admin/", "/admin/upload"])
+def test_storage_meter_uses_the_frame_menu_numbers(paired, mf_app, monkeypatch, url):
+    from memoryframe import frameinfo
+    _fake_disk(monkeypatch, int(28.8 * 2**30), int(21.4 * 2**30))
+    with mf_app.app_context():
+        fs = frameinfo.free_storage(mf_app.config["DATA_DIR"])                 # what /frame/status gives the menu
+    used = 1 - fs["free"] / fs["total"]
+    h = body(paired, url)
+    assert "Free space:" not in h and "Checking free space" not in h            # no plain text alone
+    assert '<b class="storeFree">21.4 GB free <span>of 28.8 GB</span></b>' in h
+    meter = re.search(r'<div class="track" role="meter"[^>]*>', h).group(0)
+    for attr in ('aria-label="Storage used"', 'aria-valuemin="0"', 'aria-valuemax="100"',
+                 f'aria-valuenow="{round(used * 100)}"', 'aria-valuetext="21.4 GB free of 28.8 GB"'):
+        assert attr in meter, (attr, meter)
+    assert f'data-used="{used:.3f}"' in h
+    if url == "/admin/":
+        strip = h[h.index('<div class="strip'):h.index("<main")]
+        assert "has-store" in strip and 'class="store on-dark"' in strip and "GB free" in strip
+    else:
+        assert 'id="storeRoom"' in h and "Room for about " in h
+
+
+def test_storage_meter_css_matches_the_frame_menu():
+    frame = (ROOT / "static" / "style.css").read_text()
+    assert "transform-origin:left;transform:scaleX(0)" in frame.replace(" ", "")             # #74 menu bar
+    flat = re.sub(r"/\*.*?\*/", "", CSS, flags=re.S)
+    assert re.search(r"\.track \{ height: 8px; border-radius: 4px;[^}]*overflow: hidden; \}", flat)
+    assert re.search(r"\.track \.used \{[^}]*transform-origin: left; transform: scaleX\(0\); \}", flat)
+    assert "tabular-nums" in flat
+
+
+@pytest.mark.skipif(BROWSER is None, reason="no Chromium/Chrome installed")
+def test_phone_pages_show_no_text_links_or_raw_file_input(page, server, mf_app, lib):
+    """#79: in the rendered pages every visible link is a button/row/chevron (>= 48 px, no underline) or a
+    photo, and the native file control is never visible."""
+    import json
+    lib.add("c.jpg", PNG)
+    for path in ("admin/", "admin/library", "admin/upload", "admin/settings", "admin/wifi/", "pair", "admin/nope"):
+        _phone(page, server, mf_app, path)
+        page.pump(0.5)
+        bad = json.loads(evaluate(page, """JSON.stringify([...document.querySelectorAll('a')].filter(a=>a.offsetParent).filter(a=>{
+            const r=a.getBoundingClientRect(), cs=getComputedStyle(a);
+            const photo = a.children.length===1 && a.firstElementChild.tagName==='IMG';
+            return !photo && (cs.textDecorationLine !== 'none' || r.height < 48);}).map(a=>a.outerHTML.slice(0,80)))"""))
+        assert bad == [], (path, bad)
+        files = json.loads(evaluate(page, """JSON.stringify([...document.querySelectorAll('input[type=file]')].map(i=>{
+            const r=i.getBoundingClientRect(); return [parseFloat(getComputedStyle(i).opacity), r.width, r.height];}))"""))
+        assert all(o == 0 and w <= 1 and h <= 1 for o, w, h in files), (path, files)
+        assert evaluate(page, "getComputedStyle(document.body).backgroundColor") == "rgb(246, 241, 233)", path
+        assert evaluate(page, "getComputedStyle(document.querySelector('.bar')).backgroundColor") == "rgb(22, 38, 29)"
+    assert page.exceptions() == []
+
+
+@pytest.mark.skipif(BROWSER is None, reason="no Chromium/Chrome installed")
+@pytest.mark.parametrize("path", ["admin/", "admin/upload"])
+def test_storage_meter_fills_like_the_frame_menu(page, server, mf_app, path):
+    _phone(page, server, mf_app, path)
+    page.pump(0.3)
+    got = evaluate(page, """(()=>{const u=document.querySelector('.store .used'); const t=document.querySelector('.store .track');
+        const m=getComputedStyle(u).transform.match(/matrix\\(([^,]+)/); return JSON.stringify([parseFloat(m[1]), parseFloat(u.dataset.used),
+        t.getAttribute('role'), Math.round(t.getBoundingClientRect().height), getComputedStyle(u).transformOrigin.split(' ')[0]]);})()""")
+    import json
+    sx, used, role, h, origin = json.loads(got)
+    assert role == "meter" and abs(sx - used) < 0.002 and 0 < used < 1 and h in (6, 8) and origin == "0px"
+    assert evaluate(page, "document.querySelector('.store').offsetParent !== null")
+
+
+@pytest.mark.skipif(BROWSER is None, reason="no Chromium/Chrome installed")
+def test_drop_area_uploads_and_picker_is_disabled_while_sending(page, server, mf_app):
+    """#79: dropped photos use the same pipeline; while a batch is sending the picker looks and is disabled."""
+    _phone(page, server, mf_app, "admin/upload")
+    assert evaluate(page, "getComputedStyle(document.getElementById('drop')).borderTopStyle") == "dashed"
+    evaluate(page, """(()=>{ window.__held = []; const send = XMLHttpRequest.prototype.send;
+        XMLHttpRequest.prototype.send = function(b){ window.__held.push([this, b, send]); };
+        const dt = new DataTransfer(); dt.items.add(new File(['not a photo'], 'notes.jpg', {type: 'image/jpeg'}));
+        document.getElementById('drop').dispatchEvent(new DragEvent('drop', {dataTransfer: dt, bubbles: true, cancelable: true}));
+    })()""")
+    page.pump(0.3)
+    st = evaluate(page, """JSON.stringify([document.getElementById('files').disabled, document.getElementById('drop').getAttribute('aria-disabled'),
+        document.getElementById('pickLabel').textContent, getComputedStyle(document.getElementById('pickLabel')).backgroundColor,
+        document.querySelectorAll('#list li').length, document.getElementById('summary').textContent])""")
+    import json
+    disabled, aria, label, bg, rows, summary = json.loads(st)
+    assert disabled and aria == "true" and label == "Uploading..." and bg == "rgb(227, 238, 230)", st
+    assert rows == 1 and "Sending 1 photo" in summary
+    evaluate(page, "(()=>{ const [x, b, send] = window.__held[0]; send.call(x, b); })()")       # let it through
+    page.pump(1.5)
+    st = evaluate(page, """JSON.stringify([document.getElementById('files').disabled, document.getElementById('drop').hasAttribute('aria-disabled'),
+        document.getElementById('pickLabel').textContent, getComputedStyle(document.getElementById('pickLabel')).backgroundColor,
+        document.querySelector('#list li').className])""")
+    disabled, aria, label, bg, cls = json.loads(st)
+    assert not disabled and not aria and label == "Choose more photos" and bg == "rgb(42, 97, 64)" and cls == "bad", st
+    assert page.exceptions() == []
+
+
+@pytest.mark.skipif(BROWSER is None, reason="no Chromium/Chrome installed")
+@pytest.mark.parametrize("width,zoom", [(412, 1.0), (360, 1.0), (360, 1.3)])
+def test_settings_segments_are_at_least_48_wide(page, server, mf_app, width, zoom):
+    import json
+    _phone(page, server, mf_app, "admin/settings")
+    page.call("Emulation.setDeviceMetricsOverride", {"width": width, "height": 800, "deviceScaleFactor": 1, "mobile": True})
+    evaluate(page, f"document.documentElement.style.zoom = '{zoom}'")
+    page.pump(0.3)
+    w = json.loads(evaluate(page, """JSON.stringify([...document.querySelectorAll('#slideSeg button, #transitionSeg button')]
+        .map(b=>[b.textContent.trim(), b.getBoundingClientRect().width, b.scrollWidth <= b.clientWidth + 1]))"""))
+    assert len(w) == 7 and all(px >= 48 and fits for _t, px, fits in w), w
+    assert evaluate(page, "document.documentElement.scrollWidth <= document.documentElement.clientWidth")
+
+
+def test_wifi_sheet_warning_keeps_wi_fi_whole(paired, monkeypatch, tmp_path):
+    monkeypatch.setenv("MEMORYFRAME_NETMODE_STATE", str(tmp_path / "nm.json"))
+    (tmp_path / "nm.json").write_text('{"mode": "product"}')
+    src = (TEMPLATES / "wifi.html").read_text()
+    sheet = src[src.index('id="confirmStep"'):src.index("</div>\n  </div>", src.index('id="confirmStep"'))]
+    assert "Wi-Fi" not in sheet and sheet.count("Wi&#8209;Fi") == 4, sheet

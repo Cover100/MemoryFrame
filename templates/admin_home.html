@@ -1,7 +1,8 @@
 {% extends "_phone.html" %}
+{% from "_storage.html" import storage_meter %}
 {% block back %}{% endblock %}
 {% block icon %}<a class="icon" href="/admin/settings" aria-label="Settings">⚙</a>{% endblock %}
-{% block strip %}<div class="strip"><span class="ok" aria-hidden="true"></span>Connected to the frame{% if free_gb %} · {{ free_gb }} GB free{% endif %}</div>{% endblock %}
+{% block strip %}<div class="strip{% if st %} has-store{% endif %}"><p class="conn"><span class="ok" aria-hidden="true"></span>Connected to the frame</p>{% if st %}{{ storage_meter(st, "on-dark") }}{% endif %}</div>{% endblock %}
 {% block content %}
 {% if wifi_notice %}<div class="warn notice" role="status"><span class="i" aria-hidden="true">!</span><div>{{ wifi_notice }}</div></div>{% endif %}
 {% if just_paired %}
@@ -12,11 +13,12 @@
 {% endif %}
 <p class="sr-only">This phone is paired.</p>
 <a class="btn big block primary" href="/admin/upload">＋&nbsp; Upload photos</a>
-<div class="sec"><h2>Library</h2><a href="/admin/library">{% if total %}See all {{ total }} photo{{ "s" if total != 1 }} ›{% else %}Library ›{% endif %}</a></div>
+<div class="sec"><h2>Library</h2></div>
 {% if preview %}
 <ul class="grid" aria-label="Newest photos">
   {% for m in preview %}<li{% if m.hidden %} class="hid"{% endif %}><a href="/admin/library"><img src="/api/v1/media/{{ m.id }}/thumb" alt="{{ m.original_name }}" width="240" height="240" loading="lazy" decoding="async"></a>{% if m.hidden %}<span class="tag">Hidden</span>{% endif %}</li>{% endfor %}
 </ul>
+<a class="btn btn-neutral block see-all" href="/admin/library"><span>See all {{ total }} photo{{ "s" if total != 1 }}</span><span aria-hidden="true">›</span></a>
 {% else %}
 <div class="card empty-lib"><p class="muted flush">No photos yet. Tap <b>Upload photos</b> to send some to the frame.</p></div>
 {% endif %}

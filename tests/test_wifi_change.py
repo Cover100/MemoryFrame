@@ -78,7 +78,7 @@ def start_pending(app, c):
 def test_admin_home_links_frame_wifi(paired):
     html = htmlmod.unescape(paired.get("/admin/", environ_base=PHONE).get_data(as_text=True))
     assert '<a class="row-link" href="/admin/wifi">' in html and ">Frame Wi-Fi<" in html
-    assert html.index("/admin/library") < html.index("/admin/wifi")
+    assert html.index("<h2>Library</h2>") < html.index("/admin/wifi")      # #79: See all is a card under the photos
 
 
 def test_page_prefills_name_not_password(paired, helper):

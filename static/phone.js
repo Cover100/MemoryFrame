@@ -2,6 +2,11 @@
 // request fails at the network level (not for HTTP errors). Try again pings /healthz and restores the page.
 (function(){
     "use strict";
+    // #79: free-space meters (_storage.html) fill like the frame menu's (#74): scaleX(used fraction).
+    document.querySelectorAll(".store .used[data-used]").forEach((u)=>{
+        const f = Math.min(1, Math.max(0, parseFloat(u.dataset.used) || 0));
+        u.style.transform = "scaleX(" + f.toFixed(3) + ")";
+    });
     const box = document.getElementById("offline");
     const page = document.getElementById("page");
     if(!box || !page){ return; }

@@ -29,7 +29,46 @@ def _phone_context():
         except Exception:  # noqa: BLE001 - never break a page over this hint
             mode = "unknown"
         return {"ssid": wifi.current_wifi(get_db())[0] or "", "mode": mode}
-    return {"phone_wifi": phone_wifi, "slide_label": slide_label}
+    return {"phone_wifi": phone_wifi, "slide_label": slide_label, "phone_storage": phone_storage}
+
+
+def phone_storage():
+    """#79: the free-space meter, with the frame menu's numbers (#74: disk free / total, used = 1 - free/total)."""
+    from flask import current_app
+    from . import upload
+    c = current_app.config
+    try:
+        s = upload.storage_info(c["DATA_DIR"], c["MIN_FREE_BYTES"], c["AVG_PHOTO_BYTES"])
+    except OSError:
+        return None
+    total, free = s["total"], s["free"]
+    used = min(1.0, max(0.0, 1 - free / total)) if total > 0 else 0.0
+    gb = lambda n: f"{n / 1073741824:.1f}"                                       # noqa: E731
+    return {"free_gb": gb(free), "total_gb": gb(total), "used": f"{used:.3f}", "pct": round(used * 100),
+            "photos_left": s["photos_remaining_estimate"]}
+
+
+_PHONE_ERRORS = {404: ("Page not found", "This page isn't on the frame."),
+                 405: ("That didn't work", "This page can't be opened that way."),
+                 500: ("Something went wrong", "The frame couldn't show this page. Try again in a moment.")}
+
+
+def _phone_error(e):
+    """#79: phone pages that fail (404 / 405 / 500) stay on the paper theme; API and frame paths keep the default."""
+    from werkzeug.exceptions import HTTPException, InternalServerError
+    code = e.code if isinstance(e, HTTPException) else 500
+    p = request.path
+    if code not in _PHONE_ERRORS or not (p == "/pair" or p.startswith(("/admin", "/pair/"))):
+        return e if isinstance(e, HTTPException) else InternalServerError()
+    title, text = _PHONE_ERRORS[code]
+    try:
+        return render_template("phone_error.html", title=title, text=text), code
+    except Exception:  # noqa: BLE001 - never fail the error page itself
+        return e if isinstance(e, HTTPException) else InternalServerError()
+
+
+for _code in _PHONE_ERRORS:
+    bp.app_errorhandler(_code)(_phone_error)
 
 
 @bp.route("/")
@@ -38,20 +77,14 @@ def home():
     conn = get_db()
     if wifi.pending(conn) is not None:              # MF-18 5f: on the new Wi-Fi -> confirm page
         return redirect("/admin/wifi/keep", code=302)
-    from flask import current_app
-    from . import frameinfo, settings
+    from . import settings
     # Restyle PR C (#70 mock 02): home and library on one page (Upload, 3x3 preview, rows).
     preview = conn.execute("SELECT id, original_name, hidden FROM media ORDER BY created_at DESC, id DESC "
                            "LIMIT ?", (PREVIEW,)).fetchall()
     total = conn.execute("SELECT COUNT(*) FROM media").fetchone()[0]
-    try:
-        free = frameinfo.free_storage(current_app.config["DATA_DIR"])["free"]
-    except OSError:
-        free = None
     return render_template("admin_home.html", wifi_notice=wifi.admin_notice(conn),
                            just_paired=request.args.get("paired") == "1", preview=preview, total=total,
-                           free_gb=None if free is None else f"{free / 1073741824:.1f}",
-                           s=settings.get_all(conn), ssid=wifi.current_wifi(conn)[0] or "")
+                           st=phone_storage(), s=settings.get_all(conn), ssid=wifi.current_wifi(conn)[0] or "")
 
 
 @bp.route("/sign-out-all", methods=["POST"])
@@ -62,7 +95,7 @@ def sign_out_all():
 
 @bp.route("/upload")
 def upload_page():
-    return render_template("upload.html")
+    return render_template("upload.html", st=phone_storage())
 
 
 @bp.route("/library")

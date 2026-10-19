@@ -45,6 +45,7 @@
         const hide = document.createElement("button");
         const del = document.createElement("button");
         del.textContent = "Delete";
+        del.className = "del";                      // red text button on its own row (Wren #77 N4)
         function sync(){
             hide.textContent = li.classList.contains("hidden") ? "Unhide" : "Hide";
             show.disabled = li.classList.contains("hidden");

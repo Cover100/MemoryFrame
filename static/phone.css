@@ -109,7 +109,7 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
 .mf-phone .hero { display: flex; justify-content: center; margin: 8px 0 22px; }
 .mf-phone .hero span { width: 120px; height: 76px; border-radius: 12px; background: var(--mf-walnut); position: relative; }
 .mf-phone .hero span::before { content: ""; position: absolute; left: 10px; top: 14px; width: 46px; height: 46px;
-  border-radius: 50%; background: var(--mf-ink); border: 3px solid #2a2a2a; }
+  border-radius: 50%; background: var(--mf-ink); border: 3px solid var(--mf-forest-800); }
 .mf-phone .hero span::after { content: ""; position: absolute; right: 8px; top: 10px; width: 50px; height: 56px;
   border-radius: 5px; background: var(--mf-forest-900); }
 .mf-phone .code { width: 100%; height: 64px; margin: 18px 0 8px; border: 1.5px solid var(--mf-line);
@@ -144,7 +144,8 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
 .mf-phone #grid .actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; }
 .mf-phone #grid .actions button { flex: 1 1 auto; min-height: var(--mf-touch-phone); padding: 0 8px; white-space: nowrap; font-size: var(--mf-p-small);
   background: var(--mf-card); color: var(--mf-text); border: 1.5px solid var(--mf-line); }
-.mf-phone #grid .actions button:last-child { color: var(--mf-red); }
+.mf-phone #grid .actions button.del { flex: 1 0 100%; margin: 2px -8px -8px; background: none; border: 0;
+  border-top: 1px solid var(--mf-line); border-radius: 0; color: var(--mf-red); font-weight: 600; }   /* polish (Wren N4): calmer, separated */
 .mf-phone #grid .actions button[disabled] { color: var(--mf-text-2); opacity: .6; }
 
 /* 03 Upload */
@@ -235,7 +236,8 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
 .mf-phone .about dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
 
 /* 06 Confirm sheet */
-.mf-phone .scrim { position: fixed; inset: 0; background: rgba(31, 42, 36, .55); display: flex; align-items: flex-end; z-index: 10; }
+body.mf-phone.sheet-open { overflow: hidden; }   /* polish (Wren N5): the page behind the sheet doesn't scroll */
+.mf-phone .scrim { position: fixed; inset: 0; background: var(--mf-scrim-phone); display: flex; align-items: flex-end; z-index: 10; }
 .mf-phone .sheet { background: var(--mf-card); width: 100%; max-width: 34rem; margin: 0 auto; border-radius: 20px 20px 0 0;
   padding: 24px 20px 28px; max-height: 100%; overflow-y: auto; }
 .mf-phone .sheet h2 { font-size: 24px; }
@@ -243,12 +245,16 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
 .mf-phone .rowb { display: flex; gap: 12px; margin-top: 20px; }
 .mf-phone .rowb button { flex: 1; min-width: 0; }
 
-/* 07 Keep new Wi-Fi: static ring (decorative; the text below carries the time) */
+/* 07 Keep new Wi-Fi: static ring in quarter steps (decorative; the text below carries the time) */
 .mf-phone .ring { width: 120px; height: 120px; border-radius: 50%; border: 8px solid var(--mf-line); display: grid;
   place-items: center; margin: 24px auto 8px; position: relative; }
 .mf-phone .ring b { font-size: 30px; font-variant-numeric: tabular-nums; color: var(--mf-warn-text); }
 .mf-phone .ring::before { content: ""; position: absolute; inset: -8px; border-radius: 50%; border: 8px solid transparent;
-  border-top-color: var(--mf-brass); border-right-color: var(--mf-brass); transform: rotate(20deg); }
+  transform: rotate(45deg); }   /* polish (Wren N6): one quarter per class, clockwise from 12 o'clock; no animation */
+.mf-phone .ring.q1::before, .mf-phone .ring.q2::before, .mf-phone .ring.q3::before, .mf-phone .ring.q4::before { border-top-color: var(--mf-brass); }
+.mf-phone .ring.q2::before, .mf-phone .ring.q3::before, .mf-phone .ring.q4::before { border-right-color: var(--mf-brass); }
+.mf-phone .ring.q3::before, .mf-phone .ring.q4::before { border-bottom-color: var(--mf-brass); }
+.mf-phone .ring.q4::before { border-left-color: var(--mf-brass); }
 .mf-phone .done-ico, .mf-phone .big-ico { width: 88px; height: 88px; border-radius: 50%; display: grid; place-items: center;
   font-size: 44px; font-weight: 800; margin: 28px auto 18px; }
 .mf-phone .done-ico { background: var(--mf-green-50); color: var(--mf-green); }

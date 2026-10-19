@@ -24,7 +24,7 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <button type="submit" id="keepBtn" class="block big">Keep new Wi-Fi</button>
 </form>
-<div class="ring" aria-hidden="true"><b>{{ remaining }}</b></div>
+<div class="ring q{{ ring_q }}" aria-hidden="true"><b>{{ remaining }}</b></div>
 <p class="muted center grey">Old Wi-Fi returns in <b id="remaining">{{ remaining }}</b></p>
 {% if old %}<div class="card gap-sm"><p class="small muted flush">Not ready? Do nothing, and the frame goes back to <b>{{ old }}</b> with the old password.</p></div>{% endif %}
 {% endif %}

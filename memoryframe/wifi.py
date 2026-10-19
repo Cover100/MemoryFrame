@@ -10,6 +10,7 @@ only inside the frame's Wi-Fi QR.
 import fcntl
 import ipaddress
 import logging
+import math
 import os
 import re
 import threading
@@ -241,6 +242,19 @@ def _m_ss(seconds):
     return f"{seconds // 60}:{seconds % 60:02d}"
 
 
+def _countdown(r):
+    left = r["deadline"] - time.time()
+    return {"remaining": _m_ss(left), "ring_q": _ring_q(left, current_app.config.get("WIFI_WINDOW", WINDOW))}
+
+
+def _ring_q(seconds, window):
+    """Keep-page ring: quarters of the window left (4..1, 0 when over), so the static arc roughly tracks the time.
+    Recomputed on each 5 s refresh of the page; no client-side animation."""
+    if seconds <= 0 or window <= 0:
+        return 0
+    return max(1, min(4, math.ceil(4 * seconds / window)))
+
+
 @bp.route("", methods=["GET"])
 @bp.route("/", methods=["GET"])
 def page():
@@ -301,7 +315,7 @@ def keep_page():
     r = pending(conn)
     if r is None:
         return redirect("/admin/", code=302)
-    return render_template("wifi_keep.html", ssid=r["new_ssid"], remaining=_m_ss(r["deadline"] - time.time()),
+    return render_template("wifi_keep.html", ssid=r["new_ssid"], **_countdown(r),
                            result=None, old=r["old_ssid"])
 
 
@@ -318,7 +332,7 @@ def keep():
         old = r["old_ssid"] if r is not None else ""
         return render_template("wifi_keep.html", ssid="", remaining="", result="late", old=old), 409
     if not _from_hotspot():
-        return render_template("wifi_keep.html", ssid=r["new_ssid"], remaining=_m_ss(r["deadline"] - time.time()),
+        return render_template("wifi_keep.html", ssid=r["new_ssid"], **_countdown(r),
                                result="wrongnet", old=r["old_ssid"]), 403
     with _lock:
         r = pending(conn)

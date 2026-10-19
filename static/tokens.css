@@ -38,6 +38,7 @@
   --mf-text-2:       #5E5146;  /* secondary text (walnut-grey) */
   --mf-green:        #2A6140;  /* primary buttons, links, selected states */
   --mf-green-50:     #E3EEE6;  /* selected segment / success background */
+  --mf-scrim-phone:  rgba(31, 42, 36, 0.55); /* flat scrim behind the phone bottom sheet (no blur) */
   --mf-brown:        #6B4F3A;  /* walnut text accent, icons */
   --mf-red:          #A8352A;  /* destructive text + fills */
   --mf-red-50:       #F8E4E1;  /* error background */

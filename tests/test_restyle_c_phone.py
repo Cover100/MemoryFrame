@@ -147,7 +147,7 @@ def test_keep_page_names_the_old_wifi(paired, mf_app):
     conn.commit()
     conn.close()
     h = body(paired, "/admin/wifi/keep")
-    assert 'class="ring" aria-hidden="true"' in h and "Not ready? Do nothing" in h and "<b>Old &lt;Net&gt;</b>" in h
+    assert re.search(r'class="ring q[1-4]" aria-hidden="true"', h) and "Not ready? Do nothing" in h and "<b>Old &lt;Net&gt;</b>" in h
     assert 'name="csrf_token"' in h and "pw12345678" not in h
 
 

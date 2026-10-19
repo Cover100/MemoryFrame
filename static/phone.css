@@ -1,5 +1,5 @@
 /* Restyle PR C: the phone site on the paper theme (.mf-phone, tokens.css; DIRECTION.md, #70 phone mocks 01-08,
-   04-settings-v2, 04b). One stylesheet for every phone page. System fonts only (no download), flat colours:
+   04-settings-v2, 04b). One stylesheet for every phone page. Dark frame theme + Atkinson Hyperlegible (PHONE-DARK.md, user 19 Oct; /frame-fonts.css, block); flat colours:
    no shadows, gradients, blur or animations; light DOM. Inline style attributes are blocked by the CSP. */
 .mf-phone, .mf-phone * { box-sizing: border-box; }
 html, body.mf-phone { margin: 0; }
@@ -11,6 +11,7 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
 
 /* Header band (forest) + status strip (walnut) */
 .mf-phone .bar { background: var(--mf-forest-900); color: var(--mf-linen); height: 56px; padding: 0 8px 0 16px;
+  border-bottom: 1px solid var(--mf-forest-700);
   display: flex; align-items: center; gap: 12px; }
 .mf-phone .bar .back { color: var(--mf-linen); text-decoration: none; font-size: 26px; width: 48px; height: 48px;
   display: grid; place-items: center; margin-left: -12px; }
@@ -23,8 +24,8 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
 .mf-phone .strip { background: var(--mf-walnut-900); color: var(--mf-oat); font-size: var(--mf-p-small); padding: 8px 16px;
   display: flex; gap: 8px; align-items: center; }
 .mf-phone .strip .ok { width: 8px; height: 8px; border-radius: 50%; background: var(--mf-leaf); flex: none; }
-.mf-phone .strip.down { background: var(--mf-red-50); color: var(--mf-red); }
-.mf-phone .strip.down .ok { background: var(--mf-red); }
+.mf-phone .strip.down { background: var(--mf-red-50); color: var(--mf-red-text); }
+.mf-phone .strip.down .ok { background: var(--mf-red-text); }
 .mf-phone .strip.has-store { flex-direction: column; align-items: stretch; gap: 6px; padding-bottom: 10px; }
 .mf-phone .strip .conn { margin: 0; display: flex; gap: 8px; align-items: center; }
 
@@ -34,7 +35,7 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
 .mf-phone .storeFree { font-size: 16px; color: var(--mf-text); font-variant-numeric: tabular-nums; }
 .mf-phone .storeFree span { font-weight: 400; color: var(--mf-text-2); }
 .mf-phone .track { height: 8px; border-radius: 4px; background: var(--mf-line); overflow: hidden; }
-.mf-phone .track .used { height: 100%; background: var(--mf-green); transform-origin: left; transform: scaleX(0); }
+.mf-phone .track .used { height: 100%; background: var(--mf-accent-text); transform-origin: left; transform: scaleX(0); }
 .mf-phone .storeCard .store { margin-bottom: 10px; }
 .mf-phone .on-dark .storeVal { margin-bottom: 6px; color: var(--mf-oat); }
 .mf-phone .on-dark .storeFree { font-size: var(--mf-p-small); color: var(--mf-linen); }
@@ -69,19 +70,19 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
 .mf-phone .big { min-height: 56px; font-size: 18px; }
 .mf-phone .mt { margin-top: 20px; }
 .mf-phone .btn-neutral, .mf-phone button.secondary { background: var(--mf-card); color: var(--mf-text);
-  border: 1.5px solid var(--mf-line); }
+  border: 1.5px solid var(--mf-outline); }
 .mf-phone .btn-danger { background: var(--mf-red); color: #fff; }
-.mf-phone .btn-text-danger { background: transparent; color: var(--mf-red); padding: 0 12px; }
-.mf-phone .btn-default { outline: var(--mf-ring-width) solid var(--mf-green); outline-offset: 2px; }
-.mf-phone button[disabled] { background: var(--mf-green-50); color: var(--mf-green); cursor: default; transform: none; }
+.mf-phone .btn-text-danger { background: transparent; color: var(--mf-red-text); padding: 0 12px; }
+.mf-phone .btn-default { outline: var(--mf-ring-width) solid var(--mf-focus); outline-offset: 2px; }
+.mf-phone button[disabled] { background: var(--mf-card); color: var(--mf-text-2); border: 0; cursor: default; transform: none; }
 
 /* Forms */
 .mf-phone label.f { display: block; font-weight: 600; margin: 14px 0 6px; }
-.mf-phone .field { width: 100%; height: 52px; border: 1.5px solid var(--mf-line); border-radius: var(--mf-r-sm);
+.mf-phone .field { width: 100%; height: 52px; border: 1.5px solid var(--mf-outline); border-radius: var(--mf-r-sm);
   background: var(--mf-card); padding: 0 14px; font: inherit; color: var(--mf-text); }
-.mf-phone .field:focus, .mf-phone textarea:focus { outline: 3px solid var(--mf-green); outline-offset: 1px;
-  border-color: var(--mf-green); }
-.mf-phone .field[aria-invalid="true"] { border-color: var(--mf-red); }
+.mf-phone .field:focus, .mf-phone textarea:focus { outline: 3px solid var(--mf-focus); outline-offset: 1px;
+  border-color: var(--mf-focus); }
+.mf-phone .field[aria-invalid="true"] { border-color: var(--mf-red-text); }
 .mf-phone .pw { display: flex; gap: 8px; }
 .mf-phone .pw .field { flex: 1; min-width: 0; }
 .mf-phone .pw button { height: 52px; }
@@ -91,12 +92,12 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
   border-radius: var(--mf-r-md); padding: 12px 14px; display: flex; gap: 12px; margin: 16px 0; }
 .mf-phone .warn .i { flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--mf-brass);
   color: var(--mf-ink); font-weight: 800; display: grid; place-items: center; font-size: 16px; }
-.mf-phone .err { background: var(--mf-red-50); color: var(--mf-red); border-radius: var(--mf-r-md); padding: 12px 14px;
+.mf-phone .err { background: var(--mf-red-50); color: var(--mf-red-text); border-radius: var(--mf-r-md); padding: 12px 14px;
   font-weight: 600; margin: 0 0 14px; }
-.mf-phone .ok-box { background: var(--mf-green-50); color: var(--mf-green); border-radius: var(--mf-r-md);
+.mf-phone .ok-box { background: var(--mf-green-50); color: var(--mf-accent-text); border-radius: var(--mf-r-md);
   padding: 12px 14px; font-weight: 600; margin: 14px 0 16px; font-size: 16px; }
 .mf-phone .ok-box p { margin: 0 0 6px; color: var(--mf-text); font-weight: 400; }
-.mf-phone .ok-box .title { font-size: var(--mf-p-h2); font-weight: 700; color: var(--mf-green); }
+.mf-phone .ok-box .title { font-size: var(--mf-p-h2); font-weight: 700; color: var(--mf-accent-text); }
 .mf-phone .ok-box .btn { margin-top: 6px; }
 .mf-phone ol.steps { padding-left: 22px; margin: 0 0 14px; }
 .mf-phone ol.steps li { margin-bottom: 8px; }
@@ -110,16 +111,16 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
 .mf-phone .row-link { min-height: 56px; display: flex; align-items: center; gap: 14px; padding: 4px 16px;
   color: var(--mf-text); text-decoration: none; width: 100%; }
 .mf-phone .rows .ico { width: 32px; height: 32px; border-radius: var(--mf-r-sm); background: var(--mf-green-50);
-  color: var(--mf-green); display: grid; place-items: center; font-size: 17px; flex: none; font-weight: 700; }
+  color: var(--mf-accent-text); display: grid; place-items: center; font-size: 17px; flex: none; font-weight: 700; }
 .mf-phone .rows .t { flex: 1; min-width: 0; }
 .mf-phone .rows .t small { display: block; color: var(--mf-text-2); font-size: var(--mf-p-small);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mf-phone .rows .chev { color: var(--mf-text-2); font-size: 22px; }
 .mf-phone .rows form { margin: 0; }
-.mf-phone .rows button.row-link { background: transparent; color: var(--mf-red); border-radius: 0; justify-content: flex-start;
+.mf-phone .rows button.row-link { background: transparent; color: var(--mf-red-text); border-radius: 0; justify-content: flex-start;
   font-weight: 600; }
 .mf-phone .rows .row-link:focus-visible, .mf-phone details.about summary:focus-visible {
-  outline: var(--mf-ring-width) solid var(--mf-green); outline-offset: -3px; }   /* .rows clips outer rings */
+  outline: var(--mf-ring-width) solid var(--mf-focus); outline-offset: -3px; }   /* .rows clips outer rings */
 .mf-phone .rows button.row-link:active { transform: none; background: var(--mf-red-50); }
 
 /* 01 Pair */
@@ -129,17 +130,17 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
   border-radius: 50%; background: var(--mf-ink); border: 3px solid #2a2a2a; }
 .mf-phone .hero span::after { content: ""; position: absolute; right: 8px; top: 10px; width: 50px; height: 56px;
   border-radius: 5px; background: var(--mf-forest-900); }
-.mf-phone .code { width: 100%; height: 64px; margin: 18px 0 8px; border: 1.5px solid var(--mf-line);
+.mf-phone .code { width: 100%; height: 64px; margin: 18px 0 8px; border: 1.5px solid var(--mf-outline);
   border-radius: var(--mf-r-sm); background: var(--mf-card); color: var(--mf-text); font: inherit; font-size: 30px;
   font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: .5em; text-indent: .5em; text-align: center; }
-.mf-phone .code:focus { outline: 3px solid var(--mf-green); outline-offset: 1px; border-color: var(--mf-green); }
+.mf-phone .code:focus { outline: 3px solid var(--mf-focus); outline-offset: 1px; border-color: var(--mf-focus); }
 .mf-phone .code::placeholder { color: var(--mf-text-2); }
 .mf-phone form.tok { margin-bottom: 20px; }
 
 /* 02 Home: library preview */
 .mf-phone .sec { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 22px 0 10px; }
 .mf-phone .sec h2 { margin: 0; }
-.mf-phone .see-all { justify-content: space-between; margin: 10px 0 0; color: var(--mf-green); }
+.mf-phone .see-all { justify-content: space-between; margin: 0 0 12px; color: var(--mf-accent-text); }
 .mf-phone .grid { list-style: none; margin: 0 0 12px; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
 .mf-phone .grid li { aspect-ratio: 1; border-radius: 6px; overflow: hidden; background: var(--mf-line); position: relative; }
 .mf-phone .grid a { display: block; height: 100%; }
@@ -160,23 +161,23 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
 .mf-phone #grid .name { font-size: var(--mf-p-small); padding: 6px 8px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mf-phone #grid .actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; }
 .mf-phone #grid .actions button { flex: 1 1 auto; min-height: var(--mf-touch-phone); padding: 0 8px; white-space: nowrap; font-size: var(--mf-p-small);
-  background: var(--mf-card); color: var(--mf-text); border: 1.5px solid var(--mf-line); }
-.mf-phone #grid .actions button:last-child { color: var(--mf-red); }
+  background: var(--mf-card); color: var(--mf-text); border: 1.5px solid var(--mf-outline); }
+.mf-phone #grid .actions button:last-child { color: var(--mf-red-text); }
 .mf-phone #grid .actions button[disabled] { color: var(--mf-text-2); opacity: .6; }
 
 /* 03 Upload */
 .mf-phone .pick { position: relative; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center;
-  padding: 20px 16px; margin: 0 0 16px; border: 2px dashed var(--mf-line); border-radius: var(--mf-r-lg); background: var(--mf-card);
+  padding: 20px 16px; margin: 0 0 16px; border: 2px dashed var(--mf-outline); border-radius: var(--mf-r-lg); background: var(--mf-card);
   cursor: pointer; }
-.mf-phone .pick.over { border-color: var(--mf-green); background: var(--mf-green-50); }
+.mf-phone .pick.over { border-color: var(--mf-accent-text); background: var(--mf-green-50); }
 .mf-phone .pick.busy { cursor: default; border-style: solid; }
-.mf-phone .pick.busy #pickLabel { background: var(--mf-green-50); color: var(--mf-green); transform: none; }   /* like button[disabled] */
+.mf-phone .pick.busy #pickLabel { background: var(--mf-card); color: var(--mf-text-2); transform: none; }   /* like button[disabled] */
 .mf-phone .pick.again { padding: 12px; border-style: solid; }
 .mf-phone .pick.again .dropIco, .mf-phone .pick.again .dropHint { display: none; }
 .mf-phone .dropIco { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; font-size: 24px;
-  background: var(--mf-green-50); color: var(--mf-green); }
+  background: var(--mf-green-50); color: var(--mf-accent-text); }
 .mf-phone .pick input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
-.mf-phone .pick:focus-within { outline: 3px solid var(--mf-green); outline-offset: 3px; }
+.mf-phone .pick:focus-within { outline: 3px solid var(--mf-focus); outline-offset: 3px; }
 .mf-phone #summary:empty { display: none; }
 .mf-phone .files, .mf-phone #list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .mf-phone #list li { background: var(--mf-card); border: 1px solid var(--mf-line); border-radius: var(--mf-r-md); padding: 10px;
@@ -188,17 +189,17 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
 .mf-phone #list .t { flex: 1; min-width: 0; }
 .mf-phone #list .name { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 16px; }
 .mf-phone #list .msg { display: block; font-size: var(--mf-p-small); color: var(--mf-text-2); margin-top: 2px; }
-.mf-phone #list .ok .msg { color: var(--mf-green); font-weight: 600; }
-.mf-phone #list .bad .msg { color: var(--mf-red); font-weight: 600; }
+.mf-phone #list .ok .msg { color: var(--mf-accent-text); font-weight: 600; }
+.mf-phone #list .bad .msg { color: var(--mf-red-text); font-weight: 600; }
 .mf-phone #list .ok .msg::before { content: "✓ "; }
 .mf-phone #list .dup .msg { color: var(--mf-text-2); font-weight: 400; }
 .mf-phone #list .dup .msg::before { content: none; }
 .mf-phone #list progress { display: none; width: 100%; height: 8px; margin-top: 6px; border: 0; border-radius: 4px;
-  background: var(--mf-line); overflow: hidden; -webkit-appearance: none; appearance: none; color: var(--mf-green); }
+  background: var(--mf-line); overflow: hidden; -webkit-appearance: none; appearance: none; color: var(--mf-accent-text); }
 .mf-phone #list li.sending progress { display: block; }
 .mf-phone #list progress::-webkit-progress-bar { background: var(--mf-line); }
-.mf-phone #list progress::-webkit-progress-value { background: var(--mf-green); }
-.mf-phone #list progress::-moz-progress-bar { background: var(--mf-green); }
+.mf-phone #list progress::-webkit-progress-value { background: var(--mf-accent-text); }
+.mf-phone #list progress::-moz-progress-bar { background: var(--mf-accent-text); }
 
 /* 04 Settings (v2 + 04b) */
 .mf-phone .card h2.hd { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 0 12px; }
@@ -212,34 +213,35 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
 .mf-phone .seg button { flex: 1 0 0; min-width: max-content; white-space: nowrap; min-height: 44px; border: 0; background: transparent;
   color: var(--mf-text); border-radius: 9px; padding: 0 10px; position: relative; }   /* #79: >= 48 px wide */
 .mf-phone .seg button::after { content: ""; position: absolute; inset: -2px 0; }     /* 48 px hit area (44 = mock) */
-.mf-phone .seg button[aria-checked="true"] { background: var(--mf-green); color: #fff; }
+.mf-phone .seg button[aria-checked="true"] { background: var(--mf-green); color: #fff; outline: 1.5px solid var(--mf-accent-text); outline-offset: -1.5px; }
+.mf-phone .seg button:focus-visible { outline: var(--mf-ring-width) solid var(--mf-focus); outline-offset: -3px; }
 .mf-phone .seg.narrow { width: 180px; max-width: 100%; flex: none; }
-.mf-phone .status { color: var(--mf-green); font-size: var(--mf-p-small); font-weight: 600; white-space: nowrap; }
-.mf-phone .status.err { background: none; padding: 0; margin: 0; color: var(--mf-red); white-space: normal; }
+.mf-phone .status { color: var(--mf-accent-text); font-size: var(--mf-p-small); font-weight: 600; white-space: nowrap; }
+.mf-phone .status.err { background: none; padding: 0; margin: 0; color: var(--mf-red-text); white-space: normal; }
 .mf-phone input.switch { -webkit-appearance: none; appearance: none; width: 52px; height: 32px; border-radius: 24px;
   box-sizing: content-box; border: 8px solid transparent; margin: -8px;          /* 68x48 hit area, 52x32 pill */
-  background: var(--mf-line) padding-box; position: relative; flex: none; cursor: pointer; }
-.mf-phone input.switch::after { content: ""; position: absolute; width: 24px; height: 24px; border-radius: 50%; background: #fff;
+  background: var(--mf-text-2) padding-box; position: relative; flex: none; cursor: pointer; }   /* oat off, leaf on: >= 6.6:1 */
+.mf-phone input.switch::after { content: ""; position: absolute; width: 24px; height: 24px; border-radius: 50%; background: var(--mf-ink);
   top: 4px; left: 4px; transition: transform var(--mf-t-fast) var(--mf-ease); }
-.mf-phone input.switch:checked { background-color: var(--mf-green); }
+.mf-phone input.switch:checked { background-color: var(--mf-accent-text); }
 .mf-phone input.switch:checked::after { transform: translateX(20px); }
-.mf-phone input.switch:focus-visible { outline: 3px solid var(--mf-green); outline-offset: -5px; }
-.mf-phone #frameMessage { width: 100%; resize: none; border: 1.5px solid var(--mf-line); border-radius: var(--mf-r-sm);
+.mf-phone input.switch:focus-visible { outline: 3px solid var(--mf-focus); outline-offset: -5px; }
+.mf-phone #frameMessage { width: 100%; resize: none; border: 1.5px solid var(--mf-outline); border-radius: var(--mf-r-sm);
   background: var(--mf-card); padding: 10px 14px; font: inherit; color: var(--mf-text); line-height: 1.4; display: block; }
 .mf-phone .meta { display: flex; justify-content: space-between; gap: 12px; margin: 6px 0 10px; font-size: var(--mf-p-small);
   color: var(--mf-text-2); }
 .mf-phone #messageCount { font-variant-numeric: tabular-nums; white-space: nowrap; }
-.mf-phone #messageCount.err { color: var(--mf-red); font-weight: 600; }
+.mf-phone #messageCount.err { color: var(--mf-red-text); font-weight: 600; }
 .mf-phone .acts { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .mf-phone .acts #messageSave { min-width: 120px; }
 /* 04b: "Remove message" is a red text button; the inline confirm keeps Keep (focused) as the safe choice */
-.mf-phone .msgRemove { background: transparent; color: var(--mf-red); padding: 12px; min-height: 0; }   /* 12+24+12 = 48 px */
+.mf-phone .msgRemove { background: transparent; color: var(--mf-red-text); padding: 12px; min-height: 0; }   /* 12+24+12 = 48 px */
 .mf-phone .msgConfirm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 10px; padding: 10px 12px;
-  background: var(--mf-red-50); border-radius: var(--mf-r-md); color: var(--mf-red); font-weight: 600; }
+  background: var(--mf-red-50); border-radius: var(--mf-r-md); color: var(--mf-red-text); font-weight: 600; }
 .mf-phone .msgConfirm span { flex: 1 1 100%; }
 .mf-phone .msgRemoveYes { background: var(--mf-red); color: #fff; min-width: 104px; }
-.mf-phone .msgKeep { background: transparent; color: var(--mf-green); border: 1.5px solid var(--mf-green); min-width: 104px; }
-.mf-phone #messageSave[aria-disabled="true"] { background: var(--mf-green-50); color: var(--mf-green); cursor: default; transform: none; }
+.mf-phone .msgKeep { background: transparent; color: var(--mf-text); border: 1.5px solid var(--mf-outline); min-width: 104px; }
+.mf-phone #messageSave[aria-disabled="true"] { background: var(--mf-card); color: var(--mf-text-2); cursor: default; transform: none; }
 .mf-phone .prev { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--mf-line); font-size: var(--mf-p-small);
   color: var(--mf-text-2); }
 /* Mini frame note: the frame's menu note card at 75 % so line breaks and the 5-line cap match the frame. */
@@ -261,8 +263,8 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
 .mf-phone .about dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
 
 /* 06 Confirm sheet */
-.mf-phone .scrim { position: fixed; inset: 0; background: rgba(31, 42, 36, .55); display: flex; align-items: flex-end; z-index: 10; }
-.mf-phone .sheet { background: var(--mf-card); width: 100%; max-width: 34rem; margin: 0 auto; border-radius: 20px 20px 0 0;
+.mf-phone .scrim { position: fixed; inset: 0; background: var(--mf-scrim-phone); display: flex; align-items: flex-end; z-index: 10; }
+.mf-phone .sheet { background: var(--mf-card); border-top: 1px solid var(--mf-forest-700); width: 100%; max-width: 34rem; margin: 0 auto; border-radius: 20px 20px 0 0;
   padding: 24px 20px 28px; max-height: 100%; overflow-y: auto; }
 .mf-phone .sheet h2 { font-size: 24px; }
 .mf-phone .sheet .warn { margin: 12px 0; }
@@ -277,7 +279,7 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
   border-top-color: var(--mf-brass); border-right-color: var(--mf-brass); transform: rotate(20deg); }
 .mf-phone .done-ico, .mf-phone .big-ico { width: 88px; height: 88px; border-radius: 50%; display: grid; place-items: center;
   font-size: 44px; font-weight: 800; margin: 28px auto 18px; }
-.mf-phone .done-ico { background: var(--mf-green-50); color: var(--mf-green); }
+.mf-phone .done-ico { background: var(--mf-green-50); color: var(--mf-accent-text); }
 
 /* 08 Can't reach the frame */
-.mf-phone .big-ico { background: var(--mf-red-50); color: var(--mf-red); }
+.mf-phone .big-ico { background: var(--mf-red-50); color: var(--mf-red-text); }

@@ -8,7 +8,8 @@
 /* Local font for the frame (offline): Atkinson Hyperlegible, SIL OFL, Regular + Bold, subset to Latin
    (~16 KB woff2 each, /static/fonts/, OFL.txt alongside). Its @font-face rules are templated in
    templates/frame_fonts.css (served at /frame-fonts.css, linked by index.html) so their src URLs use
-   static() and match the preload URLs (same ?v= hash). Phone pages use --mf-font-phone (system font). */
+   static() and match the preload URLs (same ?v= hash). Phone pages link the same /frame-fonts.css
+   (font-display: block) and use --mf-font-phone: Atkinson first, system stack fallback. */
 
 :root {
   /* ---- Frame palette (dark: the screen should melt into the black surround) ---- */
@@ -47,7 +48,7 @@
 
   /* ---- Type ---- */
   --mf-font-frame: "MF Frame", "Atkinson Hyperlegible", "DejaVu Sans", "Liberation Sans", sans-serif;
-  --mf-font-phone: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+  --mf-font-phone: "MF Frame", "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
   --mf-font-mono-digits: "MF Frame", "DejaVu Sans Mono", monospace; /* code digits use tabular-nums */
 
   /* Frame scale (800x480 at ~190 dpi, read at arm's length): nothing below 18 px */
@@ -92,12 +93,32 @@
 .mf-btn-accent { background: var(--mf-brass); color: var(--mf-ink); }
 .mf-btn-default { outline: var(--mf-ring-width) solid var(--mf-brass); outline-offset: 3px; }
 
-/* ---- Phone (light paper) ---- */
-.mf-phone { background: var(--mf-paper); color: var(--mf-text); font-family: var(--mf-font-phone); }
+/* ---- Phone: the frame's dark theme (PHONE-DARK.md, decided 19 Oct 2026; replaces the paper palette) ----
+   Phone semantic tokens remapped to frame tokens on .mf-phone only, so the kiosk is untouched.
+   --mf-green is a fill only (2.6:1 as text on ink): green text uses --mf-accent-text; brick fills, brick-text text. */
+.mf-phone {
+  --mf-paper: var(--mf-ink);          /* page */
+  --mf-card: var(--mf-forest-800);    /* cards, rows, inputs, sheets */
+  --mf-line: var(--mf-forest-700);    /* hairlines, dividers */
+  --mf-text: var(--mf-linen);
+  --mf-text-2: var(--mf-oat);
+  --mf-green: var(--mf-forest-600);   /* primary fills (white text 7.3:1) */
+  --mf-green-50: var(--mf-forest-900);/* selected / success background */
+  --mf-accent-text: var(--mf-leaf);   /* green text, success, selected border */
+  --mf-red: var(--mf-brick);          /* destructive fills (white text 6.5:1) */
+  --mf-red-text: var(--mf-brick-text);/* destructive / error text */
+  --mf-red-50: #3A1F1B;               /* error box background */
+  --mf-warn-bg: var(--mf-walnut-900); /* warn box: walnut, brass border, linen text */
+  --mf-warn-line: var(--mf-brass);
+  --mf-warn-text: var(--mf-linen);
+  --mf-outline: var(--mf-oat);        /* outlined buttons and inputs: 1.5px, >= 6.6:1 on every dark surface */
+  --mf-focus: var(--mf-brass);        /* every focus ring */
+  --mf-scrim-phone: rgba(0, 0, 0, .6);
+  background: var(--mf-paper); color: var(--mf-text); font-family: var(--mf-font-phone); }
 .mf-phone button { font: inherit; background: var(--mf-green); color: #fff; border: 0; border-radius: var(--mf-r-md);
   min-height: var(--mf-touch-phone); }
 .mf-phone button.secondary, .mf-phone .seg button { background: var(--mf-card); color: var(--mf-text);
-  border: 1.5px solid var(--mf-line); }
+  border: 1.5px solid var(--mf-outline); }
 .mf-phone .seg button[aria-checked="true"] { background: var(--mf-green); color: #fff; }
-.mf-phone button:focus-visible, .mf-phone a:focus-visible { outline: var(--mf-ring-width) solid var(--mf-green); outline-offset: 3px; }
-.mf-phone a { color: var(--mf-green); }
+.mf-phone button:focus-visible, .mf-phone a:focus-visible { outline: var(--mf-ring-width) solid var(--mf-focus); outline-offset: 3px; }
+.mf-phone a { color: var(--mf-accent-text); }

@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#16261D">
 {% block meta %}<meta name="csrf-token" content="{{ csrf_token() }}">{% endblock %}
 <title>{% block title %}Memory Frame{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('display.frame_fonts') }}">
 <link rel="stylesheet" href="{{ static('tokens.css') }}">
 <link rel="stylesheet" href="{{ static('phone.css') }}">
 </head>

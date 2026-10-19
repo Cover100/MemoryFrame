@@ -1,4 +1,5 @@
-"""Restyle PR C: the phone site on the paper theme (#70 phone mocks 01-08, 04-settings-v2, 04b; DIRECTION.md).
+"""Restyle PR C: the phone site (#70 phone mocks 01-08, 04-settings-v2, 04b; DIRECTION.md), on the frame's dark
+theme + Atkinson since 19 Oct (PHONE-DARK.md, design/visual-direction 6621607).
 Structure, escaping, CSRF and lean-CSS checks, plus a 412x915 headless-Chrome pass over every phone view."""
 import html as htmlmod
 import re
@@ -33,8 +34,10 @@ def test_every_phone_page_uses_paper_theme_and_one_stylesheet(client, url):
     assert re.search(r'href="/static/tokens\.css\?v=\w+"', h) and re.search(r'href="/static/phone\.css\?v=\w+"', h)
     for old in ("pair.css", "library.css", "upload.css", "wifi.css", "settings.css"):
         assert old not in h
-    # system fonts only: no preload or woff2; only Settings links the frame font, for the mini-frame preview
-    assert ("frame-fonts.css" in h) == (url == "/admin/settings") and "woff2" not in h and "preload" not in h
+    # PHONE-DARK.md: Atkinson on every phone page via the frame's /frame-fonts.css (block), before tokens.css,
+    # no preload on the phone (was: system fonts, Settings-only link)
+    assert h.count('<link rel="stylesheet" href="/frame-fonts.css">') == 1
+    assert h.index("/frame-fonts.css") < h.index("tokens.css") and "woff2" not in h and "preload" not in h
     assert "<style" not in h and " style=" not in h
 
 
@@ -184,9 +187,10 @@ def test_phone_views_fit_412_and_run_clean(page, server, mf_app):
     for path in ("admin/", "admin/library", "admin/upload", "admin/settings", "admin/wifi/", "pair"):
         _phone(page, server, mf_app, path)
         assert evaluate(page, "document.documentElement.scrollWidth") <= 412, path
-        assert evaluate(page, "getComputedStyle(document.body).backgroundColor") == "rgb(246, 241, 233)", path
+        assert evaluate(page, "getComputedStyle(document.body).backgroundColor") == "rgb(14, 19, 17)", path   # --mf-ink
         assert evaluate(page, "getComputedStyle(document.querySelector('.bar')).backgroundColor") == "rgb(22, 38, 29)"
-        assert "Atkinson" not in evaluate(page, "getComputedStyle(document.body).fontFamily")
+        assert evaluate(page, "getComputedStyle(document.body).fontFamily").startswith('"MF Frame", "Atkinson Hyperlegible", system-ui')
+        assert evaluate(page, "document.fonts.check('16px \"MF Frame\"') && document.fonts.check('700 16px \"MF Frame\"')"), path
         assert evaluate(page, "document.getAnimations().length") == 0, path
     assert page.exceptions() == []
 
@@ -219,7 +223,7 @@ def test_settings_message_states_and_remove_confirm(page, server, mf_app):
     evaluate(page, f"{js}('frameMessage').value='x'; {js}('messageSave').click()")
     page.pump(1)
     evaluate(page, f"{js}('messageRemove').click()")
-    assert evaluate(page, f"{css}.color") == "rgb(42, 97, 64)" and evaluate(page, f"{css}.borderTopColor") == "rgb(42, 97, 64)"
+    assert evaluate(page, f"{css}.color") == "rgb(243, 237, 228)" and evaluate(page, f"{css}.borderTopColor") == "rgb(201, 187, 168)"
     assert evaluate(page, "getComputedStyle(document.getElementById('messageRemoveYes')).backgroundColor") == "rgb(168, 53, 42)"
     assert page.exceptions() == []
 
@@ -242,6 +246,22 @@ def test_network_failure_shows_offline_view_and_try_again_recovers(page, server,
     # the failed tap was reverted, not silently kept
     assert evaluate(page, "document.querySelector('#transitionSeg button[data-value=\"fade\"]').getAttribute('aria-checked')") == "true"
     assert page.exceptions() == []
+
+
+def test_phone_pages_use_the_frame_font_css_with_block(client):
+    """PHONE-DARK.md: Atkinson on every phone page from the frame's own /frame-fonts.css (font-display: block)."""
+    r = client.get("/frame-fonts.css", environ_base=PHONE)
+    css = r.get_data(as_text=True)
+    assert r.status_code == 200 and css.count("font-display: block") == 2 and "swap" not in css
+
+
+def test_phone_font_family_and_buttons_inherit():
+    tokens = (ROOT / "static" / "tokens.css").read_text()
+    assert '--mf-font-phone: "MF Frame", "Atkinson Hyperlegible", system-ui, -apple-system,' in tokens   # system fallback
+    assert re.search(r"\.mf-phone \{[^}]*background: var\(--mf-paper\); color: var\(--mf-text\); font-family: var\(--mf-font-phone\); \}", tokens)
+    assert re.search(r"\.mf-phone button \{ font: inherit;", tokens)
+    assert re.search(r"\.mf-phone \.btn, \.mf-phone button \{[^}]*font: inherit;", CSS)
+    assert "frame-fonts.css" not in (ROOT / "templates" / "settings.html").read_text()
 
 
 def test_frame_font_only_used_by_the_preview():
@@ -336,7 +356,7 @@ def test_wifi_sheet_traps_header_esc_cancels_and_errors_mark_field(page, server,
     evaluate(page, f"{js}('ssid').value='Garden'; {js}('password').value='short'; {js}('changeBtn').click()")
     assert evaluate(page, f"{js}('password').getAttribute('aria-invalid')") == "true"
     assert evaluate(page, f"{js}('password').getAttribute('aria-describedby')") == "pwHint error"
-    assert evaluate(page, f"getComputedStyle({js}('password')).borderTopColor") == "rgb(168, 53, 42)"
+    assert evaluate(page, f"getComputedStyle({js}('password')).borderTopColor") == "rgb(231, 160, 151)"   # brick-text
     evaluate(page, f"{js}('password').value='long-enough-1'; {js}('changeBtn').click()")
     assert not evaluate(page, f"{js}('confirmStep').hidden")
     assert evaluate(page, f"{js}('password').getAttribute('aria-invalid')") is None
@@ -509,7 +529,7 @@ def test_phone_pages_show_no_text_links_or_raw_file_input(page, server, mf_app, 
         files = json.loads(evaluate(page, """JSON.stringify([...document.querySelectorAll('input[type=file]')].map(i=>{
             const r=i.getBoundingClientRect(); return [parseFloat(getComputedStyle(i).opacity), r.width, r.height];}))"""))
         assert all(o == 0 and w <= 1 and h <= 1 for o, w, h in files), (path, files)
-        assert evaluate(page, "getComputedStyle(document.body).backgroundColor") == "rgb(246, 241, 233)", path
+        assert evaluate(page, "getComputedStyle(document.body).backgroundColor") == "rgb(14, 19, 17)", path   # --mf-ink
         assert evaluate(page, "getComputedStyle(document.querySelector('.bar')).backgroundColor") == "rgb(22, 38, 29)"
     assert page.exceptions() == []
 
@@ -544,7 +564,7 @@ def test_drop_area_uploads_and_picker_is_disabled_while_sending(page, server, mf
         document.querySelectorAll('#list li').length, document.getElementById('summary').textContent])""")
     import json
     disabled, aria, label, bg, rows, summary = json.loads(st)
-    assert disabled and aria == "true" and label == "Uploading..." and bg == "rgb(227, 238, 230)", st
+    assert disabled and aria == "true" and label == "Uploading..." and bg == "rgb(36, 56, 44)", st
     assert rows == 1 and "Sending 1 photo" in summary
     evaluate(page, "(()=>{ const [x, b, send] = window.__held[0]; send.call(x, b); })()")       # let it through
     page.pump(1.5)
@@ -576,3 +596,140 @@ def test_wifi_sheet_warning_keeps_wi_fi_whole(paired, monkeypatch, tmp_path):
     src = (TEMPLATES / "wifi.html").read_text()
     sheet = src[src.index('id="confirmStep"'):src.index("</div>\n  </div>", src.index('id="confirmStep"'))]
     assert "Wi-Fi" not in sheet and sheet.count("Wi&#8209;Fi") == 4, sheet
+
+
+# ---------------- PHONE-DARK.md (6621607): dark frame theme on every phone page ----------------
+
+DARK_VIEWS = ["admin/", "admin/library", "admin/upload", "admin/settings", "admin/wifi/", "pair", "admin/nope"]
+OLD_LIGHT = {"rgb(255, 255, 255)", "rgb(246, 241, 233)", "rgb(227, 238, 230)", "rgb(248, 228, 225)", "rgb(251, 241, 220)",
+             "rgb(226, 216, 202)"}
+CONTRAST_JS = """JSON.stringify((()=>{
+  const lum = c => { const v = c.match(/[\\d.]+/g).slice(0,3).map(Number).map(x=>{x/=255; return x<=0.03928?x/12.92:Math.pow((x+0.055)/1.055,2.4);});
+                     return 0.2126*v[0]+0.7152*v[1]+0.0722*v[2]; };
+  const alpha = c => { const m = c.match(/[\\d.]+/g); return m.length > 3 ? Number(m[3]) : 1; };
+  const bgOf = e => { for(; e; e = e.parentElement){ const b = getComputedStyle(e).backgroundColor; if(alpha(b) === 1) return b; } return 'rgb(14, 19, 17)'; };
+  const out = [];
+  document.querySelectorAll('body *').forEach(e=>{
+    if(!e.offsetParent && getComputedStyle(e).position !== 'fixed') return;
+    if(e.closest('.sr-only,[hidden],.msgPreview:not(.empty),.hero') || e.matches('img,input[type=file]')) return;
+    const own = [...e.childNodes].some(n=>n.nodeType===3 && n.data.trim()) || (e.matches('input,textarea') && e.value);
+    if(!own) return;
+    const cs = getComputedStyle(e), a = lum(cs.color), b = lum(bgOf(e));
+    const r = (Math.max(a,b)+0.05)/(Math.min(a,b)+0.05);
+    if(r < 4.5) out.push([e.tagName + (e.id ? '#' + e.id : '') + '.' + e.className, cs.color, bgOf(e), r.toFixed(2)]);
+  });
+  return out; })())"""
+
+
+@pytest.mark.skipif(BROWSER is None, reason="no Chromium/Chrome installed")
+def test_dark_theme_every_page_no_light_surfaces_and_text_aa(page, server, mf_app, lib, monkeypatch, tmp_path):
+    """Checklist 1, 3, 6, 10: no paper/white surfaces, every visible text >= 4.5:1 (AA) on its real background."""
+    import json
+    monkeypatch.setenv("MEMORYFRAME_NETMODE_STATE", str(tmp_path / "nm.json"))
+    (tmp_path / "nm.json").write_text('{"mode": "product"}')
+    lib.add("c.jpg", PNG)
+    for path in DARK_VIEWS:
+        _phone(page, server, mf_app, path)
+        page.pump(0.6)
+        states = [None]
+        if path == "admin/wifi/" and evaluate(page, "!!document.getElementById('confirmStep')"):
+            states.append("document.getElementById('confirmStep').hidden = false")
+        if path == "admin/upload":
+            states.append("memoryFramePhone.offline('x.jpg did not finish uploading.')")
+        if path == "admin/settings":
+            states.append("document.querySelector('#aboutSection summary').click()")
+        for st in states:
+            if st:
+                evaluate(page, st)
+                page.pump(0.2)
+            light = json.loads(evaluate(page, """JSON.stringify([...document.querySelectorAll('body, body *')].filter(e=>e.offsetParent || e===document.body)
+                .map(e=>[e.tagName+'.'+e.className, getComputedStyle(e).backgroundColor]))"""))
+            bad = [x for x in light if x[1] in OLD_LIGHT]
+            assert bad == [], (path, st, bad[:5])
+            low = json.loads(evaluate(page, CONTRAST_JS))
+            assert low == [], (path, st, low[:6])
+    assert page.exceptions() == []
+
+
+@pytest.mark.skipif(BROWSER is None, reason="no Chromium/Chrome installed")
+def test_dark_outlined_buttons_inputs_disabled_and_fills(page, server, mf_app, monkeypatch, tmp_path):
+    """Checklist 3, 4, 6, 7: oat 1.5px outlines, forest-800/oat disabled, inputs, sheet + scrim, brick fill vs text."""
+    import json
+    from memoryframe import message
+    monkeypatch.setenv("MEMORYFRAME_NETMODE_STATE", str(tmp_path / "nm.json"))
+    (tmp_path / "nm.json").write_text('{"mode": "product"}')
+    message.save(mf_app.config["DATA_DIR"], "Hi Nana")
+    _phone(page, server, mf_app, "admin/settings")
+    g = lambda sel, prop: evaluate(page, f"getComputedStyle(document.querySelector('{sel}'))['{prop}']")   # noqa: E731
+    assert g("#frameMessage", "backgroundColor") == "rgb(36, 56, 44)" and g("#frameMessage", "borderTopColor") == "rgb(201, 187, 168)"
+    assert g("#frameMessage", "color") == "rgb(243, 237, 228)" and g("#frameMessage", "borderTopWidth") in ("1px", "1.5px")   # 1.5px authored; Chrome snaps to device px
+    assert g("#frameMessage", "fontFamily").startswith('"MF Frame"')
+    assert g("#messageSave", "backgroundColor") == "rgb(36, 56, 44)" and g("#messageSave", "color") == "rgb(201, 187, 168)"   # Saved
+    assert g(".msgRemove", "color") == "rgb(231, 160, 151)"                                        # brick-text, text only
+    evaluate(page, "document.getElementById('messageRemove').click()")
+    assert g("#messageRemoveYes", "backgroundColor") == "rgb(168, 53, 42)" and g("#messageRemoveYes", "color") == "rgb(255, 255, 255)"
+    assert g(".seg button[aria-checked=true]", "backgroundColor") == "rgb(42, 97, 64)"
+    assert g(".seg button[aria-checked=true]", "outlineColor") == "rgb(143, 209, 164)"            # leaf selected edge
+    assert g("input.switch:checked", "backgroundColor") == "rgb(143, 209, 164)"
+    assert g(".bar", "borderBottomColor") == "rgb(47, 74, 58)"
+    _phone(page, server, mf_app, "admin/wifi/")
+    if evaluate(page, "!!document.getElementById('wifiForm')"):
+        evaluate(page, "document.getElementById('confirmStep').hidden = false")
+        assert g(".scrim", "backgroundColor") == "rgba(0, 0, 0, 0.6)"
+        assert g(".sheet", "backgroundColor") == "rgb(36, 56, 44)" and g(".sheet", "borderTopColor") == "rgb(47, 74, 58)"
+        assert g("#cancelBtn", "borderTopColor") == "rgb(201, 187, 168)" and g("#cancelBtn", "borderTopWidth") in ("1px", "1.5px")   # 1.5px authored; Chrome snaps to device px
+        assert g("#cancelBtn", "color") == "rgb(243, 237, 228)"
+        assert g(".warn", "backgroundColor") == "rgb(58, 44, 34)" and g(".warn", "borderTopColor") == "rgb(214, 179, 106)"
+        assert g(".warn", "color") == "rgb(243, 237, 228)"
+    _phone(page, server, mf_app, "admin/")
+    assert g(".see-all", "borderTopColor") == "rgb(201, 187, 168)" and g(".see-all", "color") == "rgb(143, 209, 164)" or \
+        not evaluate(page, "!!document.querySelector('.see-all')")
+    assert g(".rows button.row-link", "color") == "rgb(231, 160, 151)"                            # Sign out all phones
+    assert g(".store .used", "backgroundColor") == "rgb(143, 209, 164)"
+    page.call("Network.clearBrowserCookies")
+    page.call("Page.navigate", {"url": server + "pair"})
+    page.pump(1.5)
+    assert g("#code", "backgroundColor") == "rgb(36, 56, 44)" and g("#code", "borderTopColor") == "rgb(201, 187, 168)"
+    assert json.loads(evaluate(page, "JSON.stringify(getComputedStyle(document.querySelector('#code'),'::placeholder').color)")) == "rgb(201, 187, 168)"
+
+
+@pytest.mark.skipif(BROWSER is None, reason="no Chromium/Chrome installed")
+@pytest.mark.parametrize("path,tabs", [("admin/", 8), ("admin/settings", 16), ("admin/upload", 2), ("pair", 3)])
+def test_keyboard_focus_rings_are_brass_on_dark(page, server, mf_app, lib, path, tabs):
+    """Checklist 5: tab through every control; each focused one draws a >= 3px brass ring (visible on ink)."""
+    import json
+    lib.add("c.jpg", PNG)
+    _phone(page, server, mf_app, path)
+    page.pump(0.4)
+    seen = []
+    for _ in range(tabs):
+        page.call("Input.dispatchKeyEvent", {"type": "keyDown", "key": "Tab", "code": "Tab", "windowsVirtualKeyCode": 9})
+        page.call("Input.dispatchKeyEvent", {"type": "keyUp", "key": "Tab", "code": "Tab", "windowsVirtualKeyCode": 9})
+        page.pump(0.1)
+        r = json.loads(evaluate(page, """JSON.stringify((()=>{let e=document.activeElement; if(!e || e===document.body) return null;
+            if(e.type==='file') e=e.closest('.pick'); const c=getComputedStyle(e);
+            return [e.id||e.className||e.tagName, c.outlineStyle, c.outlineColor, parseFloat(c.outlineWidth)];})())"""))
+        if r:
+            seen.append(r)
+    assert len(seen) >= min(tabs, 2), seen
+    bad = [r for r in seen if r[1] == "none" or r[2] != "rgb(214, 179, 106)" or r[3] < 3]
+    assert bad == [], bad
+
+
+def test_dark_tokens_and_outline_rules_in_css():
+    """Checklist 3, 4, 11: the PHONE-DARK.md mapping, oat 1.5px outlines, --mf-green only as a fill, flat CSS."""
+    tokens = (ROOT / "static" / "tokens.css").read_text()
+    block = tokens[tokens.index(".mf-phone {\n"):]
+    block = block[:block.index("}")]
+    for k, v in (("paper", "ink"), ("card", "forest-800"), ("line", "forest-700"), ("text", "linen"), ("text-2", "oat"),
+                 ("green", "forest-600"), ("green-50", "forest-900"), ("accent-text", "leaf"), ("red", "brick"),
+                 ("red-text", "brick-text"), ("outline", "oat"), ("focus", "brass")):
+        assert re.search(rf"--mf-{k}: var\(--mf-{v}\);", block), k
+    assert "--mf-red-50: #3A1F1B;" in block and "--mf-scrim-phone: rgba(0, 0, 0, .6);" in block
+    flat = re.sub(r"/\*.*?\*/", "", CSS + tokens[tokens.index("/* ---- Phone"):], flags=re.S)
+    assert not re.search(r"(?<![-\w])color: var\(--mf-(green|red)\)", flat)          # fills only
+    assert not re.search(r"outline[^;]*var\(--mf-green\)", flat)
+    for sel in (r"\.mf-phone \.btn-neutral, \.mf-phone button\.secondary", r"\.mf-phone \.msgKeep", r"\.mf-phone \.field",
+                r"\.mf-phone \.code", r"\.mf-phone #frameMessage", r"\.mf-phone #grid \.actions button"):
+        assert re.search(sel + r" \{[^}]*border: 1\.5px solid var\(--mf-outline\)", flat), sel
+    assert "#fff;" not in re.sub(r"color: #fff;", "", flat)                             # white only as text on fills

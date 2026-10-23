@@ -9,7 +9,8 @@ Target hardware: **Raspberry Pi 4 Model B**, **Raspberry Pi OS 64-bit**,
 
 ### Upload limits
 
-- Photos over 64 megapixels (`MEMORYFRAME_MAX_MEGAPIXELS`) are refused with 415 and a clear message. This is checked from the image header before any decoding.
+- **Big photos are shrunk on upload; no full-size original is kept (#82).** The phone page shrinks photos over 3 MB in the browser first when it can (JPEG and WebP everywhere; HEIC only where the browser can decode it, e.g. Safari), and the frame always does it again on the server: the library keeps ONE copy per photo, an upright (EXIF rotation applied), metadata-free (no GPS), sRGB JPEG that is **not cropped** and covers 1.5x the display size (1500x900 for 1000x600; never upscaled). The 1000x600 display copy is still cropped from it at display time, so crop rules can change later. Older photos and the legacy import are left alone. GIFs are kept as sent (animation).
+- Photos over 150 megapixels (`MEMORYFRAME_MAX_MEGAPIXELS`, default 150, enough for 108 MP phones) are refused with 415 and a message that quotes the number. This is checked from the image header before any decoding. JPEGs are decoded at 1/2, 1/4 or 1/8 scale (Pillow `draft`), so a 150 MP JPEG (RGB, grey or CMYK) needs roughly 120 MB of RAM instead of 1.7 GB. HEIC/PNG/WebP/AVIF can't be decoded at reduced size, so they (and GIFs) have a lower cap, `MEMORYFRAME_MAX_NONJPEG_MEGAPIXELS` (default 50): larger ones are refused with a message asking for a JPEG (108 MP phones save JPEG). Measured at about 48-49 MP (peak RSS of the whole upload; a Pi 4B 4 GB and a 16 GB test box agree): WebP costs the most, about 15.5 MB per megapixel (a rise of about 750 MB at 48 MP, 790 MB peak), HEIC about 400 MB, AVIF about 470 MB, PNG 105-376 MB more depending on mode (RGBA about 460 MB peak). That is why the cap is 50 MP and not higher; the service also sets `MALLOC_ARENA_MAX=1` because glibc otherwise doesn't give the memory back between non-JPEG decodes (three 48 MP WebPs in a row peaked at 1.3-2.4 GB without it, about 880 MB with it). GIFs count as non-JPEG: a GIF over the cap is refused with a GIF-specific message; one within it is stored as sent (animated GIFs keep any comment/XMP blocks they came with). No cap can be set above 150 MP (larger values are clamped, and `deploy/env-file.sh` accepts 1-150). Only one photo is decoded at a time. The unit sets `MALLOC_ARENA_MAX=1` (glibc otherwise keeps memory after non-JPEG decodes). It also sets `MemoryHigh=2G` and `MemoryMax=2500M`, but those are only enforced when the kernel has the memory cgroup controller: Raspberry Pi OS boots with `cgroup_disable=memory`, so on the stock Pi they do nothing. The real protections are the caps, the draft decode, the single-decode lock and `MALLOC_ARENA_MAX=1`. Set either cap with `deploy/env-file.sh KEY VALUE`. The upload size limit (`MEMORYFRAME_MAX_UPLOAD_MB`, default 50) still applies: a very noisy 108 MP JPEG can be about 100 MB, so if the browser doesn't shrink it first it is refused with "This file is too large. The limit is 50 MB per photo. Please try a smaller photo". Duplicates are detected by the SHA-256 of the file as received; the same photo sent once shrunk by the browser and once as the full file is two different files.
 - If the disk fills up while a file is being written, the upload returns 507 and partial temp files are removed.
 - Display labels keep Unicode letters and digits (for example `Été_à_Paris.jpg`). Path parts and control characters are dropped, and the label falls back to `photo.jpg`.
 
@@ -55,7 +56,7 @@ Photos and the database live in the **data directory**:
 
 ```
 <data dir>/memoryframe.db   SQLite: media, devices, sessions, settings
-<data dir>/originals/       photos exactly as imported/uploaded, server-generated names
+<data dir>/originals/       the stored photo (one shrunk JPEG per upload since #82; older photos/imports are unchanged originals), server-generated names
 <data dir>/display/         display copies (MF-15)   thumbs/  thumbnails (MF-15)
 <data dir>/tmp/             in-progress files        backups/ migration backups
 ```
@@ -192,13 +193,13 @@ The slideshow never loads the original files. For every image, a JPEG **display 
 - EXIF orientation is applied, and all metadata is stripped, including GPS.
 - Each copy is **at most 300 KB**.
 
-Originals in `originals/` are only read, never changed. Animated GIFs are served as originals.
+Files in `originals/` (stored copies since #82) are only read by this step, never changed; display copies are cropped from them. Animated GIFs are served as originals.
 
 - **Target size:** `MEMORYFRAME_DISPLAY_SIZE`, default **`1000x600`**, exactly the 5:3 screen (user decision 2026-10-11; was 800x600, then briefly 1000x750). Set it with `deploy/env-file.sh MEMORYFRAME_DISPLAY_SIZE WxH` (each side 320-4000; out-of-range values fall back to 1000x600 and are logged). Copies record their size and rules version (JPEG comment marker). Copies that don't match the current target or rules are remade automatically, in the background at start-up and lazily when served, so `display-copies --force` is optional.
 - **Cover-crop cap:** copies are cropped with Designer's framing rules (`memoryframe/framing.py`). First the visible 5:3 window is chosen; with no face it is centred, for every aspect (portraits, landscapes, very tall images and panoramas alike). At 1000x600 the copy **is** that window: the screen only scales it by 0.8 and nothing more is cropped. The screen aspect is one constant (`SCREEN_ASPECT`). Portraits and panoramas are no longer oversized (previously 1000x1333 or 3000x750). Each copy stays at or under 300 KB.
 - **New photos:** the copy is made when the photo is added, or on its first request.
 - **Existing photos:** `python -m memoryframe display-copies` creates the missing copies (`install.sh` runs it).
-- **HEIC/HEIF** from phones is accepted through `pillow-heif` (wheels exist for Pi aarch64 / Python 3.13). The original `.heic` is kept, and the display gets a JPEG copy.
+- **HEIC/HEIF** from phones is accepted through `pillow-heif` (wheels exist for Pi aarch64 / Python 3.13) up to the non-JPEG cap above, and stored as a JPEG (#82).
 
 ## Pairing a phone (MF-12)
 
@@ -228,8 +229,8 @@ There is one owner (D6), who may pair several phones.
   - **413** too large (`MEMORYFRAME_MAX_UPLOAD_MB`, default 50)
   - **415** not a photo, or a video ("videos are coming later", D5)
   - **507** less than `MEMORYFRAME_MIN_FREE_MB` (default 500) free
-- **Validation:** files are checked by **content**: Pillow must decode them as JPEG, PNG, WebP, GIF or HEIC. The stored extension comes from the content, and stored names are server-generated. The client's file name is only kept, sanitised, as a label.
-- **Storage:** the original is stored byte-identical in `originals/`, and the display copy (MF-15) is made right away.
+- **Validation:** files are checked by **content**: Pillow must decode them as JPEG, PNG, WebP, GIF or HEIC. The stored extension comes from the content (`.jpg` for every still image since #82), and stored names are server-generated. The client's file name is only kept, sanitised, as a label.
+- **Storage:** since #82 the upload is decoded once and stored as one shrunk, upright JPEG (see above); the upload itself is deleted, and the display copy (MF-15) is made right away. Older photos keep their originals.
 - **Frame refresh:** the frame now polls `/media` every 10 s, so new photos show up without a reload. `GET /api/v1/storage` returns the disk numbers.
 
 ## Face-aware cropping (MF-26)

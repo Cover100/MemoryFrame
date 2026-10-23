@@ -11,8 +11,8 @@
 <label class="pick drop" id="drop">
   <span class="dropIco" aria-hidden="true">＋</span>
   <span class="btn big block" id="pickLabel">Choose photos</span>
-  <span class="small muted dropHint">From your phone's gallery. JPEG, PNG, WebP, GIF or HEIC.</span>
-  <input id="files" type="file" accept="image/*,.heic,.heif" multiple>
+  <span class="small muted dropHint">From your phone's gallery. JPEG, PNG, WebP, GIF or HEIC. Big photos are made smaller to fit the frame, and the full-size original isn't kept.</span>
+  <input id="files" type="file" accept="image/*,.heic,.heif" multiple data-store-w="{{ store_w }}" data-store-h="{{ store_h }}">
 </label>
 <div id="summary" class="ok-box" aria-live="polite"></div>
 <ul id="list" class="mt"></ul>

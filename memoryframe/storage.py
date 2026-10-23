@@ -2,7 +2,8 @@
 
     <DATA_DIR>/
         memoryframe.db   SQLite database
-        originals/       files as uploaded/imported (never modified)
+        originals/       the stored photo: since #82 one shrunk, upright JPEG per upload (no full-size
+                         original is kept); older photos and legacy imports are untouched originals
         display/         display copies (800x480 cover, MF-15)
         thumbs/          thumbnails (MF-15)
         tmp/             in-progress uploads
@@ -52,14 +53,21 @@ def resolve_data_dir():
     return fallback
 
 
-def _env_int(name, default):
-    """Positive int from the environment; anything else falls back to default (and is logged)."""
+MAX_CAP_MP = 150      # no pixel cap may be set above this (Pillow's own limit is raised to exactly this, imaging.py)
+
+
+def _env_int(name, default, maximum=None):
+    """Positive int from the environment; anything else falls back to default (and is logged).
+    Values above `maximum` are clamped to it (and logged)."""
     raw = os.environ.get(name, "").strip()
     if not raw:
         return default
     try:
         v = int(raw)
         if v > 0:
+            if maximum is not None and v > maximum:
+                logging.getLogger(__name__).warning("%s=%d is above the limit; using %d", name, v, maximum)
+                return maximum
             return v
     except ValueError:
         pass
@@ -77,9 +85,11 @@ def default_config():
         # MF-15: display copies cover this size (user decision 2026-10-11: 1000x600, exactly the 5:3 screen).
         # MF-14 upload limits
         "MAX_CONTENT_LENGTH": int(os.environ.get("MEMORYFRAME_MAX_UPLOAD_MB", "50")) * 1024 * 1024,
-        "MAX_IMAGE_PIXELS": _env_int("MEMORYFRAME_MAX_MEGAPIXELS", 64) * 1_000_000,
+        "MAX_IMAGE_PIXELS": _env_int("MEMORYFRAME_MAX_MEGAPIXELS", 150, MAX_CAP_MP) * 1_000_000,
+        # HEIC/PNG/WebP can't be decoded at reduced size, so they have their own, lower cap (#82).
+        "MAX_NONJPEG_PIXELS": _env_int("MEMORYFRAME_MAX_NONJPEG_MEGAPIXELS", 50, MAX_CAP_MP) * 1_000_000,
         "MIN_FREE_BYTES": int(os.environ.get("MEMORYFRAME_MIN_FREE_MB", "500")) * 1024 * 1024,
-        "AVG_PHOTO_BYTES": 5 * 1024 * 1024 + 300 * 1024,   # ~5 MB original + display copy
+        "AVG_PHOTO_BYTES": 1024 * 1024,   # #82: ~0.5 MB stored copy + ~0.25 MB display copy + thumb, rounded up
         "DISPLAY_SIZE": os.environ.get("MEMORYFRAME_DISPLAY_SIZE", "1000x600"),
     }
 

@@ -102,7 +102,10 @@ def sign_out_all():
 
 @bp.route("/upload")
 def upload_page():
-    return render_template("upload.html", st=phone_storage())
+    from flask import current_app
+    from . import imaging
+    store = imaging.stored_size(current_app.config["DISPLAY_TARGET"])      # #82: the browser shrinks to this
+    return render_template("upload.html", st=phone_storage(), store_w=store[0], store_h=store[1])
 
 
 @bp.route("/library")

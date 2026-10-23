@@ -87,7 +87,8 @@ def upload_media():
     try:
         stored, name = upload.save_upload(get_db(), current_app.config["DATA_DIR"], f, min_free,
                                           current_app.config["DISPLAY_TARGET"],
-                                          current_app.config.get("MAX_IMAGE_PIXELS", upload.MAX_PIXELS))
+                                          current_app.config.get("MAX_IMAGE_PIXELS", upload.MAX_PIXELS),
+                                          current_app.config.get("MAX_NONJPEG_PIXELS", upload.MAX_NONJPEG_PIXELS))
     except upload.UploadError as e:
         return jsonify({"error": e.message}), e.status
     if stored is None:
@@ -103,7 +104,7 @@ def upload_media():
 @bp.app_errorhandler(RequestEntityTooLarge)
 def too_large(_e):
     mb = current_app.config["MAX_CONTENT_LENGTH"] // (1024 * 1024)
-    return jsonify({"error": f"This file is too large. The limit is {mb} MB per photo."}), 413
+    return jsonify({"error": f"This file is too large. The limit is {mb} MB per photo. Please try a smaller photo (a lower-resolution copy)."}), 413
 
 
 

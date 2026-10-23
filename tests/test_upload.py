@@ -39,7 +39,8 @@ def test_upload_adds_and_frame_sees_it(mf_app, paired, client):
     assert len(rows) == 1 and rows[0]["source"] == "upload" and rows[0]["original_name"] == "IMG_0001.jpg"
     stored = rows[0]["stored_name"]
     with open(os.path.join(mf_app.config["DATA_DIR"], "originals", stored), "rb") as f:
-        assert f.read() == data                                        # byte-identical original
+        stored_im = Image.open(f)                                      # #82: one shrunk JPEG, not the upload
+        assert stored_im.format == "JPEG" and stored_im.size[0] <= 1500
     assert os.path.exists(os.path.join(mf_app.config["DATA_DIR"], "display", stored[:-4] + ".jpg"))
     assert {"type": "image", "filename": stored} in client.get("/media").get_json()   # frame polls this
     assert os.listdir(os.path.join(mf_app.config["DATA_DIR"], "tmp")) == []
@@ -71,7 +72,7 @@ def test_content_decides_type_not_name(mf_app, paired):
     Image.new("RGB", (900, 700)).save(b, "PNG")
     r = post(paired, b.getvalue(), "really-a-png.jpg")
     assert r.status_code == 201
-    assert media_rows(mf_app)[0]["stored_name"].endswith(".png")
+    assert media_rows(mf_app)[0]["stored_name"].endswith(".jpg")      # #82: every still is stored as a JPEG
 
 
 @pytest.mark.parametrize("name,data", [("clip.mp4", b"\0\0\0\x18ftypmp42" + b"\0" * 100),
@@ -114,7 +115,7 @@ def test_storage_endpoint(paired, monkeypatch):
     du = namedtuple("du", "total used free")
     monkeypatch.setattr(upload.shutil, "disk_usage", lambda p: du(256 * 1024**3, 6 * 1024**3, 250 * 1024**3))
     s = paired.get("/api/v1/storage", environ_base=PHONE).get_json()
-    assert s["free"] == 250 * 1024**3 and 45_000 < s["photos_remaining_estimate"] < 50_000
+    assert s["free"] == 250 * 1024**3 and 250_000 < s["photos_remaining_estimate"] < 256_000   # #82: ~1 MB per photo
 
 
 def test_upload_requires_session_and_csrf(mf_app, client, paired):
@@ -144,8 +145,8 @@ def test_over_pixel_cap_is_415_before_decoding(mf_app, paired, monkeypatch):
     assert media_rows(mf_app) == [] and _tmp_empty(mf_app)
 
 
-def test_default_cap_is_64mp_and_bomb_is_415(mf_app, paired, monkeypatch):
-    assert mf_app.config["MAX_IMAGE_PIXELS"] == 64_000_000
+def test_default_cap_is_150mp_and_bomb_is_415(mf_app, paired, monkeypatch):
+    assert mf_app.config["MAX_IMAGE_PIXELS"] == 150_000_000
     monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 1000)      # header > 2x this -> DecompressionBombError
     r = post(paired, jpeg(1600, 1200))
     assert r.status_code == 415 and "megapixels" in r.get_json()["error"]
@@ -166,7 +167,8 @@ def test_disk_full_while_writing_is_507_and_tmp_cleaned(mf_app, paired, monkeypa
     if stage == "receive":
         monkeypatch.setattr(FileStorage, "save", lambda self, dst, *a: full(self, dst))
     else:
-        monkeypatch.setattr(shutil, "copy2", full)
+        from memoryframe import imaging
+        monkeypatch.setattr(imaging, "make_stored_copy", lambda src, dst, target: full(src, dst))   # #82: no copy2 any more
     r = post(paired, jpeg())
     assert r.status_code == 507 and "full" in r.get_json()["error"]
     assert media_rows(mf_app) == [] and _tmp_empty(mf_app)
@@ -247,7 +249,7 @@ def test_dot_only_names_fall_back_to_photo(name):
 def test_bad_max_megapixels_env_falls_back(monkeypatch, caplog, raw):
     from memoryframe import storage
     monkeypatch.setenv("MEMORYFRAME_MAX_MEGAPIXELS", raw)
-    assert storage.default_config()["MAX_IMAGE_PIXELS"] == 64_000_000
+    assert storage.default_config()["MAX_IMAGE_PIXELS"] == 150_000_000
     if raw.strip():
         assert "MEMORYFRAME_MAX_MEGAPIXELS" in caplog.text
 
@@ -269,3 +271,21 @@ def test_legacy_import_enforces_pixel_cap(mf_app):
     assert res["imported"] == 1 and res["too_large"] == 1
     assert [r["original_name"] for r in media_rows(mf_app)] == ["small.jpg"]
     assert any("big.jpg" in m and "megapixels" in m for m in msgs)
+
+
+def test_disk_full_while_saving_the_stored_copy_is_507_not_415(mf_app, paired, monkeypatch):
+    """#82: a full disk while writing the shrunk copy is 'frame is full', not 'not a photo'."""
+    import errno
+    real_save = Image.Image.save
+    data = jpeg()
+
+    def save(self, fp, *a, **k):
+        if not isinstance(fp, str):                  # the stored copy is written through an open file
+            fp.write(b"partial")
+            raise OSError(errno.ENOSPC, "No space left on device")
+        return real_save(self, fp, *a, **k)
+
+    monkeypatch.setattr(Image.Image, "save", save)
+    r = post(paired, data)
+    assert r.status_code == 507 and "full" in r.get_json()["error"]
+    assert media_rows(mf_app) == [] and _tmp_empty(mf_app)

@@ -18,7 +18,7 @@
         return null;
     }
     function showError(msg){
-        $("error").textContent = msg || ""; $("error").hidden = !msg;
+        mfSetText($("error"), msg || ""); $("error").hidden = !msg;
         const bad = msg === MSG_NAME ? $("ssid") : (msg ? $("password") : null);
         ["ssid", "password"].forEach((id)=>{
             const f = $(id);

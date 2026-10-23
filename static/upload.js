@@ -77,14 +77,14 @@
                     img.src = "/api/v1/media/" + body.media_id + "/thumb";
                     ui.th.replaceWith(img);
                 }
-                ui.msg.textContent = ok ? (xhr.status === 201 ? "Added" : "Already on the frame")
-                                        : (body.error || ("Failed (" + xhr.status + ")"));
+                mfSetText(ui.msg, ok ? (xhr.status === 201 ? "Added" : "Already on the frame")
+                                        : (body.error || ("Failed (" + xhr.status + ")")));
                 if(xhr.status === 401){ location.href = "/pair"; }
                 resolve(ok);
             };
             xhr.onerror = ()=>{
                 ui.li.className = "bad";
-                ui.msg.textContent = "Network error. Are you still on the frame's Wi-Fi?";
+                mfSetText(ui.msg, "Network error. Are you still on the frame's Wi-Fi?");
                 if(window.memoryFramePhone){
                     memoryFramePhone.offline(file.name + " didn't finish uploading. It will need to be sent again.");
                 }

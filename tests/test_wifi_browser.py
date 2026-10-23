@@ -96,7 +96,7 @@ def test_phone_form_show_hide_validate_confirm_cancel(page, server, mf_app, net,
     evaluate(page, f"{js}('changeBtn').click()")
     page.pump(0.3)
     assert not evaluate(page, f"{js}('confirmStep').hidden")
-    assert ("All phones will disconnect. Rejoin with the new password within 5 minutes or the old Wi\u2011Fi comes back."
+    assert ("All phones will disconnect. Rejoin with the new password within 5 minutes or the old Wi-Fi comes back."
             in text(page, "confirmStep"))
     assert text(page, "confirmName") == "Frame Home"
     evaluate(page, f"{js}('cancelBtn').click()")

@@ -374,15 +374,19 @@ def test_offline_view_takes_focus(page, server, mf_app):
     assert evaluate(page, "document.activeElement.closest('#page') !== null")
 
 
-def test_wifi_buttons_use_non_breaking_hyphen(paired, monkeypatch, tmp_path):
-    """Hollis 48cdae8: 'Wi- / Fi' at 360 px. U+2011 keeps 'Wi-Fi' whole; the space still wraps at 130 %."""
+def test_wifi_buttons_keep_wi_fi_whole(paired, monkeypatch, tmp_path):
+    """Hollis 48cdae8 / Wren: 'Wi- / Fi' at 360 px. A plain hyphen inside <span class="nowrap"> keeps 'Wi-Fi' whole
+    (some Android fonts have no U+2011); the space before it still wraps at 130 %."""
     monkeypatch.setenv("MEMORYFRAME_NETMODE_STATE", str(tmp_path / "nm.json"))
     (tmp_path / "nm.json").write_text('{"mode": "product"}')
-    h = htmlmod.unescape(body(paired, "/admin/wifi/"))
+    h = body(paired, "/admin/wifi/")
     if 'id="wifiForm"' not in h:
         pytest.skip("Wi-Fi change unavailable in this environment")
     for i in ("changeBtn", "confirmBtn"):
-        assert f'id="{i}" class="' in h and h.split(f'id="{i}"')[1].split("</button>")[0].endswith("Change Wi\u2011Fi")
+        assert f'id="{i}" class="' in h and h.split(f'id="{i}"')[1].split("</button>")[0].endswith(
+            'Change <span class="nowrap">Wi-Fi</span>')
+    assert "\u2011" not in h and "&#8209;" not in h
+    assert ".nowrap { white-space: nowrap; }" in CSS
 
 
 def test_script_focused_headings_have_no_outline():
@@ -595,7 +599,7 @@ def test_wifi_sheet_warning_keeps_wi_fi_whole(paired, monkeypatch, tmp_path):
     (tmp_path / "nm.json").write_text('{"mode": "product"}')
     src = (TEMPLATES / "wifi.html").read_text()
     sheet = src[src.index('id="confirmStep"'):src.index("</div>\n  </div>", src.index('id="confirmStep"'))]
-    assert "Wi-Fi" not in sheet and sheet.count("Wi&#8209;Fi") == 4, sheet
+    assert sheet.count('<span class="nowrap">Wi-Fi</span>') == 4 and "Wi-Fi" not in sheet.replace('<span class="nowrap">Wi-Fi</span>', ""), sheet
 
 
 # ---------------- PHONE-DARK.md (6621607): dark frame theme on every phone page ----------------
@@ -733,3 +737,20 @@ def test_dark_tokens_and_outline_rules_in_css():
                 r"\.mf-phone \.code", r"\.mf-phone #frameMessage", r"\.mf-phone #grid \.actions button"):
         assert re.search(sel + r" \{[^}]*border: 1\.5px solid var\(--mf-outline\)", flat), sel
     assert "#fff;" not in re.sub(r"color: #fff;", "", flat)                             # white only as text on fills
+
+
+def test_no_non_breaking_hyphen_and_every_visible_wi_fi_is_wrapped():
+    """Wren: no U+2011 anywhere on the phone site; every visible 'Wi-Fi' in the phone templates sits in span.nowrap."""
+    import re
+    for name in ("_phone", "admin_home", "settings", "wifi", "wifi_keep"):
+        src = (TEMPLATES / f"{name}.html").read_text()
+        assert "\u2011" not in src and "&#8209;" not in src, name
+        for line in src.splitlines():
+            if "<title>" in line or "{% block title" in line or "<!--" in line:
+                continue
+            assert not re.search(r'(?<!>)Wi-Fi', line), (name, line)
+    js = (ROOT / "static" / "phone.js").read_text()
+    assert "mfSetText" in js and "innerHTML" not in js     # text built from DOM nodes only
+    for name in ("wifi.js", "upload.js"):
+        src = (ROOT / "static" / name).read_text()
+        assert "innerHTML" not in src and "\u2011" not in src

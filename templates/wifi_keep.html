@@ -6,26 +6,26 @@
 {% block content %}
 {% if result == "kept" %}
 <div class="done-ico" aria-hidden="true">✓</div>
-<h1 class="center" id="kept">✓ Wi-Fi updated</h1>
+<h1 class="center" id="kept">✓ <span class="nowrap">Wi-Fi</span> updated</h1>
 <p class="muted center">Taking you back to Memory Frame…</p>
 {% elif result == "late" %}
-<h1>Keep new Wi-Fi?</h1>
-<p class="err" role="alert">Too late, the old Wi-Fi is back. Join "{{ old }}" and try again.</p>
+<h1>Keep new <span class="nowrap">Wi-Fi</span>?</h1>
+<p class="err" role="alert">Too late, the old <span class="nowrap">Wi-Fi</span> is back. Join "{{ old }}" and try again.</p>
 <a class="btn block big mt" href="/admin/">Back to Memory Frame</a>
 {% elif result == "failed" %}
-<h1>Keep new Wi-Fi?</h1>
-<p class="err" role="alert">Couldn't start the new Wi-Fi. Nothing was changed.</p>
+<h1>Keep new <span class="nowrap">Wi-Fi</span>?</h1>
+<p class="err" role="alert">Couldn't start the new <span class="nowrap">Wi-Fi</span>. Nothing was changed.</p>
 <a class="btn block big mt" href="/admin/">Back to Memory Frame</a>
 {% else %}
-<h1>Keep new Wi-Fi?</h1>
+<h1>Keep new <span class="nowrap">Wi-Fi</span>?</h1>
 <p>You're connected to <b>"{{ ssid }}"</b>. Tap to keep it. Other phones will need to join it too.</p>
 {% if result == "wrongnet" %}<p class="err" role="alert">Join "{{ ssid }}" first, then open http://10.42.0.1/ again.</p>{% endif %}
 <form method="post" action="/admin/wifi/keep">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <button type="submit" id="keepBtn" class="block big">Keep new Wi-Fi</button>
+  <button type="submit" id="keepBtn" class="block big">Keep new <span class="nowrap">Wi-Fi</span></button>
 </form>
 <div class="ring" aria-hidden="true"><b>{{ remaining }}</b></div>
-<p class="muted center grey">Old Wi-Fi returns in <b id="remaining">{{ remaining }}</b></p>
+<p class="muted center grey">Old <span class="nowrap">Wi-Fi</span> returns in <b id="remaining">{{ remaining }}</b></p>
 {% if old %}<div class="card gap-sm"><p class="small muted flush">Not ready? Do nothing, and the frame goes back to <b>{{ old }}</b> with the old password.</p></div>{% endif %}
 {% endif %}
 {% endblock %}

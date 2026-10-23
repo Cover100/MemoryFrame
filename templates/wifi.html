@@ -1,26 +1,26 @@
 {% extends "_phone.html" %}
 {% block title %}Frame Wi-Fi{% endblock %}
-{% block heading %}Frame Wi-Fi{% endblock %}
+{% block heading %}Frame <span class="nowrap">Wi-Fi</span>{% endblock %}
 {% block content %}
 {% if step == "waiting" %}
-<h1>Rejoin the new Wi-Fi</h1>
+<h1>Rejoin the new <span class="nowrap">Wi-Fi</span></h1>
 <div class="card">
 <ol class="steps">
-  <li>Open your phone's Wi-Fi settings and join "{{ name }}" with your new password (or scan the QR on the frame).</li>
+  <li>Open your phone's <span class="nowrap">Wi-Fi</span> settings and join "{{ name }}" with your new password (or scan the QR on the frame).</li>
   <li>Come back here and open http://10.42.0.1/</li>
 </ol>
-<p class="small muted flush grey">If you don't confirm within 5 minutes, the old Wi-Fi comes back.</p>
+<p class="small muted flush grey">If you don't confirm within 5 minutes, the old <span class="nowrap">Wi-Fi</span> comes back.</p>
 </div>
 {% else %}
-<h1>Frame Wi-Fi</h1>
+<h1>Frame <span class="nowrap">Wi-Fi</span></h1>
 {% if unavailable %}
-<p class="err" id="unavailable">{{ error or "Wi-Fi can't be changed right now." }}</p>
+<p class="err" id="unavailable">{% if error %}{{ error }}{% else %}<span class="nowrap">Wi-Fi</span> can't be changed right now.{% endif %}</p>
 {% else %}
 <form method="post" action="/admin/wifi" id="wifiForm" novalidate>
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <p class="muted">Current Wi-Fi: <b class="strong" id="currentName">{{ current }}</b></p>
+  <p class="muted">Current <span class="nowrap">Wi-Fi</span>: <b class="strong" id="currentName">{{ current }}</b></p>
   <div id="formStep">
-    <div class="warn" role="note"><span class="i" aria-hidden="true">!</span><div><b>All phones will disconnect.</b><br>Rejoin with the new password within 5 minutes, or the old Wi-Fi comes back.</div></div>
+    <div class="warn" role="note"><span class="i" aria-hidden="true">!</span><div><b>All phones will disconnect.</b><br>Rejoin with the new password within 5 minutes, or the old <span class="nowrap">Wi-Fi</span> comes back.</div></div>
     <label class="f" for="ssid">New name</label>
     <input class="field" id="ssid" name="ssid" value="{{ name }}" autocomplete="off" autocapitalize="off" spellcheck="false">
     <label class="f" for="password">New password</label>
@@ -30,16 +30,16 @@
     </div>
     <p class="small muted" id="pwHint">8 to 63 letters, numbers or symbols.</p>
     <p class="err" id="error" role="alert"{% if not error %} hidden{% endif %}>{{ error or "" }}</p>
-    <button type="submit" id="changeBtn" class="block big mt">Change Wi&#8209;Fi</button>
+    <button type="submit" id="changeBtn" class="block big mt">Change <span class="nowrap">Wi-Fi</span></button>
   </div>
   <div id="confirmStep" class="scrim" hidden>
     <div class="sheet" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmBody">
-      <h2 id="confirmTitle">Change Wi&#8209;Fi?</h2>
-      <div class="warn" id="confirmBody"><span class="i" aria-hidden="true">!</span><div>All phones will disconnect. Rejoin with the new password within 5 minutes or the old Wi&#8209;Fi comes back.</div></div>
-      <p class="flush">New Wi&#8209;Fi: <b id="confirmName"></b></p>
+      <h2 id="confirmTitle">Change <span class="nowrap">Wi-Fi</span>?</h2>
+      <div class="warn" id="confirmBody"><span class="i" aria-hidden="true">!</span><div>All phones will disconnect. Rejoin with the new password within 5 minutes or the old <span class="nowrap">Wi-Fi</span> comes back.</div></div>
+      <p class="flush">New <span class="nowrap">Wi-Fi</span>: <b id="confirmName"></b></p>
       <div class="rowb">
         <button type="button" id="cancelBtn" class="secondary big btn-default">Cancel</button>
-        <button type="button" id="confirmBtn" class="big">Change Wi&#8209;Fi</button>
+        <button type="button" id="confirmBtn" class="big">Change <span class="nowrap">Wi-Fi</span></button>
       </div>
     </div>
   </div>

@@ -175,6 +175,10 @@ nano deploy/hotspot.conf                             # set SSID and PASSWORD
   The app does not read the profile: the name it shows (pairing overlay, Wi-Fi QR, phone pages) is the committed
   phone change stored in its database if there is one, otherwise `MEMORYFRAME_SSID` / `deploy/hotspot.conf`
   (see `memoryframe/wifi.py` `current_wifi` and `memoryframe/frameinfo.py` `hotspot_conf`).
+  Two details: the stored phone change is used only when **both** the SSID and the password are stored (and non-empty);
+  if only one is stored, both values come from the env/file instead. The env override is **per key**:
+  `MEMORYFRAME_SSID` and `MEMORYFRAME_WIFI_PASSWORD` are each applied on their own when set and non-empty, and
+  whichever one is not set falls back to the same key in `deploy/hotspot.conf`.
 - **Change password/SSID from the shell:** edit `deploy/hotspot.conf`, re-run `./deploy/install.sh` (it copies the file to root-owned `/etc/memoryframe/hotspot.conf`, which the `memoryframe-reset` boot path uses), and re-run `./deploy/hotspot.sh`
   (same profile, no duplicates, autoconnect stays off). If a phone change was already committed, the app keeps showing that
   stored name and password instead of the file, so change it from the phone, or use `memoryframe-reset`, which clears the stored values.

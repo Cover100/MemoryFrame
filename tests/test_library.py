@@ -86,6 +86,28 @@ def test_delete_removes_original_and_derivatives(paired, item, mf_app, client):
     assert paired.delete(f"/api/v1/media/{item['id']}", environ_base=PHONE).status_code == 404
 
 
+def test_single_delete_of_an_unsafe_stored_name_is_400_and_touches_nothing_outside(paired, lib, mf_app, tmp_path):
+    """Hollis on #77: a stored_name that is a path (never made by the server) gave a 500; refuse it with 400."""
+    victim = tmp_path / "victim.txt"
+    victim.write_text("keep me")
+    conn = mfdb.connect(mf_app.config["DB_PATH"])
+    ids = []
+    for name in (f"../../{victim.name}", str(victim), "..", "a/b.jpg", ".hidden.jpg"):
+        cur = conn.execute("INSERT INTO media (stored_name, original_name, kind, sha256, size_bytes, source, created_at)"
+                           " VALUES (?, 'x', 'image', 'h', 1, 'upload', 1)", (name,))
+        ids.append(cur.lastrowid)
+    conn.commit()
+    conn.close()
+    for i in ids:
+        r = paired.delete(f"/api/v1/media/{i}", environ_base=PHONE)
+        assert r.status_code == 400 and "error" in r.get_json(), i
+    assert victim.read_text() == "keep me"
+    left = [m["id"] for m in paired.get("/api/v1/media", environ_base=PHONE).get_json()]
+    assert set(ids) <= set(left)                                            # refused rows stay, visibly
+    assert not os.listdir(os.path.join(mf_app.config["DATA_DIR"], "tmp", "trash")) if os.path.isdir(
+        os.path.join(mf_app.config["DATA_DIR"], "tmp", "trash")) else True
+
+
 def test_reupload_after_delete(paired, item):
     paired.delete(f"/api/v1/media/{item['id']}", environ_base=PHONE)
     r = paired.post("/api/v1/media", data={"file": (io.BytesIO(jpeg()), "beach.jpg")},

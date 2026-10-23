@@ -26,6 +26,8 @@ def _phone_context():
         # Juniper's #77 review: no SSID unless this visitor is paired, and never the hotspot SSID in dev
         # mode (the frame is on the developer's Wi-Fi then, and the hotspot name would be wrong and leak).
         from . import frameinfo, wifi
+        if getattr(g, "device_id", None) is None and auth.current_device() is None:
+            return {"ssid": "", "mode": "unknown"}          # unpaired visitors never see the SSID
         try:
             mode = frameinfo.network().get("mode")
         except Exception:  # noqa: BLE001 - never break a page over this hint
@@ -59,7 +61,7 @@ _PHONE_ERRORS = {404: ("Page not found", "This page isn't on the frame."),
 
 
 def _phone_error(e):
-    """#79: phone pages that fail (404 / 405 / 500) stay on the paper theme; API and frame paths keep the default."""
+    """#79: phone pages that fail (404 / 405 / 500) stay on the phone (dark) theme; API and frame paths keep the default."""
     from werkzeug.exceptions import HTTPException, InternalServerError
     code = e.code if isinstance(e, HTTPException) else 500
     p = request.path

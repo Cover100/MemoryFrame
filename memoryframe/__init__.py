@@ -71,7 +71,8 @@ def _refresh_copies_in_background(app):
             pass
         conn = db.connect(app.config["DB_PATH"])
         try:
-            made, failed = imaging.backfill(conn, app.config["DATA_DIR"], app.config["DISPLAY_TARGET"])
+            made, failed = imaging.backfill(conn, app.config["DATA_DIR"], app.config["DISPLAY_TARGET"],
+                                            pause=imaging.BACKFILL_PAUSE_S)
             if made or failed:
                 app.logger.warning("display copies refreshed at start: %d made, %d failed", made, failed)
         except Exception as e:  # noqa: BLE001

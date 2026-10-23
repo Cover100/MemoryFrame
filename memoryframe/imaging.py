@@ -192,7 +192,7 @@ def blurfill(im, target, faces=()):
     if top is None:
         k, top = 1.0, 0                                             # a face would be cut: keep the whole photo
     fh = round(ch * k)
-    fw, vis = round(fh * a), min(fh, ch)                            # visible rows
+    fw, vis = max(1, round(fh * a)), min(fh, ch)                    # visible rows (a hair-thin photo: 1 px wide, no crash)
     rows = im.height / fh                                           # photo rows per sharp row
     fg = im.resize((fw, vis), Image.LANCZOS, box=(0, top * rows, im.width, (top + vis) * rows), reducing_gap=3.0)
     x0, y0 = (cw - fw) // 2, (ch - vis) // 2
@@ -256,7 +256,7 @@ def ensure_display_copy(data_dir, stored_name, target):
     return dst
 
 
-BACKFILL_PAUSE_S = 0.2  # #86: rest between photos so the kiosk browser keeps its CPU while a backfill runs
+BACKFILL_PAUSE_S = 0.2  # #86: rest between photos for the start-up THREAD (the kiosk browser keeps its CPU); the CLI passes no pause
 
 FAILURES_FILE = ".copy-failures.json"
 
@@ -293,13 +293,14 @@ def _failure_key(original, target):
     return f"{orig}|{copy_marker(target).decode()}"
 
 
-def backfill(conn, data_dir, target, force=False):
+def backfill(conn, data_dir, target, force=False, pause=0):
     """Create missing or stale display copies for every image. Returns (made, failed).
 
     A copy only counts as made if a current copy exists afterwards. A failure (missing or
     unreadable original) is counted as failed and recorded in display/.copy-failures.json,
     so later runs (every start-up) skip it until the original, the rules or the size change,
-    or --force is used."""
+    or --force is used. `pause` seconds of rest after each copy made (the start-up thread passes one so the
+    kiosk keeps its CPU; the CLI, which install.sh runs with the service stopped, passes none)."""
     made = failed = 0
     failures = {} if force else _load_failures(data_dir)
     before = dict(failures)
@@ -324,7 +325,8 @@ def backfill(conn, data_dir, target, force=False):
         else:
             ensure_display_copy(data_dir, name, target)
             ok = os.path.exists(dst) and copy_is_current(dst, target)
-            time.sleep(BACKFILL_PAUSE_S)
+            if pause:
+                time.sleep(pause)                            # background thread only (install/CLI: pause=0)
         if ok:
             made += 1
             failures.pop(name, None)

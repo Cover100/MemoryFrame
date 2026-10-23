@@ -14,11 +14,6 @@ T = (1000, 600)
 YELLOW = (255, 255, 0)
 
 
-@pytest.fixture(autouse=True)
-def no_pause(monkeypatch):
-    monkeypatch.setattr(imaging, "BACKFILL_PAUSE_S", 0)
-
-
 def photo(w, h, top_band=0.0):
     """Grey 24 px stripes (blurred away in the bars, sharp in the centre), a 24 px yellow strip on the
     far left and right edge (marks the sharp photo's edges), optionally a red band across the top."""
@@ -51,7 +46,10 @@ def sharp_span(out, y=300):
 
 
 def old_cover_copy(src, dst):
-    """Frozen copy of the pre-#86 cover pipeline (no faces): what a 1.30-or-wider photo must still get."""
+    """Frozen copy of the pre-#86 cover pipeline as it was on main (25c7b56): EXIF transpose, centred crop
+    from framing.crop_box(faces=[]), LANCZOS resize, JPEG quality steps/optimize/progressive as in
+    make_display_copy. It uses the first quality step only, which is enough for these smooth test photos
+    (under the 300 KB cap). The test photos contain no faces, so faces.detect() returns [] for them."""
     with Image.open(src) as im:
         im = ImageOps.exif_transpose(im)
         im = im.crop(framing.crop_box(im.size, T, []))
@@ -219,14 +217,120 @@ def test_backfill_resumes_after_an_interruption(mf_app, lib, monkeypatch):
     conn.close()
 
 
-def test_backfill_rests_between_photos(mf_app, lib, monkeypatch):
-    _add_photos(lib, mf_app, 2)
-    for f in os.listdir(os.path.join(mf_app.config["DATA_DIR"], "display")):
-        os.remove(os.path.join(mf_app.config["DATA_DIR"], "display", f))
+def _fresh_photos(lib, mf_app, n):
+    _add_photos(lib, mf_app, n)
+    d = os.path.join(mf_app.config["DATA_DIR"], "display")
+    for f in os.listdir(d):
+        os.remove(os.path.join(d, f))
+
+
+def test_backfill_rests_between_photos_only_when_asked(mf_app, lib, monkeypatch):
+    _fresh_photos(lib, mf_app, 2)
     naps = []
-    monkeypatch.setattr(imaging, "BACKFILL_PAUSE_S", 0.2)
     monkeypatch.setattr(imaging.time, "sleep", naps.append)
     conn = mfdb.connect(mf_app.config["DB_PATH"])
-    imaging.backfill(conn, mf_app.config["DATA_DIR"], T)
+    imaging.backfill(conn, mf_app.config["DATA_DIR"], T, force=True)        # default: no rest (install.sh)
+    assert naps == []
+    imaging.backfill(conn, mf_app.config["DATA_DIR"], T, force=True, pause=0.2)
     conn.close()
     assert naps == [0.2, 0.2]
+
+
+def test_cli_display_copies_never_rests(mf_app, lib, monkeypatch):
+    """install.sh runs `display-copies` with the frame stopped: no per-photo pause there."""
+    from memoryframe import __main__ as cli
+    _fresh_photos(lib, mf_app, 2)
+    naps = []
+    monkeypatch.setattr(imaging.time, "sleep", naps.append)
+    monkeypatch.setenv("MEMORYFRAME_DISPLAY_SIZE", "1000x600")
+    monkeypatch.setenv("MEMORYFRAME_DATA_DIR", mf_app.config["DATA_DIR"])
+    assert cli.main(["display-copies", "--force"]) == 0
+    assert naps == []
+
+
+def test_startup_thread_rests_and_runs_at_low_priority(mf_app, lib, monkeypatch):
+    """The start-up refresh thread passes the pause and lowers its own priority (this thread only)."""
+    import threading
+    import time
+    from memoryframe import create_app
+    seen = {}
+    done = threading.Event()
+
+    def fake_backfill(conn, data_dir, target, force=False, pause=0):
+        seen["pause"] = pause
+        done.set()
+        return 0, 0
+
+    prio = []
+    monkeypatch.setattr(os, "setpriority", lambda which, who, v: prio.append((which, who, v)))
+    monkeypatch.setattr(imaging, "backfill", fake_backfill)
+    create_app({"TESTING": True, "REFRESH_COPIES_AT_START": True,
+                "DATA_DIR": mf_app.config["DATA_DIR"], "DB_PATH": mf_app.config["DB_PATH"]})
+    assert done.wait(10)
+    time.sleep(0.05)
+    assert seen["pause"] == imaging.BACKFILL_PAUSE_S == 0.2
+    assert len(prio) == 1 and prio[0][0] == os.PRIO_PROCESS and prio[0][2] == 10
+    assert prio[0][1] != threading.get_native_id()        # the worker thread, not the caller
+
+
+# ---------- hair-thin and odd-mode stored copies must not crash (Juniper, #87) ----------
+
+def _check_valid(dst):
+    with Image.open(dst) as im:
+        im.load()
+        assert im.format == "JPEG" and im.size == T and im.mode == "RGB"
+
+
+@pytest.mark.parametrize("size", [(1, 4096), (2, 4096), (1, 1500), (3, 4096), (1, 1), (40, 4096), (1, 8000)])
+def test_hair_thin_stored_copy(tmp_path, size):
+    """Aspect so thin the sharp width rounds to 0: a 1 px sliver, a valid 1000x600 JPEG, no exception."""
+    out, dst = make(tmp_path, Image.new("RGB", size, (200, 120, 40)), "thin.jpg")
+    _check_valid(dst)
+    left, right = sharp_span_any(out)
+    assert 0 <= left <= right < 1000
+
+
+def sharp_span_any(out):
+    """Centre column range of pixels that are brighter than the dimmed sides (sliver or photo)."""
+    row = [out.getpixel((x, 300)) for x in range(1000)]
+    xs = [x for x, p in enumerate(row) if p[0] > 190]        # the photo is (200, 120, 40); sides <= 0.65*200
+    return (xs[0], xs[-1]) if xs else (499, 500)
+
+
+def test_blurfill_function_directly_on_thin_images():
+    for size in ((1, 4096), (2, 4096), (1, 1500), (1, 3)):
+        im = imaging.blurfill(Image.new("RGB", size, (90, 90, 90)), T)
+        assert im.size == T
+
+
+@pytest.mark.parametrize("mode,fmt,ext", [("L", "JPEG", "jpg"), ("P", "PNG", "png"), ("RGBA", "PNG", "png"),
+                                          ("LA", "PNG", "png"), ("CMYK", "JPEG", "jpg"), ("1", "PNG", "png")])
+@pytest.mark.parametrize("size", [(1200, 1600), (2, 4096)])
+def test_other_modes_make_a_valid_copy(tmp_path, mode, fmt, ext, size):
+    base = photo(*size).convert("RGB") if size[0] > 100 else Image.new("RGB", size, (200, 120, 40))
+    im = base.convert(mode) if mode != "P" else base.convert("P", palette=Image.Palette.ADAPTIVE)
+    src = tmp_path / f"m.{ext}"
+    im.save(src, fmt)
+    dst = str(tmp_path / "m-out.jpg")
+    imaging.make_display_copy(str(src), dst, T)
+    _check_valid(dst)
+
+
+def test_stale_copy_is_remade_on_demand_when_served(mf_app, lib, client, monkeypatch):
+    """A pre-#86 copy (old marker) of a portrait is remade with the blurred sides in the request thread,
+    with no rest (the pause belongs to the background backfill only)."""
+    dst = _add_photos(lib, mf_app, 1)[0]
+    conn = mfdb.connect(mf_app.config["DB_PATH"])
+    stored_name = conn.execute("SELECT stored_name FROM media").fetchone()[0]
+    conn.close()
+    old = imaging.copy_marker(T).replace(imaging.COPY_VERSION.encode(), b"mf26c")
+    Image.new("RGB", T, (255, 0, 0)).save(dst, "JPEG", comment=old)
+    assert not imaging.copy_is_current(dst, T)
+    naps = []
+    monkeypatch.setattr(imaging.time, "sleep", naps.append)
+    r = client.get(f"/uploads/{stored_name}")
+    assert r.status_code == 200
+    assert imaging.copy_is_current(dst, T) and naps == []
+    out = Image.open(io.BytesIO(r.data)).convert("RGB")
+    left, right = sharp_span(out)                                # blurred sides: a centred sharp column
+    assert left >= 99 and 999 - right >= 99

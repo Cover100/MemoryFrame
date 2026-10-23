@@ -70,7 +70,7 @@ def test_home_merges_library_preview_and_rows(paired, lib, mf_app):
     assert h.count('/thumb" alt=') == 9 and f'/api/v1/media/{newest}/thumb' in h
     assert '<li class="hid">' in h and '<span class="tag">Hidden</span>' in h
     assert '<a class="btn btn-neutral block see-all" href="/admin/library"><span>See all 12 photos</span>' in h
-    assert h.index("Upload photos") < h.index("Library") < h.index("Frame Wi-Fi") < h.index("Settings<small>")
+    assert h.index("Upload photos") < h.index("Library") < h.index('Frame <span class="nw">Wi-Fi') < h.index("Settings<small>")
     assert "Connected to the frame</p>" in h and 'role="meter"' in h and " GB free <span>of " in h
     form = h[h.index('id="signOutForm"'):h.index("</form>", h.index('id="signOutForm"'))]
     assert 'name="csrf_token" value="' in form and "Sign out all phones" in form
@@ -375,7 +375,7 @@ def test_offline_view_takes_focus(page, server, mf_app):
 
 
 def test_wifi_buttons_keep_wi_fi_whole(paired, monkeypatch, tmp_path):
-    """Hollis 48cdae8 / Wren: 'Wi- / Fi' at 360 px. A plain hyphen inside <span class="nowrap"> keeps 'Wi-Fi' whole
+    """Hollis 48cdae8 / Wren: 'Wi- / Fi' at 360 px. A plain hyphen inside <span class="nw"> keeps 'Wi-Fi' whole
     (some Android fonts have no U+2011); the space before it still wraps at 130 %."""
     monkeypatch.setenv("MEMORYFRAME_NETMODE_STATE", str(tmp_path / "nm.json"))
     (tmp_path / "nm.json").write_text('{"mode": "product"}')
@@ -384,9 +384,9 @@ def test_wifi_buttons_keep_wi_fi_whole(paired, monkeypatch, tmp_path):
         pytest.skip("Wi-Fi change unavailable in this environment")
     for i in ("changeBtn", "confirmBtn"):
         assert f'id="{i}" class="' in h and h.split(f'id="{i}"')[1].split("</button>")[0].endswith(
-            'Change <span class="nowrap">Wi-Fi</span>')
+            'Change <span class="nw">Wi-Fi</span>')
     assert "\u2011" not in h and "&#8209;" not in h
-    assert ".nowrap { white-space: nowrap; }" in CSS
+    assert ".mf-phone .nw { white-space: nowrap; }" in CSS
 
 
 def test_script_focused_headings_have_no_outline():
@@ -412,14 +412,9 @@ def test_wifi_sheet_buttons_keep_wi_fi_whole_at_360(page, server, mf_app, monkey
         pytest.skip("Wi-Fi change unavailable in this environment")
     evaluate(page, "document.getElementById('confirmStep').hidden = false")
     page.pump(0.2)
-    # no line starts with "Fi": measure each text line of the button label
-    lines = evaluate(page, """JSON.stringify((()=>{const b=document.getElementById('confirmBtn'); const t=b.firstChild;
-        const r=document.createRange(); const out=[]; let top=null, cur='';
-        for(let i=0;i<t.length;i++){ r.setStart(t,i); r.setEnd(t,i+1); const y=Math.round(r.getBoundingClientRect().top);
-          if(top!==null && Math.abs(y-top)>2){ out.push(cur); cur=''; } top=y; cur+=t.data[i]; }
-        out.push(cur); return out;})())""")
-    import json
-    assert not any(line.strip().startswith("Fi") for line in json.loads(lines)), lines
+    # "Wi-Fi" stays whole: its span is one line box (never "Wi-" / "Fi"), in the buttons and the H1 / title
+    assert evaluate(page, """[...document.querySelectorAll('#confirmBtn .nw, #changeBtn .nw, main h1 .nw, .bar .nw')]
+        .every((n)=> n.getClientRects().length === 1 && n.textContent === 'Wi-Fi')""")
     assert evaluate(page, "document.documentElement.scrollWidth <= document.documentElement.clientWidth")
     assert evaluate(page, "(()=>{const b=document.getElementById('confirmBtn'); return b.scrollWidth <= b.clientWidth + 1;})()")
 
@@ -599,7 +594,7 @@ def test_wifi_sheet_warning_keeps_wi_fi_whole(paired, monkeypatch, tmp_path):
     (tmp_path / "nm.json").write_text('{"mode": "product"}')
     src = (TEMPLATES / "wifi.html").read_text()
     sheet = src[src.index('id="confirmStep"'):src.index("</div>\n  </div>", src.index('id="confirmStep"'))]
-    assert sheet.count('<span class="nowrap">Wi-Fi</span>') == 4 and "Wi-Fi" not in sheet.replace('<span class="nowrap">Wi-Fi</span>', ""), sheet
+    assert sheet.count('<span class="nw">Wi-Fi</span>') == 4 and "Wi-Fi" not in sheet.replace('<span class="nw">Wi-Fi</span>', ""), sheet
 
 
 # ---------------- PHONE-DARK.md (6621607): dark frame theme on every phone page ----------------
@@ -740,7 +735,7 @@ def test_dark_tokens_and_outline_rules_in_css():
 
 
 def test_no_non_breaking_hyphen_and_every_visible_wi_fi_is_wrapped():
-    """Wren: no U+2011 anywhere on the phone site; every visible 'Wi-Fi' in the phone templates sits in span.nowrap."""
+    """Wren: no U+2011 anywhere on the phone site; every visible 'Wi-Fi' in the phone templates sits in span.nw."""
     import re
     for name in ("_phone", "admin_home", "settings", "wifi", "wifi_keep"):
         src = (TEMPLATES / f"{name}.html").read_text()
@@ -754,3 +749,9 @@ def test_no_non_breaking_hyphen_and_every_visible_wi_fi_is_wrapped():
     for name in ("wifi.js", "upload.js"):
         src = (ROOT / "static" / name).read_text()
         assert "innerHTML" not in src and "\u2011" not in src
+
+
+def test_home_tile_focus_ring_is_inset():
+    """Wren's dark re-check M1: the tile clips (overflow:hidden), so the focus ring sits inside it."""
+    assert ".mf-phone .grid a:focus-visible { outline-offset: -3px; }" in CSS
+    assert "#2a2a2a" not in CSS.lower()                      # tokenised

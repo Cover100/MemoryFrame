@@ -7,7 +7,7 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
   -webkit-text-size-adjust: 100%; }
 .mf-phone [hidden] { display: none !important; }
 .mf-phone [tabindex="-1"]:focus { outline: none; }   /* headings focused by script (offline view) */
-.nowrap { white-space: nowrap; }   /* keeps "Wi-Fi" whole (no break at the hyphen) */
+.mf-phone .nw { white-space: nowrap; }   /* keeps "Wi-Fi" whole (no break at the hyphen) */
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 /* Header band (forest) + status strip (walnut) */
@@ -128,7 +128,7 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
 .mf-phone .hero { display: flex; justify-content: center; margin: 8px 0 22px; }
 .mf-phone .hero span { width: 120px; height: 76px; border-radius: 12px; background: var(--mf-walnut); position: relative; }
 .mf-phone .hero span::before { content: ""; position: absolute; left: 10px; top: 14px; width: 46px; height: 46px;
-  border-radius: 50%; background: var(--mf-ink); border: 3px solid #2a2a2a; }
+  border-radius: 50%; background: var(--mf-ink); border: 3px solid var(--mf-forest-800); }
 .mf-phone .hero span::after { content: ""; position: absolute; right: 8px; top: 10px; width: 50px; height: 56px;
   border-radius: 5px; background: var(--mf-forest-900); }
 .mf-phone .code { width: 100%; height: 64px; margin: 18px 0 8px; border: 1.5px solid var(--mf-outline);
@@ -145,6 +145,7 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
 .mf-phone .grid { list-style: none; margin: 0 0 12px; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
 .mf-phone .grid li { aspect-ratio: 1; border-radius: 6px; overflow: hidden; background: var(--mf-line); position: relative; }
 .mf-phone .grid a { display: block; height: 100%; }
+.mf-phone .grid a:focus-visible { outline-offset: -3px; }   /* the tile clips (overflow:hidden): ring stays inside */
 .mf-phone .grid img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .mf-phone .grid li.hid img { opacity: .35; }
 .mf-phone .tag { position: absolute; left: 6px; bottom: 6px; background: var(--mf-forest-900); color: var(--mf-linen);
@@ -269,8 +270,8 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
   padding: 24px 20px 28px; max-height: 100%; overflow-y: auto; }
 .mf-phone .sheet h2 { font-size: 24px; }
 .mf-phone .sheet .warn { margin: 12px 0; }
-.mf-phone .rowb { display: flex; gap: 12px; margin-top: 20px; }
-.mf-phone .rowb button { flex: 1; min-width: 0; }
+.mf-phone .rowb { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px; }
+.mf-phone .rowb button { flex: 1 1 8rem; min-width: 0; }   /* PHONE-DARK: sheet buttons wrap instead of clipping */
 
 /* 07 Keep new Wi-Fi: static ring (decorative; the text below carries the time) */
 .mf-phone .ring { width: 120px; height: 120px; border-radius: 50%; border: 8px solid var(--mf-line); display: grid;

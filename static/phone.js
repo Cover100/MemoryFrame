@@ -7,13 +7,13 @@
         const f = Math.min(1, Math.max(0, parseFloat(u.dataset.used) || 0));
         u.style.transform = "scaleX(" + f.toFixed(3) + ")";
     });
-    // Wren: "Wi-Fi" must not break at the hyphen. Sets plain text, wrapping each "Wi-Fi" in <span class="nowrap">
-    // built from DOM nodes (never innerHTML, so file names and server errors are never parsed as HTML).
+    // Wren: "Wi-Fi" must not break at the hyphen. Sets plain text, wrapping each "Wi-Fi" in <span class="nw">
+    // built from DOM nodes (never parsed as markup, so file names and server errors are never parsed as HTML).
     window.mfSetText = function(el, text){
         const parts = String(text).split("Wi-Fi");
         el.textContent = "";
         parts.forEach((p, i)=>{
-            if(i){ const s = document.createElement("span"); s.className = "nowrap"; s.textContent = "Wi-Fi"; el.appendChild(s); }
+            if(i){ const s = document.createElement("span"); s.className = "nw"; s.textContent = "Wi-Fi"; el.appendChild(s); }
             if(p){ el.appendChild(document.createTextNode(p)); }
         });
     };

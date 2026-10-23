@@ -268,3 +268,79 @@ def test_failed_delete_error_is_visible_when_scrolled_down(page, server, mf_app,
         with open(os.path.join(out, f"{w}{'-130' if zoom != 1 else ''}-failed-delete-scrolled.png"), "wb") as f:
             f.write(base64.b64decode(png))
     assert page.exceptions() == []
+
+
+def test_error_at_the_very_bottom_keeps_the_last_row_clear(page, server, mf_app, lib):
+    """Polish (Wren N7): already scrolled to the end when the error appears -> stay at the end, last row above the toolbar."""
+    fresh(mf_app)
+    for i in range(40):
+        lib.add(f"pic{i}.jpg", PNG + bytes([i]))
+    _phone(page, server, mf_app, "admin/library")
+    click(page, "document.getElementById('selectBtn')")
+    js(page, "window.scrollTo(0, document.documentElement.scrollHeight)")
+    page.pump(0.3)
+    js(page, "window.fetch = () => Promise.resolve(new Response('{}', {status: 500}))")
+    click(page, "document.querySelectorAll('.lib .tile')[39]")
+    click(page, "document.getElementById('delBtn')")
+    click(page, "document.getElementById('confirmDelete')")
+    page.pump(0.5)                                                   # no manual scroll afterwards
+    r = json.loads(js(page, """JSON.stringify({err: !document.getElementById('delErr').hidden,
+      tb: document.getElementById('toolbar').getBoundingClientRect().top,
+      last: document.querySelectorAll('.lib .tile')[39].getBoundingClientRect().bottom,
+      end: innerHeight + scrollY >= document.body.scrollHeight - 2})"""))
+    assert r["err"] and r["end"] and r["last"] <= r["tb"] + 0.5, r
+    assert page.exceptions() == []
+
+
+def test_error_while_scrolled_up_does_not_jump_to_the_end(page, server, mf_app, lib):
+    fresh(mf_app)
+    for i in range(40):
+        lib.add(f"pic{i}.jpg", PNG + bytes([i]))
+    _phone(page, server, mf_app, "admin/library")
+    click(page, "document.getElementById('selectBtn')")
+    js(page, "window.scrollTo(0, 150)")
+    page.pump(0.2)
+    js(page, "window.fetch = () => Promise.resolve(new Response('{}', {status: 500}))")
+    click(page, "document.querySelectorAll('.lib .tile')[1]")
+    click(page, "document.getElementById('delBtn')")
+    click(page, "document.getElementById('confirmDelete')")
+    page.pump(0.5)
+    assert js(page, "!document.getElementById('delErr').hidden") and abs(js(page, "scrollY") - 150) < 2
+
+
+def test_deleting_everything_moves_focus_to_upload(page, server, mf_app, lib):
+    fresh(mf_app)
+    for i in range(3):
+        lib.add(f"pic{i}.jpg", PNG + bytes([i]))
+    _phone(page, server, mf_app, "admin/library")
+    click(page, "document.getElementById('selectBtn')")
+    click(page, "document.getElementById('selAll')")
+    click(page, "document.getElementById('delBtn')")
+    click(page, "document.getElementById('confirmDelete')")
+    page.pump(0.6)
+    assert rows(mf_app) == 0
+    assert js(page, "!document.getElementById('emptyLib').hidden") and state(page)["focus"] == "upBtn"
+    assert page.exceptions() == []
+
+
+def test_try_again_restores_the_scroll_position(page, server, mf_app, lib):
+    fresh(mf_app)
+    for i in range(40):
+        lib.add(f"pic{i}.jpg", PNG + bytes([i]))
+    _phone(page, server, mf_app, "admin/library")
+    click(page, "document.getElementById('selectBtn')")
+    js(page, "window.__f = window.fetch; window.scrollTo(0, 400)")
+    page.pump(0.3)
+    y = js(page, "scrollY")
+    assert y > 300
+    js(page, "window.fetch = () => Promise.reject(new TypeError('Failed to fetch'))")
+    click(page, "document.querySelectorAll('.lib .tile')[12]")
+    click(page, "document.getElementById('delBtn')")
+    click(page, "document.getElementById('confirmDelete')")
+    page.pump(0.5)
+    assert js(page, "!document.getElementById('offline').hidden") and js(page, "scrollY") == 0
+    js(page, "window.fetch = window.__f")
+    click(page, "document.getElementById('offlineRetry')")
+    page.pump(0.5)
+    assert js(page, "document.getElementById('offline').hidden") and abs(js(page, "scrollY") - y) < 2
+    assert state(page)["selecting"] and page.exceptions() == []

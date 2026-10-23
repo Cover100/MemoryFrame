@@ -45,11 +45,13 @@
         $("formStep").inert = true;
         if(bar){ bar.inert = true; }
         $("confirmStep").hidden = false;
+        document.body.classList.add("sheet-open");     // lock the page scroll behind the sheet (Wren #77 N5)
         $("cancelBtn").focus();
     });
     $("cancelBtn").addEventListener("click", ()=>{
         $("password").value = "";                  // values kept, password cleared
         $("confirmStep").hidden = true;
+        document.body.classList.remove("sheet-open");
         $("formStep").inert = false;
         if(bar){ bar.inert = false; }
         $("password").focus();

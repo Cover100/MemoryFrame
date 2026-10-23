@@ -24,7 +24,9 @@
     const still = document.getElementById("offlineStill");
     const strips = ()=> document.querySelectorAll("body > .strip");
     const lines = [];
+    let savedY = null;                                   // polish (Wren): Try again returns to where the page was scrolled
     function offline(text){
+        if(savedY === null){ savedY = window.scrollY; }
         if(text && lines.indexOf(text) < 0){ lines.push(text); }
         detail.textContent = lines.join(" ");            // textContent: file names are never parsed as HTML
         detail.hidden = !lines.length;
@@ -42,6 +44,7 @@
         strips().forEach((s)=>{ s.hidden = false; });
         const h = page.querySelector("h1, h2") || page;
         h.tabIndex = -1; h.focus();
+        if(savedY !== null){ window.scrollTo(0, savedY); savedY = null; }
     }
     document.getElementById("offlineRetry").addEventListener("click", async ()=>{
         still.hidden = true;

@@ -370,9 +370,9 @@ video {
 
 
 
-    text-shadow:
-
-        0 2px 5px black;
+    background: var(--mf-pill);   /* polish: was text-shadow; flat pill keeps the no-shadows rule */
+    padding: 4px 14px;
+    border-radius: var(--mf-r-pill);
 
 
 
@@ -426,6 +426,7 @@ video {
 .stepTitle{align-self:flex-start;display:flex;gap:10px;align-items:center;font-size:var(--mf-f-body);font-weight:700}
 .stepText{font-size:var(--mf-f-small);color:var(--mf-oat);overflow-wrap:anywhere}
 .stepText b{display:block;color:var(--mf-linen)}
+.codeWrap .stepText{text-wrap:balance}   /* polish: 'code' never wraps alone (mock 04: '...on your phone / if it asks for a code') */
 /* MF-23: the SVG carries its own 4-module white quiet zone; scale the whole thing, never crop */
 .qr{flex:none;line-height:0;overflow:visible}
 .qr svg{display:block;width:min(184px,40vh);height:auto;aspect-ratio:1/1;max-width:100%;
@@ -504,6 +505,7 @@ body.mf-brightness-active #pairHint{opacity:0}   /* #74 follow-up: never overlap
     pointer-events:none;font-family:var(--mf-font-frame);transition:opacity .2s}
 .dev-banner::before{content:"";width:10px;height:10px;border-radius:50%;background:var(--mf-brass);flex:none}
 body:has(.overlay.visible,#shuttingDown:not([hidden]),#safeScreen:not([hidden]),.hotspot-error:not([hidden]),.wifi-overlay:not([hidden]),.dev-toast:not([hidden])) .dev-banner{opacity:0}
+body:has(.overlay.visible,#shuttingDown:not([hidden]),#safeScreen:not([hidden]),.hotspot-error:not([hidden]),.wifi-overlay:not([hidden]),.dev-toast:not([hidden])) #pairHint{opacity:0}   /* polish: not behind the shutdown confirm or any dialog (like .dev-banner) */
 .dev-banner[hidden],.dev-toast[hidden],.hotspot-error[hidden]{display:none}
 .dev-toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:8900;width:560px;
     height:72px;box-sizing:border-box;background:var(--mf-forest-900);color:var(--mf-linen);border:1px solid var(--mf-forest-700);

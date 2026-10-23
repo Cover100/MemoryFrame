@@ -39,6 +39,7 @@
   --mf-text-2:       #5E5146;  /* secondary text (walnut-grey) */
   --mf-green:        #2A6140;  /* primary buttons, links, selected states */
   --mf-green-50:     #E3EEE6;  /* selected segment / success background */
+  --mf-scrim-phone:  rgba(31, 42, 36, 0.55); /* flat scrim behind the phone bottom sheet (no blur) */
   --mf-brown:        #6B4F3A;  /* walnut text accent, icons */
   --mf-red:          #A8352A;  /* destructive text + fills */
   --mf-red-50:       #F8E4E1;  /* error background */
@@ -114,6 +115,7 @@
   --mf-outline: var(--mf-oat);        /* outlined buttons and inputs: 1.5px, >= 6.6:1 on every dark surface */
   --mf-focus: var(--mf-brass);        /* every focus ring */
   --mf-scrim-phone: rgba(0, 0, 0, .6);
+  --mf-tile-ring-fill: rgba(14, 19, 17, .5);  /* empty select ring on a photo tile: ~3:1 even on a white photo */
   background: var(--mf-paper); color: var(--mf-text); font-family: var(--mf-font-phone); }
 .mf-phone button { font: inherit; background: var(--mf-green); color: #fff; border: 0; border-radius: var(--mf-r-md);
   min-height: var(--mf-touch-phone); }

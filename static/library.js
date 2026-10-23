@@ -185,9 +185,14 @@
             tiles().forEach((t, i)=> t.setAttribute("aria-label", "Photo " + (i + 1) + " of " + left));   // no stale numbers
             if(!left){ $("selectBtn").hidden = true; grid.hidden = true; $("emptyLib").hidden = false; }   // nothing left
             busy = false; $("selCancel").disabled = false;
-            if(ok){ exitSelect(false); }
+            if(ok){
+                exitSelect(false);
+                if(!left){ $("upBtn").focus(); }            // everything is gone: the Select button is hidden, so offer Upload
+            }
             else {                                          // the rest stays selected; say what went wrong
+                const atBottom = !offline && innerHeight + scrollY >= document.body.scrollHeight - 2;   // polish (Wren N7)
                 update(); err.hidden = false; fit();       // the error sits in the fixed toolbar: always on screen
+                if(atBottom){ window.scrollTo(0, document.body.scrollHeight); }   // the taller toolbar must not cover the last row
                 if(!offline){ delBtn.focus(); }
             }
         }, fading.length ? 160 : 0);

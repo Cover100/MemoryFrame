@@ -10,7 +10,7 @@
 <header class="bar selbar" id="selbar"><p class="name" id="selCount" aria-live="polite">0 selected</p><button type="button" class="btn-onbar" id="selAll">Select all</button></header>{% endblock %}
 {% block content %}
 <div class="normal-only">
-  <a class="btn big block primary" href="/admin/upload">＋&nbsp; Upload photos</a>
+  <a class="btn big block primary" id="upBtn" href="/admin/upload">＋&nbsp; Upload photos</a>
   <div class="libhead">
     <h1>Library<small id="count">{{ n }} photo{{ "s" if n != 1 }} on the frame</small></h1>
     {% if n %}<button type="button" class="btn-neutral" id="selectBtn">Select</button>{% endif %}

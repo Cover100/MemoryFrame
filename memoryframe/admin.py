@@ -23,6 +23,8 @@ def slide_label(v):
 def _phone_context():
     def phone_wifi():
         # Offline panel (#70 mock 08): which Wi-Fi to rejoin. Paired pages only (pair.html leaves it out).
+        # Juniper's #77 review: no SSID unless this visitor is paired, and never the hotspot SSID in dev
+        # mode (the frame is on the developer's Wi-Fi then, and the hotspot name would be wrong and leak).
         from . import frameinfo, wifi
         if getattr(g, "device_id", None) is None and auth.current_device() is None:
             return {"ssid": "", "mode": "unknown"}          # unpaired visitors never see the SSID
@@ -30,6 +32,9 @@ def _phone_context():
             mode = frameinfo.network().get("mode")
         except Exception:  # noqa: BLE001 - never break a page over this hint
             mode = "unknown"
+        device = g.get("device_id") or auth.current_device()
+        if device is None or frameinfo.dev_mode():
+            return {"ssid": "", "mode": mode}
         return {"ssid": wifi.current_wifi(get_db())[0] or "", "mode": mode}
     return {"phone_wifi": phone_wifi, "slide_label": slide_label, "phone_storage": phone_storage}
 

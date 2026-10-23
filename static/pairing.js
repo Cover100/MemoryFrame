@@ -75,6 +75,8 @@
         if(wifi && typeof st.wifi_qr_svg === "string"){ $("wifiQr").innerHTML = st.wifi_qr_svg; }     // SVG from our own server
         $("siteBadge").textContent = wifi ? "2" : "1";      // #70 03/04: numbered brass badges
         $("codeBadge").textContent = wifi ? "3" : "2";
+        $("pairTitle").textContent = wifi ? "Pair a phone" : "Pair your phone";            // mock 03 / mock 04
+        $("siteTitle").textContent = wifi ? "Open site" : "Scan with your phone";
         if(st.round && typeof st.round.qr_svg === "string" && typeof st.round.code === "string"){
             $("pairCode").textContent = st.round.code.slice(0, 3) + " " + st.round.code.slice(3);
             $("pairQr").innerHTML = st.round.qr_svg;
@@ -339,6 +341,7 @@
         }catch(e){ console.warn(e); }
         if(ok){
             $("safeScreen").hidden = false;                  // final frame; poweroff follows ~1.2 s later
+            document.body.classList.add("mf-safe-final");    // mock 14: nothing animates under it
             cover.hidden = true;
         }else{
             shuttingDown = false; window.mfShuttingDown = false; cover.hidden = true;
@@ -360,6 +363,7 @@
         if(!failed){ return; }
         shuttingDown = false; window.mfShuttingDown = false;
         for(const id of ["shuttingDown", "safeScreen"]){ const el = $(id); if(el){ el.hidden = true; } }
+        document.body.classList.remove("mf-safe-final");
         $("shutdownAsk").hidden = false; $("shutdownError").hidden = false;
         shutdownOverlay.classList.add("visible");
     }, 1000);

@@ -6,6 +6,7 @@ create_app() builds the Flask app with three blueprints:
   api      - JSON API for the phone site (/api/v1/...)
 """
 import logging
+import os
 
 from flask import Flask
 
@@ -64,6 +65,10 @@ def _refresh_copies_in_background(app):
     from . import imaging
 
     def run():
+        try:                    # #86: low priority (this thread only), so the kiosk browser is not starved
+            os.setpriority(os.PRIO_PROCESS, threading.get_native_id(), 10)
+        except (AttributeError, OSError):
+            pass
         conn = db.connect(app.config["DB_PATH"])
         try:
             made, failed = imaging.backfill(conn, app.config["DATA_DIR"], app.config["DISPLAY_TARGET"])

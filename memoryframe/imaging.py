@@ -13,6 +13,7 @@ import logging
 import re
 import os
 import threading
+import time
 
 log = logging.getLogger("memoryframe.imaging")
 
@@ -116,14 +117,18 @@ def make_display_copy(src, dst, target, max_bytes=MAX_BYTES):
             rgba = im.convert("RGBA")
             bg.paste(rgba, mask=rgba.getchannel("A"))
             im = bg
-        # Crop first, in original pixels, where the framing rules say (MF-26 / Designer):
-        # the visible 5:3 window, expanded to the target aspect. Then scale down only.
         from . import faces, framing
-        box = framing.crop_box(im.size, target, faces.detect(im))   # MF-26: [] -> no-face rules
-        if box != (0, 0) + im.size:
-            im = im.crop(box)
-        if im.width > target[0] or im.height > target[1]:
-            im = im.resize(target, Image.LANCZOS)          # box has the target aspect: no distortion
+        found = faces.detect(im)                                   # MF-26: [] -> no-face rules
+        if im.width / im.height < BLURFILL_BELOW:
+            im = blurfill(im, target, found)                       # #86: narrow photo, B2 look
+        else:
+            # Crop first, in original pixels, where the framing rules say (MF-26 / Designer):
+            # the visible 5:3 window, expanded to the target aspect. Then scale down only.
+            box = framing.crop_box(im.size, target, found)
+            if box != (0, 0) + im.size:
+                im = im.crop(box)
+            if im.width > target[0] or im.height > target[1]:
+                im = im.resize(target, Image.LANCZOS)          # box has the target aspect: no distortion
         tmp = dst + ".tmp"
         while True:
             for q in QUALITIES:
@@ -136,7 +141,74 @@ def make_display_copy(src, dst, target, max_bytes=MAX_BYTES):
             im = im.resize((max(1, int(im.width * 0.9)), max(1, int(im.height * 0.9))), Image.LANCZOS)
 
 
-COPY_VERSION = "mf26c"  # bump when crop/size rules change: existing copies are then remade
+# ---------------- #86: narrow photos (portrait, square, 5:4) get blurred sides ("B2") ----------------
+# Wren's spec (design/visual-direction 410e908, frame/15-PORTRAIT-BLUR.md section 3), tuned for 1000x600:
+# the whole display copy is baked into ONE JPEG, so the slideshow and the kiosk page do no extra work.
+BLURFILL_BELOW = 1.30   # width/height of the upright photo: below -> blur-fill, at or above -> cover (as before)
+MAX_SHARP_W = 0.80      # sharp photo at most 80 % of the width, so each side bar is >= 10 %
+TRIM = 1.15             # B2: sharp photo up to 15 % taller than the screen (6.5 % off top and bottom)
+BG_SCALE = 4            # blur at 1/4 size, then upscale: ~2x cheaper than blurring at full size
+BG_BLUR = 40            # radius at 1000x600 (scaled with the width for other sizes)
+BG_DIM = 0.35           # fraction of black laid over the blurred sides
+SHADOW_BLUR, SHADOW_ALPHA = 12, 0.35   # soft edge under the sharp photo (no border)
+
+
+def _trim_top(im_size, k, ch, faces):
+    """Rows (in the k-times-screen-height photo) cut off the top when trimming. Centred, or moved so
+    the padded face boxes stay inside the screen. Returns None if they cannot (never cut a head)."""
+    from . import framing
+    fh = round(ch * k)
+    extra = fh - ch
+    if extra <= 0:
+        return 0
+    kept = framing.filter_faces(faces, *im_size)
+    if not kept:
+        return extra // 2
+    pads = [framing.padded(f) for f in kept]
+    y0 = max(0.0, min(p[1] for p in pads)) / im_size[1] * fh      # padded face top / bottom, in fh rows
+    y1 = min(float(im_size[1]), max(p[3] for p in pads)) / im_size[1] * fh
+    lo, hi = max(0.0, y1 - ch), min(float(extra), y0)
+    return round(min(max(extra / 2, lo), hi)) if lo <= hi else None
+
+
+def blurfill(im, target, faces=()):
+    """Display copy for a narrow photo: sharp photo (15 % trim) centred over a strong blurred, dimmed
+    enlargement of the same photo. `im` is the upright RGB/L stored copy. Memory: the sharp photo and
+    the 1/4-size background are resized straight from `im` (box=), so no full-size intermediate exists."""
+    from PIL import ImageDraw, ImageFilter
+    from . import framing
+    cw, ch = target
+    s = cw / 1000                                                   # radii are defined at 1000 px wide
+    a = im.width / im.height
+    # background: the same window as the cover path would show, blurred at 1/4 size, upscaled
+    bw, bh = cw // BG_SCALE, ch // BG_SCALE
+    small = im.resize((bw, bh), Image.LANCZOS, box=framing.crop_box(im.size, target, faces), reducing_gap=2.0)
+    small = small.filter(ImageFilter.GaussianBlur(BG_BLUR * s / BG_SCALE))
+    bg = small.resize(target, Image.BILINEAR).convert("RGB")
+    bg = Image.blend(bg, Image.new("RGB", target, (0, 0, 0)), BG_DIM)
+    # sharp photo: 15 % taller than the screen, but never wider than 80 % of it
+    k = max(1.0, min(TRIM, MAX_SHARP_W * cw / (a * ch)))
+    top = _trim_top(im.size, k, ch, faces)
+    if top is None:
+        k, top = 1.0, 0                                             # a face would be cut: keep the whole photo
+    fh = round(ch * k)
+    fw, vis = round(fh * a), min(fh, ch)                            # visible rows
+    rows = im.height / fh                                           # photo rows per sharp row
+    fg = im.resize((fw, vis), Image.LANCZOS, box=(0, top * rows, im.width, (top + vis) * rows), reducing_gap=3.0)
+    x0, y0 = (cw - fw) // 2, (ch - vis) // 2
+    # soft edge: a 35 % black rectangle, blurred, under the photo (only the area it can reach is blurred)
+    r = round(SHADOW_BLUR * s)
+    pad = 3 * r
+    region = (max(0, x0 - pad), max(0, y0 - pad), min(cw, x0 + fw + pad), min(ch, y0 + vis + pad))
+    m = Image.new("L", (region[2] - region[0], region[3] - region[1]), 0)
+    ImageDraw.Draw(m).rectangle((x0 - region[0], y0 - region[1], x0 - region[0] + fw - 1, y0 - region[1] + vis - 1),
+                                fill=int(255 * SHADOW_ALPHA))
+    bg.paste((0, 0, 0), region[:2], m.filter(ImageFilter.GaussianBlur(r)))
+    bg.paste(fg, (x0, y0))
+    return bg
+
+
+COPY_VERSION = "mf86a"  # (#86: narrow photos blur-filled) bump when crop/size rules change: existing copies are then remade
 _current = {}           # path -> (mtime, target) known to be current (avoids re-reading headers)
 
 
@@ -183,6 +255,8 @@ def ensure_display_copy(data_dir, stored_name, target):
                 return dst if os.path.exists(dst) else original     # old copy beats nothing
     return dst
 
+
+BACKFILL_PAUSE_S = 0.2  # #86: rest between photos so the kiosk browser keeps its CPU while a backfill runs
 
 FAILURES_FILE = ".copy-failures.json"
 
@@ -250,6 +324,7 @@ def backfill(conn, data_dir, target, force=False):
         else:
             ensure_display_copy(data_dir, name, target)
             ok = os.path.exists(dst) and copy_is_current(dst, target)
+            time.sleep(BACKFILL_PAUSE_S)
         if ok:
             made += 1
             failures.pop(name, None)

@@ -79,7 +79,7 @@ def home():
         return redirect("/admin/wifi/keep", code=302)
     from . import settings
     # Restyle PR C (#70 mock 02): home and library on one page (Upload, 3x3 preview, rows).
-    preview = conn.execute("SELECT id, original_name, hidden FROM media ORDER BY created_at DESC, id DESC "
+    preview = conn.execute("SELECT id, original_name FROM media ORDER BY created_at DESC, id DESC "
                            "LIMIT ?", (PREVIEW,)).fetchall()
     total = conn.execute("SELECT COUNT(*) FROM media").fetchone()[0]
     return render_template("admin_home.html", wifi_notice=wifi.admin_notice(conn),
@@ -100,7 +100,10 @@ def upload_page():
 
 @bp.route("/library")
 def library_page():
-    return render_template("library.html")
+    """#80 (phone/09-LIBRARY.md): one grid, newest first, rendered here so it shows without a second request.
+    Only ids and kinds go to the page (tile labels are "Photo 4 of 128", never file names)."""
+    items = get_db().execute("SELECT id, kind FROM media ORDER BY created_at DESC, id DESC").fetchall()
+    return render_template("library.html", items=items, n=len(items), st=phone_storage())
 
 
 @bp.route("/settings")

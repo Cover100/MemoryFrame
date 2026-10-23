@@ -17,7 +17,7 @@
 {% if preview %}
 <a class="btn btn-neutral block see-all" href="/admin/library"><span>See all {{ total }} photo{{ "s" if total != 1 }}</span><span aria-hidden="true">›</span></a>
 <ul class="grid" aria-label="Newest photos">
-  {% for m in preview %}<li{% if m.hidden %} class="hid"{% endif %}><a href="/admin/library"><img src="/api/v1/media/{{ m.id }}/thumb" alt="{{ m.original_name }}" width="240" height="240" loading="lazy" decoding="async"></a>{% if m.hidden %}<span class="tag">Hidden</span>{% endif %}</li>{% endfor %}
+  {% for m in preview %}<li><a href="/admin/library"><img src="/api/v1/media/{{ m.id }}/thumb" alt="{{ m.original_name }}" width="240" height="240" loading="lazy" decoding="async"></a></li>{% endfor %}
 </ul>
 {% else %}
 <div class="card empty-lib"><p class="muted flush">No photos yet. Tap <b>Upload photos</b> to send some to the frame.</p></div>

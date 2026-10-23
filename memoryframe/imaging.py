@@ -308,9 +308,27 @@ def _derived_paths(data_dir, stored_name):
 TRASH_SUBDIRS = ("originals", "display", "thumbs")     # index = the 0-/1-/2- prefix
 
 
+class UnsafeName(ValueError):
+    """A stored name that is not a bare file name: deleting it could reach outside the photo dirs."""
+
+
+def check_stored_name(data_dir, stored_name):
+    """#80 guard for every delete: stored names are server-made "<uuid hex>.<ext>" file names, never paths.
+    Refuse anything else (separators, "..", hidden names, NUL) before a single file is moved."""
+    name = stored_name if isinstance(stored_name, str) else ""
+    if (not name or name.startswith(".") or os.path.basename(name) != name
+            or any(c in name for c in ("/", "\\", "\0"))):
+        raise UnsafeName(repr(stored_name))
+    root = os.path.abspath(data_dir)
+    for p in _derived_paths(data_dir, name):          # belt and braces: every target sits under data_dir
+        if os.path.commonpath([root, os.path.abspath(p)]) != root:
+            raise UnsafeName(repr(stored_name))
+
+
 def stage_delete(data_dir, stored_name, media_id):
     """Move the original and derivatives into tmp/trash as "<kind>-<media id>-<name>".
-    Returns [(staged, original_path)]."""
+    Returns [(staged, original_path)]. Raises UnsafeName (nothing moved) for a name that isn't a bare file name."""
+    check_stored_name(data_dir, stored_name)
     trash = os.path.join(data_dir, "tmp", "trash")
     os.makedirs(trash, exist_ok=True)
     staged = []

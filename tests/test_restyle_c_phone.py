@@ -50,12 +50,12 @@ def test_phone_css_is_lean_and_flat():
     flat = re.sub(r"/\*.*?\*/", "", CSS, flags=re.S)
     for bad in ("box-shadow", "gradient", "filter", "backdrop", "@import", "@font-face", "url(", "@keyframes", "animation"):
         assert bad not in flat, bad
-    assert len(CSS) < 24 * 1024
+    assert len(CSS) < 26 * 1024                                                # #80 library grew it past 24 KB
     assert "var(--mf-paper)" in (ROOT / "static" / "tokens.css").read_text()
     assert ".mf-phone .bar { background: var(--mf-forest-900)" in CSS          # forest header band
-    # transitions only on transform (the Shuffle switch knob)
+    # transitions only on transform (Shuffle knob, library tile inset) and opacity (#80 deleted-tile fade)
     for m in re.finditer(r"transition:\s*([^;]+);", flat):
-        assert m.group(1).split()[0] == "transform", m.group(0)
+        assert m.group(1).split()[0] in ("transform", "opacity"), m.group(0)
 
 
 def test_home_merges_library_preview_and_rows(paired, lib, mf_app):
@@ -68,7 +68,7 @@ def test_home_merges_library_preview_and_rows(paired, lib, mf_app):
     conn.close()
     h = htmlmod.unescape(body(paired, "/admin/"))
     assert h.count('/thumb" alt=') == 9 and f'/api/v1/media/{newest}/thumb' in h
-    assert '<li class="hid">' in h and '<span class="tag">Hidden</span>' in h
+    assert "hid" not in h.replace("hidden", "") and "Hidden" not in h      # #80: nothing on the phone hides a photo
     assert '<a class="btn btn-neutral block see-all" href="/admin/library"><span>See all 12 photos</span>' in h
     assert h.index("Upload photos") < h.index("Library") < h.index('Frame <span class="nw">Wi-Fi') < h.index("Settings<small>")
     assert "Connected to the frame</p>" in h and 'role="meter"' in h and " GB free <span>of " in h
@@ -314,8 +314,13 @@ def test_touch_targets_at_least_48(page, server, mf_app, lib):
     assert all(h >= 48 for w, h in json.loads(hit(".row-link")))
     _phone(page, server, mf_app, "admin/library")
     page.pump(1)
-    sizes = json.loads(hit("#grid .actions button"))
-    assert sizes and all(h >= 48 for w, h in sizes), sizes
+    for sel in ("#selectBtn", ".lib .tile", ".bar .back"):                      # #80
+        sizes = json.loads(hit(sel))
+        assert sizes and all(h >= 48 and w >= 48 for w, h in sizes), (sel, sizes)
+    evaluate(page, "document.getElementById('selectBtn').click()")
+    for sel in ("#selAll", "#selCancel", "#delBtn"):
+        sizes = json.loads(hit(sel))
+        assert sizes and all(h >= 48 for w, h in sizes), (sel, sizes)
 
 
 @pytest.mark.skipif(BROWSER is None, reason="no Chromium/Chrome installed")
@@ -729,7 +734,7 @@ def test_dark_tokens_and_outline_rules_in_css():
     assert not re.search(r"(?<![-\w])color: var\(--mf-(green|red)\)", flat)          # fills only
     assert not re.search(r"outline[^;]*var\(--mf-green\)", flat)
     for sel in (r"\.mf-phone \.btn-neutral, \.mf-phone button\.secondary", r"\.mf-phone \.msgKeep", r"\.mf-phone \.field",
-                r"\.mf-phone \.code", r"\.mf-phone #frameMessage", r"\.mf-phone #grid \.actions button"):
+                r"\.mf-phone \.code", r"\.mf-phone #frameMessage", r"\.mf-phone \.btn-onbar"):
         assert re.search(sel + r" \{[^}]*border: 1\.5px solid var\(--mf-outline\)", flat), sel
     assert "#fff;" not in re.sub(r"color: #fff;", "", flat)                             # white only as text on fills
 

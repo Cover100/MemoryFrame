@@ -55,9 +55,10 @@ restart_if_stopped() {
     local restarted=0
     timeout 60 sudo systemctl restart memoryframe.service && restarted=1
     {
-        case "$rc" in
-            129|130|143) echo "ERROR: install.sh was interrupted by a signal (exit $rc)." ;;
-            0) ;;
+        # "interrupted" only when one of our signal traps fired, not for a step that itself exited 129/130/143
+        case "$INTERRUPTED$rc" in
+            1*) echo "ERROR: install.sh was interrupted by a signal (exit $rc)." ;;
+            00) ;;
             # FAIL_AT is only trusted if it was recorded for this same exit status (no stale line or command)
             *) if [ "${FAIL_RC:-}" = "$rc" ] && [ -n "${FAIL_AT:-}" ]; then
                    echo "ERROR: install.sh failed (exit $rc) at $FAIL_AT."
@@ -76,13 +77,15 @@ restart_if_stopped() {
 RESTART_ON_EXIT=0
 if systemctl is-active --quiet memoryframe.service 2>/dev/null; then
     RESTART_ON_EXIT=1
-    FAIL_RC=""; FAIL_AT=""
+    FAIL_RC=""; FAIL_AT=""; INTERRUPTED=0
     trap 'FAIL_RC=$?; FAIL_AT="line $LINENO: $BASH_COMMAND"' ERR
     trap restart_if_stopped EXIT
     # Signals must run the EXIT trap too (bash runs it on `exit`): Ctrl-C / SIGHUP / SIGTERM mid-install.
-    trap 'exit 130' INT
-    trap 'exit 143' TERM
-    trap 'exit 129' HUP
+    trap 'INTERRUPTED=1; exit 130' INT
+    trap 'INTERRUPTED=1; exit 143' TERM
+    trap 'INTERRUPTED=1; exit 129' HUP
+    # bash prints "Terminated"/"Hangup" for a killed step to stderr; if that pipe is gone the default SIGPIPE kills bash before the EXIT trap
+    trap '' PIPE
 fi
 # Stop the running app first so the migration has the database to itself.
 sudo systemctl stop memoryframe.service 2>/dev/null || true
@@ -148,7 +151,7 @@ sudo systemctl restart memoryframe.service
 # Restarted normally: disarm the #90 exit trap and give the signals their default behaviour back.
 if [ "$RESTART_ON_EXIT" = 1 ]; then
     RESTART_ON_EXIT=0
-    trap - EXIT ERR INT TERM HUP
+    trap - EXIT ERR INT TERM HUP PIPE
 fi
 
 echo "== Case fan (gpio-fan overlay, GPIO 14, on at 60 C)"

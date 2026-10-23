@@ -150,3 +150,24 @@ def test_sighup_while_the_trap_runs_does_not_stop_the_restart(env, tmp_path):
     r, log = run_install(tmp_path, env, sudo=sudo, tweak=fail_audit, start_new_session=True)
     assert r.returncode == 1
     assert len(calls(log, "restart")) == 1
+
+
+@pytest.mark.parametrize("sig,code", [("HUP", 129), ("TERM", 143)])
+def test_group_signal_with_dead_stderr_pipe_restarts_exactly_once(env, tmp_path, sig, code):
+    # B1: `install.sh 2>&1 | tee log` over a dropped ssh. A step is killed by a group signal and bash writes
+    # "Hangup"/"Terminated" to the dead pipe; without `trap '' PIPE` it died of SIGPIPE with no restart.
+    def tweak(app):
+        (app / "deploy" / "audit-autostart.sh").write_text(STUB + f"kill -{sig} 0\nsleep 5\nexit 0\n")
+    r, log = run_install(tmp_path, env, tweak=tweak, stderr=broken_pipe(), start_new_session=True)
+    assert r.returncode == code
+    assert len(calls(log, "restart")) == 1
+
+
+def test_step_exiting_130_is_a_failure_not_an_interruption(env, tmp_path):
+    # N1: only our own INT/TERM/HUP traps say "interrupted".
+    def tweak(app):
+        (app / "deploy" / "audit-autostart.sh").write_text(STUB + "exit 130\n")
+    r, log = run_install(tmp_path, env, tweak=tweak)
+    assert r.returncode == 130 and len(calls(log, "restart")) == 1
+    assert "interrupted" not in r.stderr
+    assert re.search(r"failed \(exit 130\) at line \d+: .*audit-autostart\.sh", r.stderr)

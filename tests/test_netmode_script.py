@@ -658,7 +658,8 @@ def test_state_never_contains_a_password(env):
 
 
 @pytest.mark.parametrize("raw,expect", [
-    (b"Esc\x1bName", ""), (b"Bad\xffByte", ""), (b"Tab\tName", ""), (b"x" * 33, ""),
+    (b"Esc\x1bName", ""), (b"Bad\xffByte", ""), (b"a\x1bb", ""), (b"a\x01b", ""), (b"caf\xe9", ""),
+    (b"del\x7fname", ""), (b"Tab\tName", ""), (b"x" * 33, ""),
     (b'Fam "home"', 'Fam "home"'), (b"back\\slash", "back\\slash"), ("Oma's Fotos ü".encode(), "Oma's Fotos ü"),
 ])
 def test_odd_ssid_never_corrupts_state(env, raw, expect):

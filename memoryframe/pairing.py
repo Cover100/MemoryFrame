@@ -30,7 +30,10 @@ def qr_svg(data):
     import segno
     # MF-23: 4-module white quiet zone (QR spec minimum) and a viewBox with no fixed size, so CSS
     # scales the whole symbol + margin to fit the 800x480 screen instead of cropping it.
-    svg = segno.make(data, error="m").svg_inline(border=QR_BORDER, omitsize=True, dark="#000", light="#fff")
+    # #105 (Hollis): a non-ASCII Wi-Fi name is encoded as UTF-8 with an ECI header, so scanners don't
+    # guess Latin-1 or Kanji. ASCII payloads (all site links) stay byte-for-byte as before.
+    qr = segno.make(data, error="m") if data.isascii() else segno.make(data, error="m", encoding="utf-8", eci=True)
+    svg = qr.svg_inline(border=QR_BORDER, omitsize=True, dark="#000", light="#fff")
     return svg.replace("<svg ", f'<svg data-border="{QR_BORDER}" preserveAspectRatio="xMidYMid meet" ', 1)
 
 

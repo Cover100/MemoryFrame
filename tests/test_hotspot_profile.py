@@ -238,3 +238,25 @@ def test_startup_logs_no_qr_names_only(mf_app, nm, caplog):
         wifi.startup_check(mf_app)
     msgs = " ".join(r.getMessage() for r in caplog.records)
     assert "no Wi-Fi QR" in msgs and SECRET not in msgs
+
+
+def test_wifi_qr_non_ascii_name_is_utf8_with_eci(monkeypatch):
+    """Hollis #105: a non-ASCII name must not be encoded as Latin-1 without ECI."""
+    import io
+    import segno
+    from memoryframe import pairing
+    payload = frameinfo.wifi_qr_payload("café Ünï", "pw-12345678")
+    calls = []
+    real = segno.make
+    monkeypatch.setattr(segno, "make", lambda *a, **k: calls.append(k) or real(*a, **k))
+    svg = pairing.qr_svg(payload)
+    assert calls[-1].get("encoding") == "utf-8" and calls[-1].get("eci") is True
+    assert svg.count("<svg") == 1
+    pairing.qr_svg("http://10.42.0.1/pair?t=abc")                 # ASCII links unchanged: no ECI
+    assert "eci" not in calls[-1] and "encoding" not in calls[-1]
+    import cv2
+    import numpy as np
+    buf = io.BytesIO()
+    real(payload, error="m", encoding="utf-8", eci=True).save(buf, kind="png", scale=8, border=4)
+    img = cv2.imdecode(np.frombuffer(buf.getvalue(), np.uint8), cv2.IMREAD_COLOR)
+    assert cv2.QRCodeDetector().detectAndDecode(img)[0] == payload

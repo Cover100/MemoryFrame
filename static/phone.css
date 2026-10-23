@@ -1,4 +1,4 @@
-/* Restyle PR C: the phone site on the paper theme (.mf-phone, tokens.css; DIRECTION.md, #70 phone mocks 01-08,
+/* Restyle PR C: the phone site on the dark frame theme (.mf-phone, tokens.css; DIRECTION.md, #70 phone mocks 01-08,
    04-settings-v2, 04b). One stylesheet for every phone page. Dark frame theme + Atkinson Hyperlegible (PHONE-DARK.md, user 19 Oct; /frame-fonts.css, block); flat colours:
    no shadows, gradients, blur or animations; light DOM. Inline style attributes are blocked by the CSP. */
 .mf-phone, .mf-phone * { box-sizing: border-box; }
@@ -30,7 +30,7 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
 .mf-phone .strip.has-store { flex-direction: column; align-items: stretch; gap: 6px; padding-bottom: 10px; }
 .mf-phone .strip .conn { margin: 0; display: flex; gap: 8px; align-items: center; }
 
-/* #79 free-space meter: the frame menu's storage bar (#74, mock 07-menu-final) on paper */
+/* #79 free-space meter: the frame menu's storage bar (#74, mock 07-menu-final), dark */
 .mf-phone .storeVal { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 0 12px;
   margin: 0 0 8px; font-size: var(--mf-p-small); color: var(--mf-text-2); }
 .mf-phone .storeFree { font-size: 16px; color: var(--mf-text); font-variant-numeric: tabular-nums; }
@@ -41,7 +41,6 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
 .mf-phone .on-dark .storeVal { margin-bottom: 6px; color: var(--mf-oat); }
 .mf-phone .on-dark .storeFree { font-size: var(--mf-p-small); color: var(--mf-linen); }
 .mf-phone .on-dark .storeFree span { color: var(--mf-oat); }
-.mf-phone .on-dark .track { height: 6px; background: var(--mf-walnut); }
 .mf-phone .on-dark .track .used { background: var(--mf-leaf); }
 
 /* Page */

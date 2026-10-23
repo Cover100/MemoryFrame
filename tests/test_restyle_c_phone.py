@@ -755,3 +755,38 @@ def test_home_tile_focus_ring_is_inset():
     """Wren's dark re-check M1: the tile clips (overflow:hidden), so the focus ring sits inside it."""
     assert ".mf-phone .grid a:focus-visible { outline-offset: -3px; }" in CSS
     assert "#2a2a2a" not in CSS.lower()                      # tokenised
+
+
+@pytest.mark.parametrize("url", ["/admin/x", "/pair/x"])
+def test_unpaired_error_pages_never_show_the_ssid(client, mf_app, url):
+    """Hollis on #77: 404/405 pages inherited the hidden offline panel, which names the SSID."""
+    conn = mfdb.connect(mf_app.config["DB_PATH"])
+    mfdb.set_setting(conn, "wifi_ssid", "SecretFrameNet")
+    mfdb.set_setting(conn, "wifi_password", "password123")
+    conn.commit()
+    conn.close()
+    r = client.get(url, environ_base=PHONE)
+    h = r.get_data(as_text=True)
+    assert r.status_code == 404 and "mf-phone" in h
+    assert "SecretFrameNet" not in h and "password123" not in h and 'id="offline"' not in h
+    r = client.post("/admin/library", environ_base=PHONE, headers={"X-CSRF-Token": "x"})
+    assert "SecretFrameNet" not in r.get_data(as_text=True)
+
+
+def test_phone_wifi_is_empty_when_unpaired(client, mf_app):
+    conn = mfdb.connect(mf_app.config["DB_PATH"])
+    mfdb.set_setting(conn, "wifi_ssid", "SecretFrameNet")
+    mfdb.set_setting(conn, "wifi_password", "password123")
+    conn.commit()
+    conn.close()
+    with mf_app.test_request_context("/admin/", environ_base=PHONE):
+        assert mf_app.jinja_env.globals.get("phone_wifi") is None
+        ctx = {}
+        mf_app.update_template_context(ctx)
+        assert ctx["phone_wifi"]()["ssid"] == ""
+
+
+def test_home_storage_meter_is_8px_on_a_forest_700_track():
+    flat = re.sub(r"/\*.*?\*/", "", CSS, flags=re.S)
+    assert not re.search(r"\.on-dark \.track \{[^}]*(height|background)", flat)
+    assert "--mf-line: var(--mf-forest-700)" in (ROOT / "static" / "tokens.css").read_text()

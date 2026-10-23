@@ -11,6 +11,7 @@ HEIC/HEIF (Android/iPhone) is read through pillow-heif when it is installed.
 """
 import logging
 import re
+import errno
 import os
 import threading
 import time
@@ -105,6 +106,42 @@ def cover_size(size, target):
     return max(tw, round(w * scale)), max(th, round(h * scale))
 
 
+def encode_jpeg(im, **kw):
+    """JPEG bytes, encoded in memory. #92 (Hollis B1): Pillow's optimize/progressive save to a file on a nearly
+    full disk can leave a truncated file WITHOUT raising; encoding to memory keeps the disk out of the encoder."""
+    import io
+    buf = io.BytesIO()
+    im.save(buf, "JPEG", **kw)
+    return buf.getvalue()
+
+
+def write_atomic(dst, data):
+    """Write JPEG bytes to dst.tmp with plain file I/O (a full disk raises ENOSPC here), fsync, check the
+    file on disk (whole size, ends with the JPEG EOI marker FFD9), then os.replace over dst. A failed check
+    raises ENOSPC (transient: it stops a backfill run) and dst, the old copy, is never touched."""
+    tmp = dst + ".tmp"
+    try:
+        with open(tmp, "wb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        with open(tmp, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            ok = len(data) > 2 and data.endswith(b"\xff\xd9") and f.tell() == len(data)
+            if ok:
+                f.seek(-2, os.SEEK_END)
+                ok = f.read(2) == b"\xff\xd9"
+        if not ok:
+            raise OSError(errno.ENOSPC, "short write: the copy on disk is incomplete", tmp)
+        os.replace(tmp, dst)
+    except BaseException:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def make_display_copy(src, dst, target, max_bytes=MAX_BYTES):
     """Write the display copy atomically. Returns (width, height, bytes)."""
     if Image is None:
@@ -129,14 +166,13 @@ def make_display_copy(src, dst, target, max_bytes=MAX_BYTES):
                 im = im.crop(box)
             if im.width > target[0] or im.height > target[1]:
                 im = im.resize(target, Image.LANCZOS)          # box has the target aspect: no distortion
-        tmp = dst + ".tmp"
         while True:
             for q in QUALITIES:
-                im.save(tmp, "JPEG", quality=q, optimize=True, progressive=True,   # no exif= -> stripped
-                        comment=copy_marker(target))
-                if os.path.getsize(tmp) <= max_bytes:
-                    os.replace(tmp, dst)
-                    return im.size + (os.path.getsize(dst),)
+                data = encode_jpeg(im, quality=q, optimize=True, progressive=True,   # no exif= -> stripped
+                                   comment=copy_marker(target))
+                if len(data) <= max_bytes:
+                    write_atomic(dst, data)
+                    return im.size + (len(data),)
             # Pathological noise: shrink 10 % and retry (may drop below cover; still bounded).
             im = im.resize((max(1, int(im.width * 0.9)), max(1, int(im.height * 0.9))), Image.LANCZOS)
 
@@ -267,11 +303,16 @@ def ensure_display_copy(data_dir, stored_name, target):
     return _ensure_copy(data_dir, stored_name, target)[0]
 
 
+TRANSIENT_ERRNOS = {errno.ENOSPC, errno.ENOMEM, errno.EAGAIN, errno.EINTR, errno.EBUSY}
+MAX_TRANSIENT_TRIES = 3   # after this many transient failures in a row, a photo is treated as permanently failed
+
+
 def transient_failure(e):
     """True if a failed remake says nothing about the photo, so it is worth retrying: out of memory, a timeout,
-    or a real system error (disk full, I/O error). Pillow reports a corrupt or truncated image as an OSError
-    WITHOUT an errno; a system error always has one. Anything else is the photo's fault (permanent)."""
-    return isinstance(e, (MemoryError, TimeoutError)) or (isinstance(e, OSError) and e.errno is not None)
+    or a system error that can clear by itself (disk full, no memory, busy, interrupted). Other errnos (EACCES,
+    EINVAL, EIO...) would fail on every boot, and Pillow reports a corrupt image as an OSError with no errno:
+    both are permanent."""
+    return isinstance(e, (MemoryError, TimeoutError)) or (isinstance(e, OSError) and e.errno in TRANSIENT_ERRNOS)
 
 
 BACKFILL_PAUSE_S = 0.2  # #86: rest between photos for the start-up THREAD (the kiosk browser keeps its CPU); the CLI passes no pause
@@ -318,7 +359,8 @@ def backfill(conn, data_dir, target, force=False, pause=0):
     unreadable original) is counted as failed and recorded in display/.copy-failures.json,
     so later runs (every start-up) skip it until the original, the rules or the size change,
     or --force is used. A transient failure (see transient_failure: out of memory, disk full, timeout) is counted
-    as failed but NOT recorded, so the next run (next start-up) retries it. `force` remakes every copy to a temp
+    as failed and recorded as {"key", "tries"}, so the next runs retry it, at most MAX_TRANSIENT_TRIES times in all;
+    then it is recorded as permanent. A full disk (ENOSPC) stops the run at once: every other photo would fail too. `force` remakes every copy to a temp
     file and replaces the old one atomically, so a failed remake keeps the copy that was there. `pause` seconds of rest after each copy made (the start-up thread passes one so the
     kiosk keeps its CPU; the CLI, which install.sh runs with the service stopped, passes none)."""
     made = failed = 0
@@ -334,7 +376,7 @@ def backfill(conn, data_dir, target, force=False, pause=0):
             failures.pop(name, None)
             continue
         key = _failure_key(original, target)
-        if failures.get(name) == key:
+        if failures.get(name) == key:                    # permanent (a plain key string)
             failed += 1                                  # known failure: skipped, not retried
             continue
         err = None
@@ -352,7 +394,13 @@ def backfill(conn, data_dir, target, force=False, pause=0):
         else:
             failed += 1
             if err is not None and transient_failure(err):
-                failures.pop(name, None)                     # not the photo's fault: retried next run
+                prev = failures.get(name)
+                tries = prev.get("tries", 0) + 1 if isinstance(prev, dict) and prev.get("key") == key else 1
+                # not the photo's fault: retried on the next runs, but only a bounded number of times
+                failures[name] = key if tries >= MAX_TRANSIENT_TRIES else {"key": key, "tries": tries}
+                if isinstance(err, OSError) and err.errno == errno.ENOSPC:
+                    log.warning("display copies: disk full, stopping this run (%s)", err)
+                    break
             else:
                 failures[name] = key
     if failures != before:
@@ -525,9 +573,7 @@ def make_thumb(src, dst, size=THUMB_SIZE):
         im = ImageOps.fit(im, (size, size), Image.LANCZOS)     # square, centred: commutes with the rotation
         im = _upright(_flatten(im), orient)
         im.info = {}
-        tmp = dst + ".tmp"
-        im.save(tmp, "JPEG", quality=75, optimize=True, comment=b"")
-        os.replace(tmp, dst)
+        write_atomic(dst, encode_jpeg(im, quality=75, optimize=True, comment=b""))
 
 
 def ensure_thumb(data_dir, stored_name):

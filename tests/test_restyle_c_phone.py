@@ -618,7 +618,7 @@ CONTRAST_JS = """JSON.stringify((()=>{
   document.querySelectorAll('body *').forEach(e=>{
     if(!e.offsetParent && getComputedStyle(e).position !== 'fixed') return;
     if(e.closest('.sr-only,[hidden],.msgPreview:not(.empty),.hero') || e.matches('img,input[type=file]')) return;
-    const own = [...e.childNodes].some(n=>n.nodeType===3 && n.data.trim()) || (e.matches('input,textarea') && e.value);
+    const own = [...e.childNodes].some(n=>n.nodeType===3 && n.data.trim()) || (e.matches('input:not([type=checkbox]),textarea') && e.value);  // a checkbox's .value is "on", not text (#83: color-scheme dark makes its default colour white)
     if(!own) return;
     const cs = getComputedStyle(e), a = lum(cs.color), b = lum(bgOf(e));
     const r = (Math.max(a,b)+0.05)/(Math.min(a,b)+0.05);

@@ -147,14 +147,12 @@ def _phone_pages(client, paired):
     pages = [client.get(u, environ_base=lan) for u in
              ("/admin/", "/admin/upload", "/admin/library", "/admin/settings", "/admin/wifi/",
               "/admin/nope")]
-    pages.append(client.get("/pair", environ_base=lan))
-    pages.append(client.post("/pair", data={"code": "x"}, environ_base=lan))
     return pages
 
 
 def test_every_phone_page_declares_dark_scheme_and_theme_colour(client, paired):
     pages = _phone_pages(client, paired)
-    assert len(pages) >= 8
+    assert len(pages) >= 6
     for r in pages:
         html = r.get_data(as_text=True)
         assert 'class="mf-phone"' in html, r.request.path
@@ -167,7 +165,9 @@ def test_unpaired_phone_pages_declare_dark_scheme(client):
     lan = {"REMOTE_ADDR": "10.42.0.23"}
     for u in ("/pair", "/admin/nope", "/pair/nope"):
         html = client.get(u, environ_base=lan).get_data(as_text=True)
-        assert '<meta name="color-scheme" content="dark">' in html, u
+        assert 'class="mf-phone"' in html and '<meta name="color-scheme" content="dark">' in html, u
+    bad = client.post("/pair", data={"code": "x"}, environ_base=lan)   # the pairing error page
+    assert 'class="mf-phone"' in bad.get_data(as_text=True) and bad.status_code in (400, 429)
 
 
 def test_theme_colour_is_the_header_token():

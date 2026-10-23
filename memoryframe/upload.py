@@ -24,7 +24,8 @@ FORMAT_EXT = {"JPEG": ".jpg", "MPO": ".jpg", "PNG": ".png", "WEBP": ".webp", "GI
 MAX_PIXELS = 150_000_000         # 150 MP (#82: 108 MP phones). JPEGs are decoded at reduced size (imaging.draft_jpeg),
                                  # so peak RAM stays small; override with MEMORYFRAME_MAX_MEGAPIXELS.
 MAX_NONJPEG_PIXELS = 50_000_000  # HEIC/PNG/WebP/AVIF cannot be decoded at reduced size. Measured peak RSS just under
-                                 # the cap: RGBA PNG ~840 MB, WebP ~840 MB, AVIF ~570 MB, HEIC ~480 MB (see README).
+                                 # the cap (49 MP, whole upload): WebP 789 MB, PNG palette 509 MB, AVIF 471 MB, PNG RGBA 462 MB,
+                                 # HEIC 415 MB, PNG RGB 275 MB (see README).
                                  # Override with MEMORYFRAME_MAX_NONJPEG_MEGAPIXELS.
                                  # GIFs (kept as sent) count as non-JPEG: same cap.
 TOO_BIG = "This photo is too large for the frame (over {mp} megapixels). Please send a smaller copy."

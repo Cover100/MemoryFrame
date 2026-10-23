@@ -27,8 +27,10 @@ def test_app_service_hardening_restored_and_extended():
     assert len(rw) == 1 and "/var/lib/memoryframe" in rw[0] and "@APP_DIR@/uploads" in rw[0]
 
 
-def test_app_service_has_a_memory_guard():
-    """#82: a huge decode must not starve the kiosk Chromium."""
+def test_app_service_memory_settings_are_present():
+    """#82: checks only that the lines are present. MemoryHigh and MemoryMax are NOT enforced on the frame:
+    its kernel boots with cgroup_disable=memory (Raspberry Pi OS default), so they only apply where the
+    memory controller is on. MALLOC_ARENA_MAX=1 does work everywhere."""
     d = directives((ROOT / "deploy" / "memoryframe.service").read_text())
     assert "MemoryHigh=2G" in d and "MemoryMax=2500M" in d and "Environment=MALLOC_ARENA_MAX=1" in d
 

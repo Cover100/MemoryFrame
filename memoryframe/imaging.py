@@ -476,8 +476,7 @@ def make_stored_copy(src, dst, target):
                 os.fsync(f.fileno())
             with Image.open(tmp) as check:
                 check.verify()                         # a bad write must not become the only copy
-            os.replace(tmp, dst)
-            fsync_dir(os.path.dirname(dst))
+            os.replace(tmp, dst)       # (the caller moves it into originals/ and fsyncs that directory)
         finally:
             if os.path.exists(tmp):
                 os.remove(tmp)

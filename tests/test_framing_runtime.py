@@ -65,8 +65,8 @@ def test_no_face_runtime_is_exact_centre_crop(tmp_path, spy, size, target):
 def test_output_not_distorted(tmp_path, target):
     """A circle must stay a circle: crop in the target aspect, then a uniform scale."""
     from PIL import ImageDraw
-    im = Image.new("RGB", (3000, 4000), "white")
-    ImageDraw.Draw(im).ellipse((1100, 1600, 1900, 2400), fill="black")          # centred, d=800
+    im = Image.new("RGB", (4000, 3000), "white")          # 4:3: still full-bleed cover (#86: portraits get blurred sides)
+    ImageDraw.Draw(im).ellipse((1600, 1100, 2400, 1900), fill="black")          # centred, d=800
     src, dst = tmp_path / "s.png", tmp_path / "d.jpg"
     im.save(src)
     imaging.make_display_copy(str(src), str(dst), target)
@@ -75,7 +75,7 @@ def test_output_not_distorted(tmp_path, target):
     bbox = Image.eval(out, lambda v: 255 if v < 128 else 0).getbbox()
     bw, bh = bbox[2] - bbox[0], bbox[3] - bbox[1]
     assert abs(bw - bh) <= 2, (bw, bh)                 # not stretched
-    assert abs(bw - 800 * target[0] / 3000) <= 3
+    assert abs(bw - 800 * target[0] / 4000) <= 3
 
 
 @pytest.mark.parametrize("target", [(1000, 600), (1000, 750)])

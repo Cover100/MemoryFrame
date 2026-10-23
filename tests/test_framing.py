@@ -92,10 +92,11 @@ def test_noisy_1000x600_under_300kb(tmp_path, size):
 
 
 
-def test_portrait_copy_shows_the_window(tmp_path):
-    """3000x4000, marker band exactly where the centred window is (rows 1100..2900): the copy is that band."""
-    im = Image.new("RGB", (3000, 4000), (255, 0, 0))
-    im.paste((0, 255, 0), (0, 1100, 3000, 2900))
+def test_landscape_copy_shows_the_window(tmp_path):
+    """4000x3000 (4:3 stays full-bleed, #86), marker band exactly where the centred window is
+    (rows 300..2700): the copy is that band. (Portraits get blurred sides instead: test_blurfill.py.)"""
+    im = Image.new("RGB", (4000, 3000), (255, 0, 0))
+    im.paste((0, 255, 0), (0, 300, 4000, 2700))
     src, dst = tmp_path / "s.jpg", tmp_path / "d.jpg"
     im.save(src, quality=95)
     imaging.make_display_copy(str(src), str(dst), T)

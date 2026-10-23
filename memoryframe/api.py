@@ -168,7 +168,11 @@ _DELETE_LOCKS = [threading.Lock() for _ in range(64)]
 def delete_media(media_id):
     _item(media_id)                                 # 404 for bad / unknown ids
     with _DELETE_LOCKS[media_id % len(_DELETE_LOCKS)]:
-        return _delete_locked(media_id)
+        try:
+            return _delete_locked(media_id)
+        except imaging.UnsafeName:                  # a stored name that isn't a bare file name: nothing was moved
+            current_app.logger.error("refused to delete media %s: unsafe stored name", media_id)
+            return jsonify({"error": "This photo's file name is not safe to delete."}), 400
 
 
 def _delete_locked(media_id):

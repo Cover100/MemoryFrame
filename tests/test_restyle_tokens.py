@@ -139,3 +139,55 @@ def test_kiosk_loads_frame_font_once_each(page, server, net):
     for w in (400, 700):   # preload and @font-face share one URL, so at most one fetch per font
         assert fonts.count(f"/static/fonts/atkinson-hyperlegible-{w}.woff2") <= 1, fonts
     assert "/static/fonts/atkinson-hyperlegible-700.woff2" in fonts
+
+
+# ---- #83: declare the dark colour scheme so force-dark browsers (Samsung Internet) leave the colours alone ----
+def _phone_pages(client, paired):
+    lan = {"REMOTE_ADDR": "10.42.0.23"}
+    pages = [client.get(u, environ_base=lan) for u in
+             ("/admin/", "/admin/upload", "/admin/library", "/admin/settings", "/admin/wifi/",
+              "/admin/nope")]
+    return pages
+
+
+def test_every_phone_page_declares_dark_scheme_and_theme_colour(client, paired):
+    pages = _phone_pages(client, paired)
+    assert len(pages) >= 6
+    for r in pages:
+        html = r.get_data(as_text=True)
+        assert 'class="mf-phone"' in html, r.request.path
+        assert '<meta name="color-scheme" content="dark">' in html, r.request.path
+        assert '<meta name="supported-color-schemes" content="dark">' in html, r.request.path
+        assert '<meta name="theme-color" content="#16261D">' in html, r.request.path
+
+
+def test_unpaired_phone_pages_declare_dark_scheme(client):
+    lan = {"REMOTE_ADDR": "10.42.0.23"}
+    for u in ("/pair", "/admin/nope", "/pair/nope"):
+        html = client.get(u, environ_base=lan).get_data(as_text=True)
+        assert 'class="mf-phone"' in html and '<meta name="color-scheme" content="dark">' in html, u
+    bad = client.post("/pair", data={"code": "x"}, environ_base=lan)   # the pairing error page
+    assert 'class="mf-phone"' in bad.get_data(as_text=True) and bad.status_code in (400, 429)
+
+
+def test_theme_colour_is_the_header_token():
+    css = (STATIC / "tokens.css").read_text()
+    forest900 = re.search(r"--mf-forest-900:\s*(#[0-9A-Fa-f]{6})", css).group(1).upper()
+    tmpl = (STATIC.parent / "templates" / "_phone.html").read_text()
+    assert re.search(r'name="theme-color" content="%s"' % forest900, tmpl)
+    phone = (STATIC / "phone.css").read_text()
+    assert re.search(r"\.mf-phone \.bar \{[^}]*background: var\(--mf-forest-900\)", phone)
+
+
+def test_phone_css_root_is_dark_and_painted():
+    phone = (STATIC / "phone.css").read_text()
+    root = re.search(r"(?m)^:root \{([^}]*)\}", phone).group(1)
+    assert "color-scheme: dark" in root
+    assert "background-color: var(--mf-ink)" in root
+    assert "style=" not in (STATIC.parent / "templates" / "_phone.html").read_text()   # CSP: no inline style
+
+
+def test_kiosk_page_is_not_touched():
+    kiosk = (STATIC.parent / "templates" / "index.html").read_text()
+    assert "color-scheme" not in kiosk
+    assert ":root { color-scheme" not in (STATIC / "style.css").read_text()

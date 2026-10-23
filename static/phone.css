@@ -1,6 +1,11 @@
 /* Restyle PR C: the phone site on the dark frame theme (.mf-phone, tokens.css; DIRECTION.md, #70 phone mocks 01-08,
    04-settings-v2, 04b). One stylesheet for every phone page. Dark frame theme + Atkinson Hyperlegible (PHONE-DARK.md, user 19 Oct; /frame-fonts.css, block); flat colours:
    no shadows, gradients, blur or animations; light DOM. Inline style attributes are blocked by the CSP. */
+/* #83: the phone site is dark by design, so say so. Browsers that force-darken web content (Samsung Internet's
+   "Force dark mode for web content") skip pages that declare a dark scheme, and otherwise re-darken our greens and browns.
+   The html element gets the dark page colour itself, so the first paint and any overscroll are already dark.
+   "only dark" is the stronger form; the plain declaration first is the fallback for a browser that rejects "only". */
+:root { color-scheme: dark; color-scheme: only dark; background-color: var(--mf-ink); }
 .mf-phone, .mf-phone * { box-sizing: border-box; }
 html, body.mf-phone { margin: 0; }
 body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh; -webkit-font-smoothing: antialiased;

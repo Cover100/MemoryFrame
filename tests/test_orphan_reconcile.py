@@ -278,3 +278,30 @@ def test_f3_truncated_jpeg_and_png_are_reported_and_kept(mf_app, caplog, ext, dr
 def test_f3_jpeg_with_trailing_padding_is_still_adopted(mf_app):
     drop_file(mf_app, uuid.uuid4().hex + ".jpg", jpeg(400, 300) + b"\x00" * 16)
     assert reconcile(mf_app) == (1, 0)
+
+
+# ---------------- #100 (Juniper) ----------------
+
+def test_symlink_orphan_is_reported_and_not_followed(mf_app, tmp_path, caplog, monkeypatch):
+    target = tmp_path / "elsewhere.jpg"
+    target.write_bytes(jpeg())
+    link = os.path.join(mf_app.config["DATA_DIR"], "originals", uuid.uuid4().hex + ".jpg")
+    os.symlink(target, link)
+    calls = []
+    monkeypatch.setattr(library, "sha256_file", lambda p: calls.append(p))
+    with caplog.at_level(logging.WARNING):
+        assert reconcile(mf_app) == (0, 1)
+    assert calls == [] and rows(mf_app) == [] and os.path.islink(link) and target.exists()
+    assert "(not a regular file (symlink or special), not followed)" in caplog.text
+
+
+def test_too_large_orphan_is_reported_and_not_hashed(mf_app, caplog, monkeypatch):
+    monkeypatch.setattr(library, "ORPHAN_MAX_BYTES", 1000)
+    name = uuid.uuid4().hex + ".jpg"
+    path = drop_file(mf_app, name, jpeg())                    # well over 1000 bytes
+    calls = []
+    monkeypatch.setattr(library, "sha256_file", lambda p: calls.append(p))
+    with caplog.at_level(logging.WARNING):
+        assert reconcile(mf_app) == (0, 1)
+    assert calls == [] and rows(mf_app) == [] and os.path.exists(path)
+    assert f"orphan file left in place: {name} (too large)" in caplog.text

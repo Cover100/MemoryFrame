@@ -4,6 +4,7 @@ import hashlib
 import os
 import re
 import shutil
+import stat
 import uuid
 
 from . import db, imaging, storage
@@ -138,6 +139,10 @@ def add_file(conn, data_dir, src, original_name, source, display_target=None, st
 _SERVER_NAME = re.compile(r"[0-9a-f]{32}\.[a-z0-9]{1,5}")
 
 
+# Above any upload (MEMORYFRAME_MAX_UPLOAD_MB, default 50) and any stored copy; bigger strays are reported only.
+ORPHAN_MAX_BYTES = 60 * 1024 * 1024
+
+
 def reconcile_orphans(conn, data_dir):
     """#91: find photos in originals/ that have no media row and adopt them, or report them.
 
@@ -165,12 +170,22 @@ def reconcile_orphans(conn, data_dir):
     adopted = reported = 0
     for name in sorted(os.listdir(odir)):
         path = os.path.join(odir, name)
-        if name in known or name.startswith(".") or not os.path.isfile(path):
-            continue                                   # a photo with a row, a hidden file, or a directory
+        if name in known or name.startswith("."):
+            continue                                   # a photo with a row, or a hidden file
+        try:
+            st = os.lstat(path)                        # Juniper on #100: never follow a symlink
+        except OSError:
+            continue                                   # vanished since the listdir
+        if stat.S_ISDIR(st.st_mode):
+            continue
         reason = None
         try:
             kind = storage.media_kind(name) if _SERVER_NAME.fullmatch(name) else None
-            if kind is None:
+            if not stat.S_ISREG(st.st_mode):
+                reason = "not a regular file (symlink or special), not followed"
+            elif st.st_size > ORPHAN_MAX_BYTES:
+                reason = "too large"                   # not hashed, so a stray big file costs nothing each start
+            elif kind is None:
                 reason = "not a server-made photo name"
             elif kind == "video":
                 reason = "video, cannot be verified"

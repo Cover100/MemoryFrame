@@ -84,9 +84,13 @@ def _refresh_copies_in_background(app):
 
 
 def _sweep(app):
-    """MF-16: clean up after an interrupted delete (tmp/trash, orphan derivatives)."""
-    from . import imaging
+    """MF-16: clean up after an interrupted delete (tmp/trash, orphan derivatives); #91: adopt orphan photos."""
+    from . import imaging, library
     conn = db.connect(app.config["DB_PATH"])
+    try:                        # #91: before the sweep, so an adopted photo keeps its copies; before serving
+        library.reconcile_orphans(conn, app.config["DATA_DIR"])
+    except Exception as e:  # noqa: BLE001 - never block start-up
+        log.warning("start-up orphan reconcile failed: %s", e)
     try:
         imaging.sweep(conn, app.config["DATA_DIR"])
     except Exception as e:  # noqa: BLE001 - never block start-up

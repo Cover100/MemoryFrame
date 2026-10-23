@@ -724,8 +724,5 @@ def sweep(conn, data_dir):
                     swept += 1
                 except OSError:
                     pass
-    odir = os.path.join(data_dir, "originals")
-    orphans = [f for f in os.listdir(odir) if os.path.splitext(f)[0] not in known] if os.path.isdir(odir) else []
-    if orphans:
-        log.warning("%d original(s) not in the database were kept: %s", len(orphans), orphans[:5])
+    # originals/ files without a row are handled by library.reconcile_orphans (adopt or report, never delete)
     return swept

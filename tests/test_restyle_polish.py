@@ -94,7 +94,7 @@ def test_n4_delete_is_a_separate_red_text_button():
     js = (ROOT / "static" / "library.js").read_text()
     assert 'del.className = "del"' in js and "actions.append(show, hide, del)" in js
     rule = re.search(r"\.mf-phone #grid \.actions button\.del \{([^}]*)\}", _flat(PHONE_CSS)).group(1)
-    for part in ("flex: 1 0 100%", "background: none", "border: 0", "border-top: 1px solid var(--mf-line)", "color: var(--mf-red)"):
+    for part in ("flex: 1 0 100%", "background: none", "border: 0", "border-top: 1px solid var(--mf-line)", "color: var(--mf-red-text)"):
         assert part in rule, part
     assert "button:last-child" not in PHONE_CSS
 
@@ -184,7 +184,7 @@ def test_n4_library_actions_row(page, server, mf_app, lib):
           showBorder:getComputedStyle(s).borderLeftWidth});})()"""))
     assert st["text"] == "Delete" and st["cls"] == "del" and st["below"] and st["full"] and st["h"] >= 48, st
     assert st["bg"] == "rgba(0, 0, 0, 0)" and st["bl"] == "0px" and st["bt"] == "1px", st
-    assert st["color"] == "rgb(168, 53, 42)" and float(st["showBorder"][:-2]) >= 1, st   # --mf-red; Show now/Hide stay outlined
+    assert st["color"] == "rgb(231, 160, 151)" and float(st["showBorder"][:-2]) >= 1, st   # --mf-red-text (dark theme); Show now/Hide stay outlined
 
 
 # ---------------- Juniper's #77 security review: offline-panel SSID ----------------
@@ -230,7 +230,7 @@ def test_dev_mode_offline_hint_does_not_name_the_hotspot(paired, product):
     for url in ("/admin/", "/admin/settings", "/admin/upload", "/admin/library"):
         h = offline_panel(paired, url)
         assert "Secret-Hotspot-4F2A" not in h, url
-        assert "<li>Join the frame's Wi-Fi.</li>" in h and "scan the Wi-Fi QR" not in h, url
+        assert "<li>Join the frame's <span class=\"nw\">Wi-Fi</span>.</li>" in h and "scan the <span class=\"nw\">Wi-Fi</span> QR" not in h, url
     product.unlink()                                                     # no netmode file = dev (safe default)
     assert "Secret-Hotspot-4F2A" not in offline_panel(paired, "/admin/")
 

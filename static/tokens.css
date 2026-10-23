@@ -115,6 +115,7 @@
   --mf-outline: var(--mf-oat);        /* outlined buttons and inputs: 1.5px, >= 6.6:1 on every dark surface */
   --mf-focus: var(--mf-brass);        /* every focus ring */
   --mf-scrim-phone: rgba(0, 0, 0, .6);
+  --mf-tile-ring-fill: rgba(14, 19, 17, .5);  /* empty select ring on a photo tile: ~3:1 even on a white photo */
   background: var(--mf-paper); color: var(--mf-text); font-family: var(--mf-font-phone); }
 .mf-phone button { font: inherit; background: var(--mf-green); color: #fff; border: 0; border-radius: var(--mf-r-md);
   min-height: var(--mf-touch-phone); }

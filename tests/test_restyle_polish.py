@@ -90,13 +90,17 @@ def test_n2_last_hard_coded_colours_are_tokens():
     assert others <= {"#fff"}, others                              # white on fills only (matches tokens.css)
 
 
-def test_n4_delete_is_a_separate_red_text_button():
+def test_n4_per_tile_delete_styling_is_gone_with_the_old_library():
+    """#81 replaced the per-tile Show now / Hide / Delete row with select mode: nothing of the N4 styling may linger."""
     js = (ROOT / "static" / "library.js").read_text()
-    assert 'del.className = "del"' in js and "actions.append(show, hide, del)" in js
-    rule = re.search(r"\.mf-phone #grid \.actions button\.del \{([^}]*)\}", _flat(PHONE_CSS)).group(1)
-    for part in ("flex: 1 0 100%", "background: none", "border: 0", "border-top: 1px solid var(--mf-line)", "color: var(--mf-red-text)"):
-        assert part in rule, part
-    assert "button:last-child" not in PHONE_CSS
+    assert "del.className" not in js and "actions.append" not in js
+    flat = _flat(PHONE_CSS)
+    assert "button.del" not in flat and "#grid" not in flat and "button:last-child" not in flat
+    for t in ("library.html", "admin_home.html"):
+        assert 'class="actions"' not in (ROOT / "templates" / t).read_text()
+    # the selection UI separates the destructive control from Cancel: outlined/transparent vs brick fill
+    assert re.search(r"\.mf-phone \.btn-danger \{ background: var\(--mf-red\)", flat)
+    assert ".mf-phone .toolbar .btn-neutral { background: transparent; }" in flat
 
 
 @pytest.mark.parametrize("left,q", [(300, 4), (299, 4), (226, 4), (225, 3), (151, 3), (150, 2), (76, 2), (75, 1), (1, 1),
@@ -168,23 +172,6 @@ def test_n5_background_does_not_scroll_under_the_wifi_sheet(page, server, mf_app
     assert evaluate(page, "getComputedStyle(document.body).overflowY") == "visible"
     assert "sheet-open" not in evaluate(page, "document.body.className")
     assert page.exceptions() == []
-
-
-@pytest.mark.skipif(BROWSER is None, reason="no Chromium/Chrome installed")
-def test_n4_library_actions_row(page, server, mf_app, lib):
-    lib.add("c.jpg", PNG)
-    _phone(page, server, mf_app, "admin/library")
-    page.pump(1)
-    st = json.loads(evaluate(page, """(()=>{const li=document.querySelector('#grid li');
-        const [s,h,d]=li.querySelectorAll('.actions button'); const c=getComputedStyle(d);
-        const rs=s.getBoundingClientRect(), rd=d.getBoundingClientRect(), card=li.getBoundingClientRect();
-        return JSON.stringify({text:d.textContent, cls:d.className, bg:c.backgroundColor, color:c.color,
-          bl:c.borderLeftWidth, bt:c.borderTopWidth, below: rd.top >= rs.bottom, h: rd.height,
-          full: Math.abs(rd.left-card.left) <= 2 && Math.abs(rd.right-card.right) <= 2,
-          showBorder:getComputedStyle(s).borderLeftWidth});})()"""))
-    assert st["text"] == "Delete" and st["cls"] == "del" and st["below"] and st["full"] and st["h"] >= 48, st
-    assert st["bg"] == "rgba(0, 0, 0, 0)" and st["bl"] == "0px" and st["bt"] == "1px", st
-    assert st["color"] == "rgb(231, 160, 151)" and float(st["showBorder"][:-2]) >= 1, st   # --mf-red-text (dark theme); Show now/Hide stay outlined
 
 
 # ---------------- Juniper's #77 security review: offline-panel SSID ----------------

@@ -1,4 +1,4 @@
-"""MF-16: library management API (list, thumbnails, hide, delete, show now)."""
+"""MF-16: library management API (list, thumbnails, delete, show now). Hide was removed in #80."""
 import io
 import os
 
@@ -34,7 +34,7 @@ def stored_name(app, media_id):
 
 
 def test_list_and_thumb(paired, item, mf_app):
-    assert item["name"] == "beach.jpg" and item["hidden"] is False and item["thumb"].endswith("/thumb")
+    assert item["name"] == "beach.jpg" and "hidden" not in item and item["thumb"].endswith("/thumb")
     r = paired.get(item["thumb"], environ_base=PHONE)
     assert r.status_code == 200 and r.mimetype == "image/jpeg"
     im = Image.open(io.BytesIO(r.data))
@@ -55,20 +55,10 @@ def test_thumb_of_undecodable_is_404(paired, lib):
     assert paired.get(it["thumb"], environ_base=PHONE).status_code == 404
 
 
-def test_hide_and_unhide(paired, item, client, mf_app):
-    name = stored_name(mf_app, item["id"])
-    url = f"/api/v1/media/{item['id']}/hidden"
-    assert paired.put(url, json={"hidden": True}, environ_base=PHONE).get_json()["hidden"] is True
-    assert name not in [m["filename"] for m in client.get("/media").get_json()]
-    assert client.get("/uploads/" + name).status_code == 404
-    assert paired.get("/api/v1/media", environ_base=PHONE).get_json()[0]["hidden"] is True
-    assert paired.put(url, json={"hidden": False}, environ_base=PHONE).status_code == 200
-    assert name in [m["filename"] for m in client.get("/media").get_json()]
-
-
-@pytest.mark.parametrize("body", [None, {}, {"hidden": "yes"}, {"hidden": 1}, ["x"]])
-def test_hide_validates_body(paired, item, body):
-    assert paired.put(f"/api/v1/media/{item['id']}/hidden", json=body, environ_base=PHONE).status_code == 400
+def test_hide_route_is_gone(paired, item):
+    """#80: nothing on the phone can hide a photo."""
+    r = paired.put(f"/api/v1/media/{item['id']}/hidden", json={"hidden": True}, environ_base=PHONE)
+    assert r.status_code in (404, 405)
 
 
 def test_delete_removes_original_and_derivatives(paired, item, mf_app, client):
@@ -127,8 +117,6 @@ def test_show_now(paired, item, client, mf_app):
     r = paired.post(f"/api/v1/media/{item['id']}/show-now", environ_base=PHONE)
     assert r.status_code == 200 and r.get_json()["seq"] == 1
     assert show_now(client) == {"seq": 1, "filename": stored_name(mf_app, item["id"]), "rev": 1}
-    paired.put(f"/api/v1/media/{item['id']}/hidden", json={"hidden": True}, environ_base=PHONE)
-    assert paired.post(f"/api/v1/media/{item['id']}/show-now", environ_base=PHONE).status_code == 409
 
 
 def test_unknown_ids_404(paired):
@@ -136,17 +124,15 @@ def test_unknown_ids_404(paired):
     assert paired.post("/api/v1/media/999/show-now", environ_base=PHONE).status_code == 404
 
 
-def test_library_page(paired):
+def test_library_page(paired, item):
     html = paired.get("/admin/library", environ_base=PHONE).data
     assert b'id="grid"' in html and b"library.js" in html and b'name="csrf-token"' in html
 
 
-def test_rev_bumps_on_hide_and_delete(paired, item, client):
+def test_rev_bumps_on_delete(paired, item, client):
     rev = client.get("/show-now").get_json()["rev"]
-    paired.put(f"/api/v1/media/{item['id']}/hidden", json={"hidden": True}, environ_base=PHONE)
-    assert client.get("/show-now").get_json()["rev"] == rev + 1
     paired.delete(f"/api/v1/media/{item['id']}", environ_base=PHONE)
-    assert client.get("/show-now").get_json()["rev"] == rev + 2
+    assert client.get("/show-now").get_json()["rev"] == rev + 1
 
 
 # ---------- Tester #27 blockers ----------
@@ -155,7 +141,6 @@ def test_rev_bumps_on_hide_and_delete(paired, item, client):
 def test_huge_ids_are_404(paired, mid):
     assert paired.delete(f"/api/v1/media/{mid}", environ_base=PHONE).status_code == 404
     assert paired.get(f"/api/v1/media/{mid}/thumb", environ_base=PHONE).status_code == 404
-    assert paired.put(f"/api/v1/media/{mid}/hidden", json={"hidden": True}, environ_base=PHONE).status_code == 404
     assert paired.post(f"/api/v1/media/{mid}/show-now", environ_base=PHONE).status_code == 404
 
 
@@ -166,12 +151,6 @@ def test_max_sqlite_id_is_plain_404(paired):
 def test_show_now_cleared_on_delete(paired, item, client):
     paired.post(f"/api/v1/media/{item['id']}/show-now", environ_base=PHONE)
     paired.delete(f"/api/v1/media/{item['id']}", environ_base=PHONE)
-    assert client.get("/show-now").get_json()["filename"] is None
-
-
-def test_show_now_cleared_on_hide(paired, item, client):
-    paired.post(f"/api/v1/media/{item['id']}/show-now", environ_base=PHONE)
-    paired.put(f"/api/v1/media/{item['id']}/hidden", json={"hidden": True}, environ_base=PHONE)
     assert client.get("/show-now").get_json()["filename"] is None
 
 
@@ -407,3 +386,163 @@ def test_concurrent_second_delete_is_404(paired, item, mf_app, monkeypatch):
     monkeypatch.setattr(imaging, "stage_delete", first_wins)
     r = paired.delete(f"/api/v1/media/{item['id']}", environ_base=PHONE)
     assert r.status_code == 404
+
+
+# ---------- #80: bulk delete, hidden flags cleared, the Library page ----------
+
+import json as _json
+
+BULK = "/api/v1/media/delete"
+
+
+def add_photos(lib, n):
+    """n distinct JPEGs through the library importer; returns their media ids (oldest first)."""
+    ids = []
+    for i in range(n):
+        ids.append(lib.add(f"p{i}.jpg", jpeg(64, 64, (i * 20 % 256, 50, 90))))
+    return ids
+
+
+def media_ids(app):
+    conn = mfdb.connect(app.config["DB_PATH"])
+    try:
+        return [r[0] for r in conn.execute("SELECT id FROM media ORDER BY id")]
+    finally:
+        conn.close()
+
+
+def test_bulk_delete_removes_rows_and_files_and_bumps_rev(paired, lib, mf_app, client):
+    add_photos(lib, 3)
+    ids = media_ids(mf_app)
+    d = mf_app.config["DATA_DIR"]
+    names = {i: stored_name(mf_app, i) for i in ids}
+    rev = client.get("/show-now").get_json()["rev"]
+    r = paired.post(BULK, json={"ids": ids[:2]}, environ_base=PHONE)
+    assert r.status_code == 200 and r.get_json() == {"deleted": ids[:2], "missing": [], "failed": []}
+    assert media_ids(mf_app) == ids[2:]
+    for i in ids[:2]:
+        assert not os.path.exists(os.path.join(d, "originals", names[i]))      # disk check
+    assert os.path.exists(os.path.join(d, "originals", names[ids[2]]))
+    assert client.get("/show-now").get_json()["rev"] == rev + 1                 # one bump for the whole batch
+
+
+def test_bulk_delete_repeats_unknown_and_already_gone(paired, lib, mf_app):
+    add_photos(lib, 2)
+    ids = media_ids(mf_app)
+    r = paired.post(BULK, json={"ids": [ids[0], ids[0], 999999]}, environ_base=PHONE)
+    assert r.get_json() == {"deleted": [ids[0]], "missing": [999999], "failed": []}
+    assert media_ids(mf_app) == [ids[1]]
+
+
+@pytest.mark.parametrize("body", [
+    [], {}, {"ids": []}, {"ids": "1"}, {"ids": 1}, {"ids": [None]}, {"ids": ["1"]}, {"ids": [1.0]},
+    {"ids": [True]}, {"ids": [0]}, {"ids": [-1]}, {"ids": [2**63]}, {"ids": [[1]]}, {"ids": [1], "extra": 1},
+    {"ids": {"1": 1}}])
+def test_bulk_delete_validates_ids_and_deletes_nothing(paired, lib, mf_app, body):
+    add_photos(lib, 2)
+    before = media_ids(mf_app)
+    r = paired.post(BULK, json=body, environ_base=PHONE)
+    assert r.status_code == 400
+    assert media_ids(mf_app) == before
+
+
+def test_bulk_delete_deeply_nested_json_is_400_not_500(paired, lib, mf_app):
+    add_photos(lib, 2)
+    before = media_ids(mf_app)
+    body = "[" * 15000 + "]" * 15000                       # under the 32 KB cap; json.loads raises RecursionError
+    r = paired.post(BULK, data=body, content_type="application/json", environ_base=PHONE)
+    assert r.status_code == 400 and media_ids(mf_app) == before
+
+
+def test_bulk_delete_cap_on_count_and_body_size(paired, lib, mf_app):
+    from memoryframe import api
+    add_photos(lib, 1)
+    before = media_ids(mf_app)
+    r = paired.post(BULK, json={"ids": list(range(1, api.MAX_BULK + 2))}, environ_base=PHONE)
+    assert r.status_code == 413 and media_ids(mf_app) == before
+    big = _json.dumps({"ids": [1] * (api.MAX_BULK_BODY)})                        # body over the byte cap
+    r = paired.post(BULK, data=big, content_type="application/json", environ_base=PHONE)
+    assert r.status_code == 413 and media_ids(mf_app) == before
+    r = paired.post(BULK, json={"ids": list(range(1, api.MAX_BULK + 1))}, environ_base=PHONE)   # exactly the cap
+    assert r.status_code == 200 and len(r.get_json()["missing"]) == api.MAX_BULK - 1
+
+
+def test_bulk_delete_needs_json_and_a_paired_phone(paired, lib, mf_app, client):
+    add_photos(lib, 1)
+    ids = media_ids(mf_app)
+    r = paired.post(BULK, data=_json.dumps({"ids": ids}), content_type="text/plain", environ_base=PHONE)
+    assert r.status_code == 415 and media_ids(mf_app) == ids
+    r = paired.post(BULK, data="{not json", content_type="application/json", environ_base=PHONE)
+    assert r.status_code == 400
+    paired.delete_cookie("mf_session")                                          # unpaired: nothing is deleted
+    r = paired.post(BULK, json={"ids": ids}, environ_base=PHONE)
+    assert r.status_code == 401 and media_ids(mf_app) == ids
+
+
+def test_bulk_delete_needs_csrf_and_same_origin(paired, lib, mf_app):
+    add_photos(lib, 1)
+    ids = media_ids(mf_app)
+    r = paired.post(BULK, json={"ids": ids}, csrf=False, environ_base=PHONE)
+    assert r.status_code == 403
+    r = paired.post(BULK, json={"ids": ids}, headers={"Origin": "http://evil.example"}, environ_base=PHONE)
+    assert r.status_code == 403
+    assert media_ids(mf_app) == ids
+
+
+def test_bulk_delete_never_touches_files_outside_the_photo_dirs(paired, lib, mf_app, tmp_path):
+    """A row whose stored_name is a path (never made by the server) is refused: nothing outside moves."""
+    add_photos(lib, 2)
+    good = media_ids(mf_app)
+    victim = tmp_path / "victim.txt"
+    victim.write_text("keep me")
+    conn = mfdb.connect(mf_app.config["DB_PATH"])
+    bad = []
+    for name in (f"../../{victim.name}", str(victim), "..", "a/b.jpg", ".hidden.jpg"):
+        cur = conn.execute("INSERT INTO media (stored_name, original_name, kind, sha256, size_bytes, source, created_at)"
+                           " VALUES (?, 'x', 'image', 'h', 1, 'upload', 1)", (name,))
+        bad.append(cur.lastrowid)
+    conn.commit()
+    conn.close()
+    r = paired.post(BULK, json={"ids": bad + good[:1]}, environ_base=PHONE)
+    out = r.get_json()
+    assert r.status_code == 200 and out["failed"] == bad and out["deleted"] == good[:1]     # others still go
+    assert victim.read_text() == "keep me"
+    assert set(bad) <= set(media_ids(mf_app))                                    # refused rows stay, visibly
+
+
+def test_imaging_check_stored_name(mf_app):
+    d = mf_app.config["DATA_DIR"]
+    imaging.check_stored_name(d, "0123abcd.jpg")
+    for bad in ("", None, "..", "../x.jpg", "a/b.jpg", "a\\b.jpg", ".x.jpg", "x\0.jpg", "/etc/passwd"):
+        with pytest.raises(imaging.UnsafeName):
+            imaging.check_stored_name(d, bad)
+
+
+def test_old_hidden_flags_are_cleared_and_nothing_can_set_them(paired, lib, mf_app, client):
+    add_photos(lib, 2)
+    conn = mfdb.connect(mf_app.config["DB_PATH"])
+    conn.execute("UPDATE media SET hidden = 1")
+    conn.commit()
+    conn.close()
+    assert len(client.get("/media").get_json()) == 0                            # hidden: the slideshow skips them
+    mfdb.init_db(mf_app.config["DB_PATH"])                                      # next start
+    assert len(client.get("/media").get_json()) == 2                            # all show again
+    assert len(paired.get("/api/v1/media", environ_base=PHONE).get_json()) == 2
+    assert paired.get("/api/v1/status", environ_base=PHONE).get_json()["media"] == {"total": 2, "visible": 2}
+
+
+def test_library_page_is_a_plain_grid_without_names_or_hide(paired, lib, mf_app):
+    add_photos(lib, 3)
+    h = paired.get("/admin/library", environ_base=PHONE).get_data(as_text=True)
+    for gone in ("Show now", "Hide", "Unhide", "Hidden", "p0.jpg", "p1.jpg", "<a class=\"tile", "style="):
+        assert gone not in h, gone
+    assert h.count('class="tile') == 3 and h.count('/thumb"') == 3
+    assert 'aria-label="Photo 1 of 3"' in h and 'aria-label="Photo 3 of 3"' in h
+    assert "3 photos on the frame" in h and 'id="selectBtn"' in h and 'id="delBtn" disabled' in h
+    assert 'role="alertdialog"' in h and 'aria-modal="true"' in h and 'id="confirmCancel"' in h
+    assert 'alt=""' in h and 'loading="lazy"' in h
+
+
+def test_library_page_empty(paired):
+    h = paired.get("/admin/library", environ_base=PHONE).get_data(as_text=True)
+    assert 'id="grid"' not in h and "No photos yet" in h and 'id="selectBtn"' not in h

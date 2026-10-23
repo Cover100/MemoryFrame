@@ -1,9 +1,41 @@
 {% extends "_phone.html" %}
-{% block title %}Library - Memory Frame{% endblock %}
-{% block heading %}Library{% endblock %}
+{# #80 Library (phone/09-LIBRARY.md, dark): one grid, newest first. Tap or long press a photo, or Select, to
+   start selecting; Delete (N) asks on a bottom sheet and sends one bulk request. No Show now, Hide or names. #}
+{% from "_storage.html" import storage_meter %}
+{% block title %}Photos - Memory Frame{% endblock %}
+{% block back %}<a class="back" href="/admin/" aria-label="Back to home">‹</a>{% endblock %}
+{% block heading %}Photos{% endblock %}
+{% block icon %}<a class="icon" href="/admin/settings" aria-label="Settings">⚙</a>{% endblock %}
+{% block strip %}<div class="strip{% if st %} has-store{% endif %}"><p class="conn"><span class="ok" aria-hidden="true"></span>Connected to the frame</p>{% if st %}{{ storage_meter(st, "on-dark") }}{% endif %}</div>
+<header class="bar selbar" id="selbar"><p class="name" id="selCount" aria-live="polite">0 selected</p><button type="button" class="btn-onbar" id="selAll">Select all</button></header>{% endblock %}
 {% block content %}
-<a class="btn big block" href="/admin/upload">＋&nbsp; Upload photos</a>
-<p id="count" class="muted small mt" aria-live="polite">Loading...</p>
-<ul id="grid"></ul>
+<div class="normal-only">
+  <a class="btn big block primary" id="upBtn" href="/admin/upload">＋&nbsp; Upload photos</a>
+  <div class="libhead">
+    <h1>Library<small id="count">{{ n }} photo{{ "s" if n != 1 }} on the frame</small></h1>
+    {% if n %}<button type="button" class="btn-neutral" id="selectBtn">Select</button>{% endif %}
+  </div>
+</div>
+<p class="muted small sel-only selhint">Tap photos to select or unselect them.</p>
+{% if n %}
+<ul id="grid" class="lib" aria-label="Photos on the frame">
+{% for m in items %}<li data-id="{{ m.id }}"><button type="button" class="tile{% if m.kind != 'image' %} plain{% endif %}" aria-label="Photo {{ loop.index }} of {{ n }}">{% if m.kind == 'image' %}<img src="/api/v1/media/{{ m.id }}/thumb" alt="" width="240" height="240" loading="lazy" decoding="async">{% else %}<span class="ph" aria-hidden="true"></span>{% endif %}</button></li>
+{% endfor %}</ul>
+<div class="card empty-lib" id="emptyLib" hidden><p class="muted flush">No photos yet. Tap <b>Upload photos</b> to send some to the frame.</p></div>
+{% else %}
+<div class="card empty-lib"><p class="muted flush">No photos yet. Tap <b>Upload photos</b> to send some to the frame.</p></div>
+{% endif %}
+<div class="toolbar" id="toolbar">
+  {# inside the fixed toolbar so a failed delete is always on screen, wherever the list is scrolled #}
+  <p class="err" id="delErr" role="alert" hidden>Couldn't delete the photos. Check you're connected to the frame and try again.</p>
+  <div class="tbtns"><button type="button" class="btn-neutral" id="selCancel">Cancel</button><button type="button" class="btn-danger" id="delBtn" disabled>Delete (0)</button></div>
+</div>
+<div id="confirm" class="scrim" hidden>
+  <div class="sheet" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmBody">
+    <h2 id="confirmTitle">Delete this photo?</h2>
+    <p id="confirmBody">It'll be removed from the frame. This can't be undone.</p>
+    <div class="rowb"><button type="button" class="secondary btn-default" id="confirmCancel">Cancel</button><button type="button" class="btn-danger" id="confirmDelete">Delete</button></div>
+  </div>
+</div>
 {% endblock %}
 {% block scripts %}<script src="{{ static('library.js') }}"></script>{% endblock %}

@@ -33,6 +33,33 @@ except ImportError:            # pragma: no cover
 
 _lock = threading.Lock()
 
+# #82: allow photos up to the 150 MP upload cap without Pillow's DecompressionBombWarning (default
+# warns above 89 MP, errors above 2x). The real guard is the header check in upload.sniff_image.
+if Image is not None and Image.MAX_IMAGE_PIXELS is not None and Image.MAX_IMAGE_PIXELS < 150_000_000:
+    Image.MAX_IMAGE_PIXELS = 150_000_000
+
+DRAFT_FACTOR = 3        # JPEG draft keeps the image at least this many times the target size
+
+
+def draft_jpeg(im, want):
+    """#82: ask Pillow's JPEG decoder for a 1/2, 1/4 or 1/8 scale decode (DCT scaling), so a 108-150 MP
+    JPEG is never expanded to full size in RAM (~3 bytes/pixel). Must be called before the image is
+    loaded. The result is never smaller than `want` (width, height) in either side; photos that are
+    not much bigger than `want` are unchanged. Non-JPEG and CMYK/other modes are left alone."""
+    if getattr(im, "format", None) not in ("JPEG", "MPO") or im.mode not in ("RGB", "L"):
+        return im
+    try:
+        orient = im.getexif().get(0x0112, 1)
+    except Exception:  # noqa: BLE001
+        orient = 1
+    if orient in (5, 6, 7, 8):          # stored sideways: the displayed width is the stored height
+        want = (want[1], want[0])
+    try:
+        im.draft(im.mode, want)
+    except Exception:  # noqa: BLE001 - never worse than a full decode
+        pass
+    return im
+
 
 MIN_SIDE, MAX_SIDE = 320, 4000
 
@@ -80,6 +107,7 @@ def make_display_copy(src, dst, target, max_bytes=MAX_BYTES):
     if Image is None:
         raise RuntimeError("Pillow is not installed")
     with Image.open(src) as im:
+        draft_jpeg(im, (DRAFT_FACTOR * target[0], DRAFT_FACTOR * target[1]))
         im = ImageOps.exif_transpose(im)
         if im.mode not in ("RGB", "L"):
             bg = Image.new("RGB", im.size, (0, 0, 0))
@@ -231,6 +259,81 @@ def backfill(conn, data_dir, target, force=False):
     return made, failed
 
 
+# ---------------- #82: the one stored copy (no full-size original is kept) ----------------
+
+STORE_FACTOR = 1.5      # stored copy covers 1.5x the display target (1500x900 for 1000x600): sharp, never cropped
+STORE_QUALITY = 88
+STORE_MAX_SIDE = 4096   # extreme panoramas: never store a side longer than this
+_store_lock = threading.Lock()   # one big decode at a time: waitress runs 4 threads on a small-RAM Pi
+
+
+class ImageUnreadable(Exception):
+    """The file passed the header checks but cannot be decoded (corrupt or truncated)."""
+
+
+def stored_size(target):
+    """Size the stored copy must still cover, from the display target: (1500, 900) for 1000x600."""
+    return round(target[0] * STORE_FACTOR), round(target[1] * STORE_FACTOR)
+
+
+def _flatten(im):
+    if im.mode in ("RGB", "L"):
+        return im
+    if im.mode in ("RGBA", "LA", "P", "PA") or "transparency" in im.info:
+        rgba = im.convert("RGBA")
+        bg = Image.new("RGB", im.size, (0, 0, 0))
+        bg.paste(rgba, mask=rgba.getchannel("A"))
+        return bg
+    return im.convert("RGB")
+
+
+def _to_srgb(im, profile):
+    """Wide-gamut photos (Display P3 phones) would look dull once the profile is dropped."""
+    try:
+        import io
+        from PIL import ImageCms
+        src = ImageCms.ImageCmsProfile(io.BytesIO(profile))
+        dst = ImageCms.createProfile("sRGB")
+        return ImageCms.profileToProfile(im.convert("RGB"), src, dst, outputMode="RGB")
+    except Exception:  # noqa: BLE001 - keep the pixels as they are
+        return im
+
+
+def make_stored_copy(src, dst, target):
+    """Write the ONLY copy of an uploaded photo (#82): decoded at reduced size where the format allows
+    (JPEG draft), EXIF orientation applied (upright), scaled down so it still COVERS stored_size(target)
+    (aspect kept, NOT cropped: the display copy crops at display time), no metadata, sRGB, JPEG.
+    Never upscales. Returns (width, height). Raises ImageUnreadable if the file cannot be decoded."""
+    want = stored_size(target)
+    with _store_lock:
+        try:
+            with Image.open(src) as im:
+                draft_jpeg(im, want)
+                profile = im.info.get("icc_profile")
+                im = ImageOps.exif_transpose(im)
+                im = _flatten(im)
+                w, h = cover_size(im.size, want)
+                if max(w, h) > STORE_MAX_SIDE:
+                    k = STORE_MAX_SIDE / max(w, h)
+                    w, h = max(1, round(w * k)), max(1, round(h * k))
+                if (w, h) != im.size:
+                    im = im.resize((w, h), Image.LANCZOS, reducing_gap=3.0)
+                if profile:
+                    im = _to_srgb(im, profile)
+        except (Image.DecompressionBombError, MemoryError) as e:
+            raise ImageUnreadable(str(e) or type(e).__name__) from e
+        except (OSError, ValueError, SyntaxError, EOFError, Image.UnidentifiedImageError) as e:
+            raise ImageUnreadable(str(e)) from e
+        tmp = dst + ".tmp"
+        try:
+            im.save(tmp, "JPEG", quality=STORE_QUALITY, optimize=True)          # no exif= / icc: stripped
+            os.replace(tmp, dst)
+        finally:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+        return im.size
+
+
 # ---------------- MF-16: thumbnails and removal ----------------
 
 THUMB_SIZE = 240
@@ -243,6 +346,7 @@ def thumb_path(data_dir, stored_name):
 def make_thumb(src, dst, size=THUMB_SIZE):
     """Square 240 px JPEG (cover + centre crop), orientation applied, no metadata."""
     with Image.open(src) as im:
+        draft_jpeg(im, (2 * size, 2 * size))
         im = ImageOps.exif_transpose(im)
         if im.mode not in ("RGB", "L"):
             bg = Image.new("RGB", im.size, (0, 0, 0))
@@ -271,13 +375,16 @@ def ensure_thumb(data_dir, stored_name):
     return dst
 
 
-def over_pixel_cap(path, max_pixels):
-    """True if the image header says width*height > max_pixels (no pixel data is decoded).
-    Unreadable files return False; callers validate content separately."""
+def over_pixel_cap(path, max_pixels, max_nonjpeg_pixels=None):
+    """True if the image header says width*height > max_pixels (formats other than JPEG:
+    max_nonjpeg_pixels if given and lower). No pixel data is decoded. Unreadable files return
+    False; callers validate content separately."""
     from PIL import Image
     try:
         with Image.open(path) as im:
             w, h = im.size
+            if max_nonjpeg_pixels and im.format not in ("JPEG", "MPO"):
+                max_pixels = min(max_pixels, max_nonjpeg_pixels)
     except Image.DecompressionBombError:
         return True
     except Exception:  # noqa: BLE001

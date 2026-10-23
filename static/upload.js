@@ -33,6 +33,60 @@
         }catch(e){ /* keep the last numbers */ }
     }
 
+    // #82: shrink big photos here, before they cross the Wi-Fi, when the browser can decode them (JPEG,
+    // WebP, PNG everywhere; HEIC only e.g. in Safari). Anything that fails returns null and the ORIGINAL
+    // file is sent: the frame always shrinks again on its side (and enforces the megapixel cap).
+    const STORE_W = Number(input.dataset.storeW) || 1500, STORE_H = Number(input.dataset.storeH) || 900;
+    const SHRINK_MIN_BYTES = 3 * 1048576;       // smaller files are cheap for the frame to handle as they are
+    const SHRINK_TIMEOUT_MS = 60000;
+
+    function measure(url){                       // header only: does not decode the pixels
+        return new Promise((resolve, reject)=>{
+            const img = new Image();
+            img.onload = ()=> resolve({w: img.naturalWidth, h: img.naturalHeight});   // already upright (EXIF applied)
+            img.onerror = ()=> reject(new Error("undecodable"));
+            img.src = url;
+        });
+    }
+
+    async function shrinkNow(file){
+        if(!window.createImageBitmap || !HTMLCanvasElement.prototype.toBlob){ return null; }
+        if(file.size < SHRINK_MIN_BYTES || /gif/i.test(file.type) || /\.gif$/i.test(file.name)){ return null; }
+        const url = URL.createObjectURL(file);
+        let bmp = null;
+        try{
+            const d = await measure(url);
+            if(!(d.w > 0 && d.h > 0)){ return null; }
+            const k = Math.max(STORE_W / d.w, STORE_H / d.h);       // same "cover" rule as the frame
+            if(k >= 0.9){ return null; }                              // not much bigger: send as is
+            const w = Math.max(1, Math.round(d.w * k));
+            // only the width is given: the browser keeps the aspect ratio (and applies the EXIF rotation)
+            bmp = await createImageBitmap(file, {resizeWidth: w, resizeQuality: "high"});
+            if(!bmp.width || !bmp.height || bmp.width * bmp.height > 16e6){ return null; }
+            const c = document.createElement("canvas");
+            c.width = bmp.width; c.height = bmp.height;
+            const ctx = c.getContext("2d");
+            if(!ctx){ return null; }
+            ctx.fillStyle = "#000"; ctx.fillRect(0, 0, c.width, c.height);       // PNG/WebP transparency: black, as on the frame
+            ctx.drawImage(bmp, 0, 0);
+            const blob = await new Promise((res)=> c.toBlob(res, "image/jpeg", 0.9));
+            c.width = c.height = 1;
+            if(!blob || blob.size === 0 || blob.size >= file.size){ return null; }
+            return new File([blob], file.name.replace(/\.[^.]*$/, "") + ".jpg", {type: "image/jpeg"});
+        }catch(e){
+            return null;                                              // can't decode here (e.g. HEIC): the frame does it
+        }finally{
+            if(bmp && bmp.close){ bmp.close(); }
+            URL.revokeObjectURL(url);
+        }
+    }
+
+    function shrink(file){
+        let timer;
+        const limit = new Promise((res)=>{ timer = setTimeout(()=> res(null), SHRINK_TIMEOUT_MS); });
+        return Promise.race([shrinkNow(file), limit]).then((r)=>{ clearTimeout(timer); return r; });
+    }
+
     function row(file){
         const li = document.createElement("li");
         const th = document.createElement("span");          // the frame's thumbnail replaces it once added
@@ -51,10 +105,19 @@
         t.append(name, msg, bar);
         li.append(th, t);
         list.append(li);
-        return {li, bar, msg, th};
+        return {li, bar, msg, th, name};
     }
 
-    function send(file, ui){
+    async function send(file, ui){
+        if(file.size >= SHRINK_MIN_BYTES){
+            ui.li.className = "sending";
+            ui.msg.textContent = "Making it smaller...";
+            const small = await shrink(file);
+            if(small){
+                ui.name.textContent = file.name + " (" + mb(file.size) + " \u2192 " + mb(small.size) + ")";
+                file = small;
+            }
+        }
         return new Promise((resolve)=>{
             const xhr = new XMLHttpRequest();
             xhr.open("POST", "/api/v1/media");

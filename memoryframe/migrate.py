@@ -93,10 +93,12 @@ def migrate_legacy(config, backup=True, log=print):
             log(f"Backup written and verified: {backup_path}")
 
         imported = skipped = too_large = 0
-        cap = config.get("MAX_IMAGE_PIXELS") or 64_000_000
+        cap = config.get("MAX_IMAGE_PIXELS") or 150_000_000
+        nonjpeg_cap = config.get("MAX_NONJPEG_PIXELS") or 50_000_000
         for src in files:
-            if storage.media_kind(src) == "image" and imaging.over_pixel_cap(src, cap):
-                log(f"Skipped {os.path.basename(src)}: over {cap // 1_000_000} megapixels.")
+            if storage.media_kind(src) == "image" and imaging.over_pixel_cap(src, cap, nonjpeg_cap):
+                log(f"Skipped {os.path.basename(src)}: over {cap // 1_000_000} megapixels "
+                    f"({min(cap, nonjpeg_cap) // 1_000_000} for HEIC).")
                 too_large += 1
                 continue
             try:

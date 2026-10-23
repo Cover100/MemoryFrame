@@ -43,26 +43,34 @@ DATA_DIR=/var/lib/memoryframe
 sudo install -d -o "$APP_USER" -g "$(id -gn)" -m 750 "$DATA_DIR"
 # #90: if the app is running, a failure (set -e) or a signal between the stop below and the normal restart
 # would leave the frame stopped with no screen. So, only when it was ACTIVE and we stop it, arm an exit trap
-# that restarts it once, says what failed, and keeps the original exit status. A service that was not running
-# (fresh install, or stopped on purpose) is never started by the trap. The trap is cleared before it acts, so
-# it can't loop; the restart is capped at 60 s so a stuck systemd can't hang the exit.
+# that restarts it once and keeps the original exit status. A service that was not running (fresh install, or
+# stopped on purpose) is never started by the trap. The trap is cleared before it acts, so it can't loop.
+# The restart comes FIRST and is capped at 60 s; messages follow, best effort: a dropped terminal (SIGHUP,
+# closed or broken stderr) must not stop the restart, so HUP/PIPE are ignored and set -e is off in here.
 restart_if_stopped() {
     local rc=$?
     trap - EXIT ERR
-    case "$rc" in
-        129|130|143) echo "ERROR: install.sh was interrupted (exit $rc)." >&2 ;;
-        0) ;;
-        # FAIL_AT is only trusted if it was recorded for this same exit status (no stale line or command)
-        *) [ "${FAIL_RC:-}" = "$rc" ] && [ -n "${FAIL_AT:-}" ] \
-               && echo "ERROR: install.sh failed (exit $rc) at $FAIL_AT." >&2 \
-               || echo "ERROR: install.sh failed (exit $rc) at an unknown step." >&2 ;;
-    esac
-    echo "Restarting memoryframe.service, which install.sh had stopped, so the frame keeps its screen." >&2
-    if timeout 60 sudo systemctl restart memoryframe.service; then
-        echo "memoryframe.service restarted. The install is incomplete: fix the error above and re-run install.sh." >&2
-    else
-        echo "ERROR: could not restart memoryframe.service: run 'sudo systemctl restart memoryframe.service'." >&2
-    fi
+    trap '' HUP PIPE
+    set +e
+    local restarted=0
+    timeout 60 sudo systemctl restart memoryframe.service && restarted=1
+    {
+        case "$rc" in
+            129|130|143) echo "ERROR: install.sh was interrupted by a signal (exit $rc)." ;;
+            0) ;;
+            # FAIL_AT is only trusted if it was recorded for this same exit status (no stale line or command)
+            *) if [ "${FAIL_RC:-}" = "$rc" ] && [ -n "${FAIL_AT:-}" ]; then
+                   echo "ERROR: install.sh failed (exit $rc) at $FAIL_AT."
+               else
+                   echo "ERROR: install.sh failed (exit $rc) at an unknown step."
+               fi ;;
+        esac
+        if [ "$restarted" = 1 ]; then
+            echo "memoryframe.service, which install.sh had stopped, was restarted. The install is incomplete: re-run install.sh."
+        else
+            echo "ERROR: could not restart memoryframe.service: run 'sudo systemctl restart memoryframe.service'."
+        fi
+    } >&2 2>/dev/null
     exit "$rc"
 }
 RESTART_ON_EXIT=0

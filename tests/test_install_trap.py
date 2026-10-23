@@ -1,7 +1,9 @@
 """#90: install.sh stops memoryframe.service early on. A failure before the normal restart must still
 leave the service restarted, say what failed, and exit non-zero; a clean install restarts exactly once.
 Runs install.sh hermetically (same stubs as test_install_never_arms_product)."""
+import os
 import re
+import subprocess
 
 import pytest
 
@@ -40,7 +42,7 @@ def test_failure_between_stop_and_restart_restarts_service_and_exits_nonzero(env
     assert len(calls(log, "stop")) == 1 and len(calls(log, "restart")) == 1
     assert log.index("systemctl stop") < log.index("systemctl restart")
     assert re.search(r"ERROR: install\.sh failed \(exit 1\) at line \d+: .*audit-autostart\.sh", r.stderr)
-    assert "memoryframe.service restarted" in r.stderr
+    assert "was restarted" in r.stderr
     assert "Done." not in r.stdout                             # the install did not carry on
     assert mutations(env) == []                                # never touches the mode
 
@@ -91,8 +93,8 @@ def test_signal_mid_install_restarts_service_once(env, tmp_path, sig, code):
     r, log = run_install(tmp_path, env, tweak=kill_self(sig))
     assert r.returncode == code
     assert len(calls(log, "stop")) == 1 and len(calls(log, "restart")) == 1
-    assert f"ERROR: install.sh was interrupted (exit {code})" in r.stderr
-    assert "memoryframe.service restarted" in r.stderr
+    assert f"ERROR: install.sh was interrupted by a signal (exit {code})" in r.stderr
+    assert "was restarted" in r.stderr
     assert "Done." not in r.stdout
 
 
@@ -115,3 +117,36 @@ def test_trap_restart_is_capped_by_timeout(env, tmp_path):
     r, log = run_install(tmp_path, env, tweak=fail_audit)
     assert r.returncode == 1
     assert "timeout 60 sudo systemctl restart memoryframe.service" in log
+
+
+def broken_pipe():
+    """A stderr whose reader has gone: any write raises SIGPIPE/EPIPE (a dropped terminal or ssh session)."""
+    rd, wr = os.pipe()
+    os.close(rd)
+    return wr
+
+
+@pytest.mark.parametrize("how", ["dev-full", "closed-pipe"])
+def test_unwritable_stderr_still_restarts_exactly_once(env, tmp_path, how):
+    # F1: the trap used to die on its first message when stderr was gone, leaving the frame stopped.
+    if how == "dev-full":
+        r, log = run_install(tmp_path, env, tweak=fail_audit, stderr=open("/dev/full", "w"))
+    else:
+        r, log = run_install(tmp_path, env, tweak=fail_audit, stderr=broken_pipe())
+    assert r.returncode == 1
+    assert len(calls(log, "restart")) == 1
+
+
+def test_sighup_with_broken_stderr_restarts_exactly_once(env, tmp_path):
+    # The Pi Connect shell drops mid-install: SIGHUP, and nothing can be printed any more.
+    r, log = run_install(tmp_path, env, tweak=kill_self("HUP"), stderr=broken_pipe())
+    assert r.returncode == 129
+    assert len(calls(log, "restart")) == 1
+
+
+def test_sighup_while_the_trap_runs_does_not_stop_the_restart(env, tmp_path):
+    # A hang-up delivered to the whole process group during the trap's restart: still one restart.
+    sudo = SUDO.replace('exit 0\n', '[[ " $* " == *" restart "* ]] && kill -HUP 0\nexit 0\n')
+    r, log = run_install(tmp_path, env, sudo=sudo, tweak=fail_audit, start_new_session=True)
+    assert r.returncode == 1
+    assert len(calls(log, "restart")) == 1

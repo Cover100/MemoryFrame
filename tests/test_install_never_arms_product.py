@@ -25,9 +25,9 @@ exit 0
 '''
 
 
-def run_install(tmp_path, envd, sudo=SUDO, tweak=None, active=True):
+def run_install(tmp_path, envd, sudo=SUDO, tweak=None, active=True, **popen_kw):
     """Run the sandboxed install.sh; returns (CompletedProcess, stub call log). `tweak(app)` may edit the
-    sandbox copy of the repo (used to force a failure); `sudo` replaces the sudo stub; `active` is what the
+    sandbox copy of the repo (used to force a failure); `sudo` replaces the sudo stub; `popen_kw` goes to subprocess.run (e.g. stderr); `active` is what the
     systemctl stub answers to `is-active` (was the service running before install.sh stopped it?)."""
     app = tmp_path / "app"
     if not app.exists():
@@ -50,8 +50,9 @@ def run_install(tmp_path, envd, sudo=SUDO, tweak=None, active=True):
              AUDIT_HOME=str(home), AUDIT_ROOT=str(tmp_path / "root"), SUDO="", CRONTAB=str(bin_ / "crontab"),
              USER="pi", XDG_SESSION_TYPE="wayland", STUB_ACTIVE="0" if active else "3")
     e.pop("SUDO_USER", None)
-    r = subprocess.run(["bash", str(app / "deploy" / "install.sh")], env=e, capture_output=True,
-                       text=True, timeout=60)
+    popen_kw.setdefault("stderr", subprocess.PIPE)
+    r = subprocess.run(["bash", str(app / "deploy" / "install.sh")], env=e, stdout=subprocess.PIPE,
+                       text=True, timeout=60, **popen_kw)
     return r, (log.read_text() if log.exists() else "")
 
 

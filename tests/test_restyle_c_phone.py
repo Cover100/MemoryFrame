@@ -736,7 +736,8 @@ def test_dark_tokens_and_outline_rules_in_css():
     for sel in (r"\.mf-phone \.btn-neutral, \.mf-phone button\.secondary", r"\.mf-phone \.msgKeep", r"\.mf-phone \.field",
                 r"\.mf-phone \.code", r"\.mf-phone #frameMessage", r"\.mf-phone \.btn-onbar"):
         assert re.search(sel + r" \{[^}]*border: 1\.5px solid var\(--mf-outline\)", flat), sel
-    assert "#fff;" not in re.sub(r"color: #fff;", "", flat)                             # white only as text on fills
+    # white only as text on fills, plus the Library select tick (a ring + check that must read on any photo, per 09-LIBRARY.md)
+    assert "#fff;" not in re.sub(r"color: #fff;|border: (2px )?solid #fff;", "", flat)
 
 
 def test_no_non_breaking_hyphen_and_every_visible_wi_fi_is_wrapped():

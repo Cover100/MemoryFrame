@@ -150,7 +150,11 @@ def thumb(media_id):
 @bp.route("/media/<int:media_id>", methods=["DELETE"])
 def delete_media(media_id):
     _item(media_id)                                 # 404 for bad / unknown ids
-    found, removed = _delete_one(media_id)
+    try:
+        found, removed = _delete_one(media_id)
+    except imaging.UnsafeName:                      # a stored name that isn't a bare file name: nothing was moved
+        current_app.logger.error("refused to delete media %s: unsafe stored name", media_id)
+        return jsonify({"error": "This photo's file name is not safe to delete."}), 400
     if not found:                                   # another delete finished while we waited
         abort(404)
     bump_media_rev(current_app)

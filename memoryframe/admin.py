@@ -3,7 +3,7 @@
 Every route requires a paired session (MF-12); unauthenticated requests are
 redirected to /pair. Upload (MF-14) and the library (MF-16) add the real pages.
 """
-from flask import Blueprint, redirect, render_template, request
+from flask import Blueprint, g, redirect, render_template, request
 
 from . import auth
 from .db import get_db
@@ -24,6 +24,8 @@ def _phone_context():
     def phone_wifi():
         # Offline panel (#70 mock 08): which Wi-Fi to rejoin. Paired pages only (pair.html leaves it out).
         from . import frameinfo, wifi
+        if getattr(g, "device_id", None) is None and auth.current_device() is None:
+            return {"ssid": "", "mode": "unknown"}          # unpaired visitors never see the SSID
         try:
             mode = frameinfo.network().get("mode")
         except Exception:  # noqa: BLE001 - never break a page over this hint
@@ -54,7 +56,7 @@ _PHONE_ERRORS = {404: ("Page not found", "This page isn't on the frame."),
 
 
 def _phone_error(e):
-    """#79: phone pages that fail (404 / 405 / 500) stay on the paper theme; API and frame paths keep the default."""
+    """#79: phone pages that fail (404 / 405 / 500) stay on the phone (dark) theme; API and frame paths keep the default."""
     from werkzeug.exceptions import HTTPException, InternalServerError
     code = e.code if isinstance(e, HTTPException) else 500
     p = request.path

@@ -1,65 +1,51 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="csrf-token" content="{{ csrf_token() }}">
-<title>Settings</title>
-<link rel="stylesheet" href="{{ static('tokens.css') }}">
-<link rel="stylesheet" href="{{ static('pair.css') }}">
-<link rel="stylesheet" href="{{ static('settings.css') }}">
-</head>
-<body class="mf-phone">
-<h1>Settings</h1>
-{% macro label(v) %}{% if v < 60 %}{{ v }} s{% elif v == 60 %}1 min{% else %}{{ v // 60 }} min{% endif %}{% endmacro %}
-<section>
-  <h2>Slide time</h2>
-  <div class="seg" id="slideSeg" role="radiogroup">
-    {% for v in slides %}<button type="button" data-key="slide_seconds" data-value="{{ v }}" role="radio"
-      aria-checked="{{ 'true' if s.slide_seconds == v else 'false' }}">{{ label(v) }}</button>{% endfor %}
-  </div>
-  <span class="status" data-for="slide_seconds" aria-live="polite"></span>
-</section>
-<section>
-  <h2>Transition</h2>
-  <div class="seg" id="transitionSeg" role="radiogroup">
-    <button type="button" data-key="transition" data-value="fade" role="radio" aria-checked="{{ 'true' if s.transition == 'fade' else 'false' }}">Fade</button><button
-      type="button" data-key="transition" data-value="none" role="radio" aria-checked="{{ 'true' if s.transition == 'none' else 'false' }}">None</button>
-  </div>
-  <span class="status" data-for="transition" aria-live="polite"></span>
-</section>
-<section>
-  <h2>Shuffle</h2>
-  <label class="toggle"><input type="checkbox" id="shuffle" data-key="shuffle" {% if s.shuffle %}checked{% endif %}> On</label>
-  <span class="status" data-for="shuffle" aria-live="polite"></span>
-</section>
-<section id="messageSection">
-  <h2>Message on the frame</h2>
-  <p class="hint">Shown in the frame's menu (double tap the photo). Up to {{ message_max }} characters.</p>
-  <label for="frameMessage" class="sr-only">Message</label>
-  <textarea id="frameMessage" maxlength="{{ message_max * 2 }}" rows="4" data-max="{{ message_max }}"
-    placeholder="e.g. Happy birthday, Nana! Love from all of us.">{{ message }}</textarea>
-  <div class="msgRow"><span id="messageCount" aria-live="polite">{{ message|length }} / {{ message_max }}</span>
-    <button type="button" id="messageSave">Save</button>
-    <button type="button" id="messageRemove" class="msgRemove"{% if not message %} hidden{% endif %}>Remove message</button></div>
+{% extends "_phone.html" %}
+{% block title %}Settings{% endblock %}
+{% block heading %}Settings{% endblock %}
+{% block main_class %}dense{% endblock %}
+{% block content %}
+<section class="card" id="messageSection">
+  <h2 class="hd">Message on the frame <span class="status" data-for="message" aria-live="polite"></span></h2>
+  <label for="frameMessage" class="sr-only">Message on the frame</label>
+  <textarea id="frameMessage" maxlength="{{ message_max * 2 }}" rows="4" data-max="{{ message_max }}" data-saved="{{ message }}"
+    aria-describedby="msgHelp messageCount" placeholder="e.g. Happy birthday, Nana! Love from all of us.">{{ message }}</textarea>
+  <div class="meta"><span id="msgHelp">Shown in the frame's menu</span><span id="messageCount" aria-live="polite">{{ message|length }} / {{ message_max }}</span></div>
+  <div class="acts"><button type="button" id="messageSave">Save</button><span class="small muted" id="messageDirty" hidden>Not saved yet</span><button type="button" id="messageRemove" class="msgRemove"{% if not message %} hidden{% endif %}>Remove message</button></div>
   <div id="messageConfirm" class="msgConfirm" role="alertdialog" aria-labelledby="messageConfirmText" hidden>
     <span id="messageConfirmText">Remove the message from the frame?</span>
     <button type="button" id="messageRemoveYes" class="msgRemoveYes">Remove</button>
-    <button type="button" id="messageRemoveNo" class="msgKeep">Keep</button></div>
-  <span class="status" data-for="message" aria-live="polite"></span>
-  <h3>Preview</h3>
-  <figure class="msgPreview" id="messagePreview"><span class="q" aria-hidden="true">“</span><p id="messagePreviewText">{{ message }}</p></figure>
-  <div class="msgPreview empty" id="messagePreviewEmpty"><b>No message yet</b></div>
+    <button type="button" id="messageRemoveNo" class="msgKeep btn-default">Keep</button></div>
+  <div class="prev"><span id="messagePreviewLabel">{{ "On the frame now" if message else "Preview: how it will look on the frame" }}</span>
+    <figure class="msgPreview" id="messagePreview"><span class="q" aria-hidden="true">“</span><p id="messagePreviewText">{{ message }}</p></figure>
+    <div class="msgPreview empty" id="messagePreviewEmpty"><b>No message yet</b></div></div>
 </section>
-<section id="aboutSection">
-  <h2>About this frame</h2>
-  <dl class="about">
+<section class="card">
+  <h2 class="hd">Slide time <span class="status" data-for="slide_seconds" aria-live="polite"></span></h2>
+  <div class="seg" id="slideSeg" role="radiogroup" aria-label="Slide time">
+    {% for v in slides %}<button type="button" data-key="slide_seconds" data-value="{{ v }}" role="radio"
+      aria-checked="{{ 'true' if s.slide_seconds == v else 'false' }}">{{ slide_label(v) }}</button>{% endfor %}
+  </div>
+</section>
+<section class="card">
+  <div class="row"><h2 class="grow">Transition <span class="status" data-for="transition" aria-live="polite"></span></h2>
+  <div class="seg narrow" id="transitionSeg" role="radiogroup" aria-label="Transition">
+    <button type="button" data-key="transition" data-value="fade" role="radio" aria-checked="{{ 'true' if s.transition == 'fade' else 'false' }}">Fade</button><button
+      type="button" data-key="transition" data-value="none" role="radio" aria-checked="{{ 'true' if s.transition == 'none' else 'false' }}">None</button>
+  </div></div>
+</section>
+<section class="card">
+  <div class="row"><div class="grow"><h2><label for="shuffle">Shuffle</label> <span class="status" data-for="shuffle" aria-live="polite"></span></h2>
+    <div class="small muted">Show photos in a random order</div></div>
+  <input type="checkbox" class="switch" role="switch" id="shuffle" data-key="shuffle" {% if s.shuffle %}checked{% endif %}></div>
+</section>
+<details class="rows about" id="aboutSection">
+  <summary class="row-link"><span class="ico" aria-hidden="true">i</span><span class="t">About this frame<small><span class="nw">Wi-Fi</span>, address, phones paired, version</small></span><span class="chev" aria-hidden="true">›</span></summary>
+  <dl>
+    <dt><span class="nw">Wi-Fi</span></dt><dd id="aboutWifi">{{ about.wifi }}</dd>
     <dt>IP</dt><dd id="aboutIp">{{ about.ip }}</dd>
     <dt>Site</dt><dd id="aboutSite">{{ about.site }}</dd>
+    <dt>Phones paired</dt><dd id="aboutPhones">{{ about.phones }}</dd>
     <dt>Version</dt><dd id="aboutVersion">{{ about.version }}</dd>
   </dl>
-</section>
-<p><a href="/admin/">Back</a></p>
-<script src="{{ static('settings.js') }}"></script>
-</body>
-</html>
+</details>
+{% endblock %}
+{% block scripts %}<script src="{{ static('settings.js') }}"></script>{% endblock %}

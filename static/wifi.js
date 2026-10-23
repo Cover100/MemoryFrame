@@ -17,7 +17,17 @@
         // The current password is never sent to the phone: "unchanged" is decided by the server.
         return null;
     }
-    function showError(msg){ $("error").textContent = msg || ""; $("error").hidden = !msg; }
+    function showError(msg){
+        mfSetText($("error"), msg || ""); $("error").hidden = !msg;
+        const bad = msg === MSG_NAME ? $("ssid") : (msg ? $("password") : null);
+        ["ssid", "password"].forEach((id)=>{
+            const f = $(id);
+            if(f === bad){ f.setAttribute("aria-invalid", "true"); } else { f.removeAttribute("aria-invalid"); }
+        });
+        $("password").setAttribute("aria-describedby", bad === $("password") ? "pwHint error" : "pwHint");
+        if(bad === $("ssid")){ $("ssid").setAttribute("aria-describedby", "error"); } else { $("ssid").removeAttribute("aria-describedby"); }
+    }
+    const bar = document.querySelector(".bar");
 
     $("showPw").addEventListener("click", ()=>{
         const p = $("password");
@@ -31,14 +41,22 @@
         showError(err);
         if(err){ return; }
         $("confirmName").textContent = $("ssid").value;
-        $("formStep").hidden = true;
+        // Restyle PR C (#70 mock 06): a bottom sheet over the (inert) form, Cancel focused as the default.
+        $("formStep").inert = true;
+        if(bar){ bar.inert = true; }
         $("confirmStep").hidden = false;
+        $("cancelBtn").focus();
     });
     $("cancelBtn").addEventListener("click", ()=>{
         $("password").value = "";                  // values kept, password cleared
         $("confirmStep").hidden = true;
-        $("formStep").hidden = false;
+        $("formStep").inert = false;
+        if(bar){ bar.inert = false; }
+        $("password").focus();
     });
     $("confirmBtn").addEventListener("click", ()=>{ confirmed = true; form.submit(); });
+    document.addEventListener("keydown", (e)=>{           // Esc = Cancel while the sheet is open
+        if(e.key === "Escape" && !$("confirmStep").hidden){ e.preventDefault(); $("cancelBtn").click(); }
+    });
     window.memoryFrameWifi = {check: check, MSG_SAME: MSG_SAME};
 })();

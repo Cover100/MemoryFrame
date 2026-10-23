@@ -7,6 +7,12 @@ import pytest
 
 from memoryframe import db as mfdb, wifi
 
+
+def unesc(s):
+    """Unescaped page text with the phone's <span class="nw">Wi-Fi</span> (never breaks at the hyphen) flattened."""
+    return htmlmod.unescape(s).replace('<span class="nw">Wi-Fi</span>', "Wi-Fi")
+
+
 PHONE = {"REMOTE_ADDR": "10.42.0.23"}
 LAN_PHONE = {"REMOTE_ADDR": "192.168.50.9"}
 LOCAL = {"REMOTE_ADDR": "127.0.0.1"}
@@ -76,14 +82,14 @@ def start_pending(app, c):
 # ---------- page ----------
 
 def test_admin_home_links_frame_wifi(paired):
-    html = htmlmod.unescape(paired.get("/admin/", environ_base=PHONE).get_data(as_text=True))
-    assert '<a class="big" href="/admin/wifi">Frame Wi-Fi</a>' in html
-    assert html.index("/admin/library") < html.index("/admin/wifi")
+    html = unesc(paired.get("/admin/", environ_base=PHONE).get_data(as_text=True))
+    assert '<a class="row-link" href="/admin/wifi">' in html and ">Frame Wi-Fi<" in html
+    assert html.index("<h2>Library</h2>") < html.index("/admin/wifi")      # #79: See all is a card under the photos
 
 
 def test_page_prefills_name_not_password(paired, helper):
-    html = htmlmod.unescape(paired.get("/admin/wifi/", environ_base=PHONE).get_data(as_text=True))
-    assert "Current Wi-Fi: <span id=\"currentName\">MemoryFrame-AP</span>" in html
+    html = unesc(paired.get("/admin/wifi/", environ_base=PHONE).get_data(as_text=True))
+    assert "Current Wi-Fi: <b class=\"strong\" id=\"currentName\">MemoryFrame-AP</b>" in html
     assert 'id="ssid" name="ssid" value="MemoryFrame-AP"' in html
     assert 'id="password" name="password" type="password" value=""' in html
     assert OLD_PW not in html
@@ -111,9 +117,9 @@ def test_requires_pairing_and_csrf(client, helper, mf_app):
 ])
 def test_invalid_input_400_nothing_applied(paired, helper, mf_app, ssid, password, msg):
     r = submit(paired, ssid, password)
-    assert r.status_code == 400 and msg in htmlmod.unescape(r.get_data(as_text=True))
+    assert r.status_code == 400 and msg in unesc(r.get_data(as_text=True))
     assert row(mf_app) is None and helper.start == [] and helper.calls() == []
-    assert password not in htmlmod.unescape(r.get_data(as_text=True)) or password in ("", )
+    assert password not in unesc(r.get_data(as_text=True)) or password in ("", )
 
 
 def test_valid_32_byte_name_and_63_char_password(paired, helper, mf_app):
@@ -124,7 +130,7 @@ def test_valid_32_byte_name_and_63_char_password(paired, helper, mf_app):
 
 def test_change_goes_pending_then_helper_with_stdin(paired, helper, mf_app):
     r = start_pending(mf_app, paired)
-    html = htmlmod.unescape(r.get_data(as_text=True))
+    html = unesc(r.get_data(as_text=True))
     assert "Rejoin the new Wi-Fi" in html and 'join "Frame Home" with your new password' in html
     assert "If you don't confirm within 5 minutes, the old Wi-Fi comes back." in html
     assert NEW_PW not in html
@@ -147,14 +153,14 @@ def test_frame_shows_new_qr_and_countdown(paired, helper, mf_app, client):
 def test_second_change_409(paired, helper, mf_app):
     start_pending(mf_app, paired)
     r = submit(paired, "Another", NEW_PW)
-    assert r.status_code == 409 and wifi.MSG_BUSY in htmlmod.unescape(r.get_data(as_text=True))
+    assert r.status_code == 409 and wifi.MSG_BUSY in unesc(r.get_data(as_text=True))
     assert paired.get("/admin/wifi/", environ_base=PHONE).headers["Location"].endswith("/admin/wifi/keep")
     assert paired.get("/admin/", environ_base=PHONE).headers["Location"].endswith("/admin/wifi/keep")
 
 
 def test_dev_mode_409_and_form_replaced(paired, helper, mf_app, tmp_path):
     (tmp_path / "netmode.json").write_text('{"mode": "dev"}')
-    html = htmlmod.unescape(paired.get("/admin/wifi/", environ_base=PHONE).get_data(as_text=True))
+    html = unesc(paired.get("/admin/wifi/", environ_base=PHONE).get_data(as_text=True))
     assert "Wi-Fi can't be changed right now." in html and 'id="wifiForm"' not in html
     assert submit(paired).status_code == 409 and row(mf_app) is None
 
@@ -184,12 +190,12 @@ def test_activation_failure_rolls_back(paired, helper, mf_app, client):
 
 def test_keep_page_and_commit(paired, helper, mf_app, client):
     start_pending(mf_app, paired)
-    html = htmlmod.unescape(paired.get("/admin/wifi/keep", environ_base=PHONE).get_data(as_text=True))
+    html = unesc(paired.get("/admin/wifi/keep", environ_base=PHONE).get_data(as_text=True))
     assert "Keep new Wi-Fi?" in html
-    assert 'You\'re connected to "Frame Home". Tap to keep it. Other phones will need to join it too.' in html
+    assert 'You\'re connected to <b>"Frame Home"</b>. Tap to keep it. Other phones will need to join it too.' in html
     assert "Old Wi-Fi returns in" in html
     r = paired.post("/admin/wifi/keep", environ_base=PHONE)
-    assert r.status_code == 200 and "✓ Wi-Fi updated" in htmlmod.unescape(r.get_data(as_text=True))
+    assert r.status_code == 200 and "✓ Wi-Fi updated" in unesc(r.get_data(as_text=True))
     assert helper.calls()[-1] == "wifi-commit stdin_lines=0"
     rw = row(mf_app)
     assert rw["state"] == "committed" and rw["new_password"] is None
@@ -223,7 +229,7 @@ def test_keep_after_deadline_too_late(paired, helper, mf_app):
     conn.close()
     r = paired.post("/admin/wifi/keep", environ_base=PHONE)
     assert r.status_code == 409
-    assert 'Too late, the old Wi-Fi is back. Join "MemoryFrame-AP" and try again.' in htmlmod.unescape(r.get_data(as_text=True))
+    assert 'Too late, the old Wi-Fi is back. Join "MemoryFrame-AP" and try again.' in unesc(r.get_data(as_text=True))
     assert row(mf_app)["state"] == "rolled_back"
 
 
@@ -245,9 +251,9 @@ def test_timeout_rolls_back(paired, helper, mf_app, client):
     rw = row(mf_app)
     assert rw["state"] == "rolled_back" and rw["reason"] == "timeout"
     assert helper.calls()[-1] == "wifi-rollback stdin_lines=0"
-    html = htmlmod.unescape(paired.get("/admin/", environ_base=PHONE).get_data(as_text=True))
+    html = unesc(paired.get("/admin/", environ_base=PHONE).get_data(as_text=True))
     assert 'Wi-Fi change cancelled. The frame is still on "MemoryFrame-AP".' in html
-    assert "Wi-Fi change cancelled" not in htmlmod.unescape(paired.get("/admin/", environ_base=PHONE).get_data(as_text=True))
+    assert "Wi-Fi change cancelled" not in unesc(paired.get("/admin/", environ_base=PHONE).get_data(as_text=True))
 
 
 def test_restart_while_pending_rolls_back(paired, helper, mf_app, tmp_path):
@@ -291,7 +297,7 @@ def test_password_never_logged_or_returned(paired, helper, mf_app, client, caplo
 def test_missing_netmode_state_means_dev_409_helper_never_called(paired, helper, mf_app, tmp_path):
     """#41 SAFETY: no netmode.json (dev Pi, service no-op) -> dev: nothing touches home Wi-Fi."""
     (tmp_path / "netmode.json").unlink()
-    html = htmlmod.unescape(paired.get("/admin/wifi/", environ_base=PHONE).get_data(as_text=True))
+    html = unesc(paired.get("/admin/wifi/", environ_base=PHONE).get_data(as_text=True))
     assert "Wi-Fi can't be changed right now." in html and 'id="wifiForm"' not in html
     assert submit(paired).status_code == 409 and row(mf_app) is None
     assert helper.calls() == [] and helper.start == []
@@ -314,7 +320,7 @@ def _no_rollback_shown(mf_app, paired):
         assert not fs or fs.get("state") != "rolled_back"
     finally:
         conn.close()
-    home = htmlmod.unescape(paired.get("/admin/", environ_base=PHONE).get_data(as_text=True))
+    home = unesc(paired.get("/admin/", environ_base=PHONE).get_data(as_text=True))
     assert "old Wi-Fi restored" not in home and "cancelled" not in home.lower()
 
 

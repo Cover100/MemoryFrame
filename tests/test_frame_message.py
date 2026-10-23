@@ -120,7 +120,7 @@ def test_combining_marks_capped():
 
 
 def test_preview_clipped_like_frame():
-    css = (ROOT / "static" / "settings.css").read_text()
+    css = (ROOT / "static" / "phone.css").read_text()
     rule = css[css.index(".msgPreview p{"):]
     rule = rule[:rule.index("}")]
     assert "-webkit-line-clamp:5" in rule and "overflow:hidden" in rule
@@ -201,6 +201,6 @@ def test_remove_message_needs_confirm(paired):
     remove_handler = js[js.index('removeBtn.addEventListener("click"'):].split("\n")[0]
     assert 'saveMessage("")' not in remove_handler                    # first tap only asks
     assert 'getElementById("messageRemoveYes").addEventListener("click", ()=> saveMessage(""))' in js
-    css = (ROOT / "static" / "settings.css").read_text()
+    css = (ROOT / "static" / "phone.css").read_text().replace(" ", "")   # restyle C: one phone stylesheet
     assert "white-space:nowrap" in css[css.index("#messageCount{"):].split("}")[0]
-    assert ".msgRemove{" in css and "color:var(--mf-red)" in css[css.index(".msgRemove{"):].split("}")[0]
+    assert ".msgRemove{" in css and "color:var(--mf-red-text)" in css[css.index(".msgRemove{"):].split("}")[0]   # dark: brick-text

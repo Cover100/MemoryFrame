@@ -15,9 +15,10 @@
                 headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf},
                 body: JSON.stringify({[key]: value})});
             if(!r.ok){ throw new Error(String(r.status)); }
-            status(key, "Saved");
+            status(key, "✓ Saved");
         }catch(e){
             revert();
+            if(e instanceof TypeError && window.memoryFramePhone){ memoryFramePhone.offline(); }
             status(key, "Couldn't save. Try again.", true);
         }
     }
@@ -51,17 +52,34 @@
             .replace(/[\u115F\u1160\u3164\uFFA0\u2800]/g, "")
             .replace(/[\p{Cc}\p{Cf}]/gu, (m)=> (/[\n\r\t\u200C\u200D]/.test(m) ? (m === "\u200C" || m === "\u200D" ? m : " ") : ""))
             .replace(/\s+/g, " ").trim();
-        const saveBtn = document.getElementById("messageSave");
-        let stored = norm(ta.value);              // what the frame shows now (server-rendered)
+        const save = document.getElementById("messageSave");
+        const removeBtn = document.getElementById("messageRemove");
+        const confirmBox = document.getElementById("messageConfirm");
+        const dirtyEl = document.getElementById("messageDirty"), label = document.getElementById("messagePreviewLabel");
+        let saved = norm(ta.dataset.saved || "");
+        // #70 mocks 04-settings-v2 / 04b: "Save" + "Not saved yet" while editing, a disabled "Saved" and
+        // "Remove message" once the text matches what the frame shows.
         const preview = ()=>{
             const v = norm(ta.value);
-            // An empty box never silently clears the message: use "Remove message" for that.
-            saveBtn.disabled = !v && !!stored;
             const n = [...v].length;
             count.textContent = `${n} / ${max}`;
             count.classList.toggle("err", n > max);
-            prevText.textContent = v;
-            prev.hidden = !v; prevEmpty.hidden = !!v;
+            const same = v === saved;
+            // An empty box isn't a removal: until Remove is confirmed the frame still shows the saved message.
+            const kept = !v && !!saved;
+            const shown = kept ? saved : v;
+            prevText.textContent = shown;
+            prev.hidden = !shown; prevEmpty.hidden = !!shown;
+            // #75 guard: an empty box never silently clears the message (use "Remove message" for that).
+            save.disabled = !v && !!saved;
+            // 04b: unchanged text shows a muted "Saved" (aria-disabled; a tap does nothing).
+            const done = same && !!saved;
+            save.setAttribute("aria-disabled", done ? "true" : "false");
+            save.textContent = done ? "Saved" : "Save";
+            dirtyEl.hidden = same;
+            dirtyEl.textContent = save.disabled ? "Use Remove message to clear it" : "Not saved yet";
+            removeBtn.hidden = !saved || !confirmBox.hidden;
+            label.textContent = (same && saved) || kept ? "On the frame now" : "Preview: how it will look on the frame";
         };
         ta.addEventListener("input", preview);
         preview();
@@ -72,19 +90,20 @@
                     body: JSON.stringify({message: value})});
                 const j = await r.json().catch(()=> ({}));
                 if(!r.ok){ throw new Error(j.error || String(r.status)); }
-                stored = j.message; ta.value = j.message; preview();
-                removeBtn.hidden = !j.message; confirmBox.hidden = true;
-                status("message", j.message ? "Saved" : "Cleared");
+                ta.value = j.message; saved = norm(j.message); confirmBox.hidden = true; preview();
+                status("message", j.message ? "✓ Saved" : "Removed");
             }catch(e){
                 status("message", "Couldn't save. Try again.", true);
+                if(e instanceof TypeError && window.memoryFramePhone){ memoryFramePhone.offline(); }
             }
         }
-        document.getElementById("messageSave").addEventListener("click", ()=> saveMessage(ta.value));
+        save.addEventListener("click", ()=>{
+            if(save.disabled || save.getAttribute("aria-disabled") === "true"){ return; }
+            saveMessage(ta.value);
+        });
         // One-tap clear replaced by "Remove message" + inline confirm (Keep is focused, the safe default).
-        const removeBtn = document.getElementById("messageRemove");
-        const confirmBox = document.getElementById("messageConfirm");
-        removeBtn.addEventListener("click", ()=>{ confirmBox.hidden = false; document.getElementById("messageRemoveNo").focus(); });
-        document.getElementById("messageRemoveNo").addEventListener("click", ()=>{ confirmBox.hidden = true; removeBtn.focus(); });
+        removeBtn.addEventListener("click", ()=>{ confirmBox.hidden = false; removeBtn.hidden = true; document.getElementById("messageRemoveNo").focus(); });
+        document.getElementById("messageRemoveNo").addEventListener("click", ()=>{ confirmBox.hidden = true; preview(); removeBtn.focus(); });
         document.getElementById("messageRemoveYes").addEventListener("click", ()=> saveMessage(""));
     }
 })();

@@ -4,6 +4,11 @@
     const grid = document.getElementById("grid");
     const count = document.getElementById("count");
 
+    function lost(e){                       // network failure (not an HTTP error): #70 mock 08
+        if(e instanceof TypeError && window.memoryFramePhone){ memoryFramePhone.offline(); return true; }
+        return false;
+    }
+
     async function api(url, method, body){
         const r = await fetch(url, {method: method, headers: {"Content-Type": "application/json", "X-CSRF-Token": CSRF},
                                     body: body === undefined ? undefined : JSON.stringify(body)});
@@ -47,7 +52,7 @@
         sync();
         show.addEventListener("click", async ()=>{
             try{ await api("/api/v1/media/" + item.id + "/show-now", "POST"); show.textContent = "Showing"; }
-            catch(e){ alert(e.message); }
+            catch(e){ if(!lost(e)){ alert(e.message); } }
             setTimeout(()=>{ show.textContent = "Show now"; }, 3000);
         });
         hide.addEventListener("click", async ()=>{
@@ -56,14 +61,14 @@
                 await api("/api/v1/media/" + item.id + "/hidden", "PUT", {hidden: want});
                 li.classList.toggle("hidden", want);
                 sync(); updateCount();
-            }catch(e){ alert(e.message); }
+            }catch(e){ if(!lost(e)){ alert(e.message); } }
         });
         del.addEventListener("click", async ()=>{
             if(!confirm("Delete \"" + item.name + "\" from the frame? This cannot be undone.")){ return; }
             try{
                 await api("/api/v1/media/" + item.id, "DELETE");
                 li.remove(); updateCount();
-            }catch(e){ alert(e.message); }
+            }catch(e){ if(!lost(e)){ alert(e.message); } }
         });
         actions.append(show, hide, del);
         li.append(img, name, actions);
@@ -82,6 +87,7 @@
             updateCount();
         }catch(e){
             count.textContent = "Could not load the library.";
+            lost(e);
         }
     }
 

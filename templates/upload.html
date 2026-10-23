@@ -1,23 +1,20 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="csrf-token" content="{{ csrf_token() }}">
-<title>Upload photos - Memory Frame</title>
-<link rel="stylesheet" href="{{ static('tokens.css') }}">
-<link rel="stylesheet" href="{{ static('pair.css') }}">
-<link rel="stylesheet" href="{{ static('upload.css') }}">
-</head>
-<body class="mf-phone">
-<p><a href="/admin/">&larr; Memory Frame</a></p>
-<h1>Upload photos</h1>
-<p id="storage">Checking free space...</p>
-<label class="pick">Choose photos
+{% extends "_phone.html" %}
+{% from "_storage.html" import storage_meter %}
+{% block title %}Upload photos - Memory Frame{% endblock %}
+{% block heading %}Upload photos{% endblock %}
+{% block content %}
+<div id="storage" class="card storeCard">
+  {% if st %}{{ storage_meter(st) }}
+  <p class="small muted flush" id="storeRoom">{% if st.photos_left is not none %}Room for about {{ "{:,}".format(st.photos_left) }} more photos.{% endif %}</p>
+  {% else %}<p class="small muted flush">Free space unknown.</p>{% endif %}
+</div>
+<label class="pick drop" id="drop">
+  <span class="dropIco" aria-hidden="true">＋</span>
+  <span class="btn big block" id="pickLabel">Choose photos</span>
+  <span class="small muted dropHint">From your phone's gallery. JPEG, PNG, WebP, GIF or HEIC.</span>
   <input id="files" type="file" accept="image/*,.heic,.heif" multiple>
 </label>
-<p id="summary" aria-live="polite"></p>
-<ul id="list"></ul>
-<script src="{{ static('upload.js') }}"></script>
-</body>
-</html>
+<div id="summary" class="ok-box" aria-live="polite"></div>
+<ul id="list" class="mt"></ul>
+{% endblock %}
+{% block scripts %}<script src="{{ static('upload.js') }}"></script>{% endblock %}

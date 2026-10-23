@@ -1,32 +1,34 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="csrf-token" content="{{ csrf_token() }}">
-<title>Memory Frame</title>
-<link rel="stylesheet" href="{{ static('tokens.css') }}">
-<link rel="stylesheet" href="{{ static('pair.css') }}">
-</head>
-<body class="mf-phone">
-<h1>Memory Frame</h1>
-{% if wifi_notice %}<p class="notice" role="status">{{ wifi_notice }}</p>{% endif %}
+{% extends "_phone.html" %}
+{% from "_storage.html" import storage_meter %}
+{% block back %}{% endblock %}
+{% block icon %}<a class="icon" href="/admin/settings" aria-label="Settings">⚙</a>{% endblock %}
+{% block strip %}<div class="strip{% if st %} has-store{% endif %}"><p class="conn"><span class="ok" aria-hidden="true"></span>Connected to the frame</p>{% if st %}{{ storage_meter(st, "on-dark") }}{% endif %}</div>{% endblock %}
+{% block content %}
+{% if wifi_notice %}<div class="warn notice" role="status"><span class="i" aria-hidden="true">!</span><div>{{ wifi_notice }}</div></div>{% endif %}
 {% if just_paired %}
-<div id="pairedBanner" class="success-banner" role="status">
-  <p class="success-title">✓ You're paired!</p>
+<div id="pairedBanner" class="ok-box success-banner" role="status">
+  <p class="title success-title">✓ You're paired!</p>
   <p>This phone can now send photos to Memory Frame.</p>
-  <p><a class="big primary" href="/admin/upload">Upload photos</a></p>
 </div>
 {% endif %}
-<p>This phone is paired.</p>
-<p><a class="big" href="/admin/upload">Upload photos</a></p>
-<p><a class="big" href="/admin/library">Library</a></p>
-<p><a class="big" href="/admin/wifi">Frame Wi-Fi</a></p>
-<p><a class="big" href="/admin/settings">Settings</a></p>
-<form method="post" action="/admin/sign-out-all" id="signOutForm">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <button type="submit">Sign out all phones</button>
-</form>
-<script src="{{ static('admin.js') }}"></script>
-</body>
-</html>
+<p class="sr-only">This phone is paired.</p>
+<a class="btn big block primary" href="/admin/upload">＋&nbsp; Upload photos</a>
+<div class="sec"><h2>Library</h2></div>
+{% if preview %}
+<a class="btn btn-neutral block see-all" href="/admin/library"><span>See all {{ total }} photo{{ "s" if total != 1 }}</span><span aria-hidden="true">›</span></a>
+<ul class="grid" aria-label="Newest photos">
+  {% for m in preview %}<li{% if m.hidden %} class="hid"{% endif %}><a href="/admin/library"><img src="/api/v1/media/{{ m.id }}/thumb" alt="{{ m.original_name }}" width="240" height="240" loading="lazy" decoding="async"></a>{% if m.hidden %}<span class="tag">Hidden</span>{% endif %}</li>{% endfor %}
+</ul>
+{% else %}
+<div class="card empty-lib"><p class="muted flush">No photos yet. Tap <b>Upload photos</b> to send some to the frame.</p></div>
+{% endif %}
+<ul class="rows">
+  <li><a class="row-link" href="/admin/wifi"><span class="ico" aria-hidden="true">⌁</span><span class="t">Frame <span class="nw">Wi-Fi</span>{% if ssid %}<small>{{ ssid }}</small>{% endif %}</span><span class="chev" aria-hidden="true">›</span></a></li>
+  <li><a class="row-link" href="/admin/settings"><span class="ico" aria-hidden="true">⚙</span><span class="t">Settings<small>{{ slide_label(s.slide_seconds) }} · {{ "Fade" if s.transition == "fade" else "No fade" }} · Shuffle {{ "on" if s.shuffle else "off" }}</small></span><span class="chev" aria-hidden="true">›</span></a></li>
+  <li><form method="post" action="/admin/sign-out-all" id="signOutForm">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="row-link">Sign out all phones</button>
+  </form></li>
+</ul>
+{% endblock %}
+{% block scripts %}<script src="{{ static('admin.js') }}"></script>{% endblock %}

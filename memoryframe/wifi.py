@@ -302,7 +302,7 @@ def keep_page():
     if r is None:
         return redirect("/admin/", code=302)
     return render_template("wifi_keep.html", ssid=r["new_ssid"], remaining=_m_ss(r["deadline"] - time.time()),
-                           result=None)
+                           result=None, old=r["old_ssid"])
 
 
 @bp.route("/keep", methods=["POST"])
@@ -319,7 +319,7 @@ def keep():
         return render_template("wifi_keep.html", ssid="", remaining="", result="late", old=old), 409
     if not _from_hotspot():
         return render_template("wifi_keep.html", ssid=r["new_ssid"], remaining=_m_ss(r["deadline"] - time.time()),
-                               result="wrongnet"), 403
+                               result="wrongnet", old=r["old_ssid"]), 403
     with _lock:
         r = pending(conn)
         if r is None:

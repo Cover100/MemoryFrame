@@ -302,12 +302,12 @@ NETMODE_STATE = "/run/memoryframe/netmode.json"
 
 def netmode_state():
     """What deploy/netmode.sh applied at boot: {"mode": "product"|"dev", "dev_fallback": bool,
-    "hotspot_error": bool, "boot_id": str}. Missing/unreadable/unknown file -> DEV, no flags
+    "hotspot_error": bool, "boot_id": str, "hotspot_ssid": str}. Missing/unreadable/unknown file -> DEV, no flags
     (safety: nothing assumes product mode unless the boot service applied it). Never contains secrets."""
     import json
     path = os.environ.get("MEMORYFRAME_NETMODE_STATE") or NETMODE_STATE
     out = {"mode": "dev", "dev_fallback": False, "hotspot_error": False, "boot_id": "", "reset": False,
-           "hotspot_uuid": "", "wifi_profiles": False, "commit_recovered": False}
+           "hotspot_uuid": "", "wifi_profiles": False, "commit_recovered": False, "hotspot_ssid": ""}
     try:
         with open(path) as f:
             raw = json.load(f)
@@ -325,6 +325,10 @@ def netmode_state():
     out["hotspot_uuid"] = uid[:64] if isinstance(uid, str) else ""
     out["wifi_profiles"] = raw.get("wifi_profiles") is True
     out["commit_recovered"] = raw.get("commit_recovered") is True
+    ssid = raw.get("hotspot_ssid")      # #89: SSID of the MemoryFrame-hotspot profile (not a secret)
+    if isinstance(ssid, str) and 1 <= len(ssid.encode("utf-8", "replace")) <= 32 \
+            and not any(ord(c) < 32 or 127 <= ord(c) < 160 for c in ssid):
+        out["hotspot_ssid"] = ssid
     bid = raw.get("boot_id")
     out["boot_id"] = bid[:64] if isinstance(bid, str) else ""
     return out

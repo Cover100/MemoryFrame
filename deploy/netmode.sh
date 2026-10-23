@@ -44,7 +44,9 @@
 #   (except the hotspot profile on memoryframe-reset, via deploy/hotspot.sh).
 #   Refused (exit 3) while another mode switch runs or an MF-18 Wi-Fi change is pending.
 #
-# The frame app reads $STATE_DIR/netmode.json (no secrets in it).
+# The frame app reads $STATE_DIR/netmode.json (no secrets in it). It carries hotspot_ssid, the SSID of
+# the MemoryFrame-hotspot profile, refreshed whenever the state is written (boot, wifi-apply/commit/
+# rollback, mode changes, reset), so the app shows what is really broadcast (#89).
 # Test hooks: NMCLI, MEMORYFRAME_BOOT_DIR, MEMORYFRAME_STATE_DIR, MEMORYFRAME_HOTSPOT_SH,
 # MEMORYFRAME_DEV_WAIT, MEMORYFRAME_BOOT_ID_FILE.
 # As root (boot unit, the app's polkit-started units, sudo by hand) every hook above is IGNORED and
@@ -145,6 +147,9 @@ write_mode_file() {
 
 profiles() { "$NMCLI" -g NAME connection show; }
 prop() { "$NMCLI" -g "$2" connection show "$1" 2>/dev/null || true; }
+# #89: the SSID the hotspot profile really broadcasts. "-e no" = raw value (no ':' / '\' escaping).
+# Only the SSID is ever read here: the password is never read back, printed or put in netmode.json.
+hotspot_ssid() { "$NMCLI" -e no -g 802-11-wireless.ssid connection show "$HOTSPOT_CON" 2>/dev/null | head -n1 || true; }
 active() { "$NMCLI" -g GENERAL.CONNECTION device show "$IFACE" 2>/dev/null || true; }
 
 client_profiles() {
@@ -185,8 +190,9 @@ write_state() {   # mode requested dev_fallback hotspot_error
         # MF-18 pending/old profile still exists, and whether boot finished an interrupted commit.
         local wp=false
         if profiles | grep -qxF -e "$PENDING_CON" -e "$OLD_CON"; then wp=true; fi
-        printf '"hotspot_uuid": %s, "wifi_profiles": %s, "commit_recovered": %s}\n' \
-            "$(json_str "$(prop "$HOTSPOT_CON" connection.uuid)")" "$wp" "$COMMIT_RECOVERED"
+        printf '"hotspot_uuid": %s, "wifi_profiles": %s, "commit_recovered": %s, "hotspot_ssid": %s}\n' \
+            "$(json_str "$(prop "$HOTSPOT_CON" connection.uuid)")" "$wp" "$COMMIT_RECOVERED" \
+            "$(json_str "$(hotspot_ssid)")"
     } > "$STATE.tmp"
     chmod 0644 "$STATE.tmp"
     mv "$STATE.tmp" "$STATE"

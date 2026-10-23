@@ -205,7 +205,7 @@ Files in `originals/` (stored copies since #82) are only read by this step, neve
 ## Pairing a phone (MF-12)
 
 There is one owner (D6), who may pair several phones.
-- **Overlay:** with no paired phone, the frame shows a pairing overlay: a QR code, a 6-digit code, and the Wi-Fi name (from `MEMORYFRAME_SSID` or `deploy/hotspot.conf`). Double-tap the screen to open the menu, then **Pair new device**, to show it at any time.
+- **Overlay:** with no paired phone, the frame shows a pairing overlay: a QR code, a 6-digit code, and the Wi-Fi name (the name of the NetworkManager profile `MemoryFrame-hotspot`, see "Wi-Fi QR" below). Double-tap the screen to open the menu, then **Pair new device**, to show it at any time.
 - **Pairing:** scan the QR (it opens `http://10.42.0.1/pair?t=…`; tap "Pair this phone"), or open `http://10.42.0.1/pair` and type the code. Either lands on `/admin/`.
 - **Code rules:** codes and QR links are single-use and expire after 120 s. 5 wrong codes rotate the code. More than 10 attempts per minute from one phone get HTTP 429.
 - **Session:** the phone gets an HttpOnly, SameSite=Strict cookie (`mf_session`, valid 1 year). Only its SHA-256 is stored in the database.
@@ -264,6 +264,7 @@ There is one owner (D6), who may pair several phones.
   - The Host check accepts the frame's own current IP addresses automatically.
   - **Override:** `MEMORYFRAME_SITE_URL=http://frame.home` (no path) replaces the detected address. Set it on the Pi with `deploy/env-file.sh MEMORYFRAME_SITE_URL http://…` and restart the service. The `PAIR_BASE_URL` app config key still wins for tests and development.
 - **Wi-Fi QR:** shown only on the hotspot, and **on by default** (D3). Turn it off with `MEMORYFRAME_SHOW_WIFI_QR=0` or the database setting `show_wifi_qr=0` (the settings UI comes with MF-17). SSID and password come from `deploy/hotspot.conf`, or `MEMORYFRAME_SSID` / `MEMORYFRAME_WIFI_PASSWORD`.
+  **Shown name (#89):** the name on the overlay, the QR and the phone pages is the SSID of the NetworkManager profile `MemoryFrame-hotspot`, i.e. what is really broadcast. `deploy/netmode.sh` writes it (SSID only) into `/run/memoryframe/netmode.json` as `hotspot_ssid` whenever it writes that file: at boot, after a Wi-Fi change is kept or rolled back, and after `memoryframe-reset`. So after editing the profile with `nmcli` by hand, the app shows the new name after the next reboot or the next such change. The app never reads the password back from NetworkManager and never calls `nmcli`: the QR password is the stored phone-change password or the `hotspot.conf` / env one, and only when that copy belongs to the same SSID as the profile. If it does not (the profile was edited by hand), the name is shown and the QR is left out, rather than showing a wrong password. At start-up a stored name that differs from the profile is logged (names only, no password) and the profile wins. Without `hotspot_ssid` (dev machines, first boot, `nmcli` down) the old order applies: the committed phone change, then `MEMORYFRAME_SSID` / `deploy/hotspot.conf`.
 - **Privacy:** these screens use localhost-only routes (`/pairing/state`, `/frame/status`). The Wi-Fi password only leaves the frame as the on-screen QR.
 
 ## Library management (MF-16)

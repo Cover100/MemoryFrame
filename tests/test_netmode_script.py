@@ -22,6 +22,7 @@ if [ -f "$D/crash_at" ] && [[ "$*" == *" modify "* || "$*" == *" delete "* ]]; t
   if [ "$n" -lt 0 ]; then rm -f "$D/crash_at"; kill -9 "$PPID"; exit 137; fi
 fi
 [ "$1" = --wait ] && shift 2
+[ "$1" = -e ] && shift 2
 case "$1 $2" in
   "-g NAME") ls "$D/p"; exit 0;;
   "-g GENERAL.CONNECTION") cat "$D/active"; exit 0;;
@@ -133,7 +134,8 @@ def test_product_mode_file_boots_product(env):
     s = state(env)
     assert s == {"mode": "product", "requested": "product", "dev_fallback": False, "hotspot_error": False,
                  "active": HOT, "boot_id": "boot-1", "reset": False, "reset": False,
-                 "hotspot_uuid": "uuid-MemoryFrame-hotspot", "wifi_profiles": False, "commit_recovered": False}
+                 "hotspot_uuid": "uuid-MemoryFrame-hotspot", "wifi_profiles": False, "commit_recovered": False,
+                 "hotspot_ssid": "MemoryFrame-AP"}
 
 
 # ---------- SAFETY: nothing but an explicit "product" arms product mode ----------
@@ -624,3 +626,32 @@ def test_boot_undoing_a_commit_is_not_recovered(on_hotspot):
     run(env, "boot")
     s = state(env)
     assert s["commit_recovered"] is False and s["wifi_profiles"] is False
+
+
+# ---------- #89: netmode.json carries the SSID the hotspot profile really broadcasts ----------
+
+def test_state_has_hotspot_ssid_after_an_nmcli_edit(env):
+    (env["boot"] / "memoryframe-mode.txt").write_text("product\n")
+    assert run(env, "boot").returncode == 0
+    assert state(env)["hotspot_ssid"] == "MemoryFrame-AP"
+    (env["d"] / "p" / HOT / "ssid").write_text("Edited: by \\ hand\n")      # nmcli connection modify ... ssid
+    assert run(env, "boot").returncode == 0                                  # any state write refreshes it
+    assert state(env)["hotspot_ssid"] == "Edited: by \\ hand"                # raw: ':' and '\' not escaped
+    assert "-e no -g 802-11-wireless.ssid" in (env["d"] / "log").read_text()
+
+
+def test_state_hotspot_ssid_empty_without_profile(env):
+    import shutil as _sh
+    _sh.rmtree(env["d"] / "p" / HOT)
+    (env["boot"] / "memoryframe-mode.txt").write_text("product\n")
+    run(env, "boot")
+    assert state(env)["hotspot_ssid"] == ""
+
+
+def test_state_never_contains_a_password(env):
+    (env["boot"] / "memoryframe-mode.txt").write_text("product\n")
+    (env["d"] / "p" / HOT / "psk").write_text(SECRET + "\n")
+    run(env, "boot")
+    assert SECRET not in (env["state"] / "netmode.json").read_text()
+    assert "802-11-wireless-security" not in (env["d"] / "log").read_text()
+    assert "show-secrets" not in (env["d"] / "log").read_text()

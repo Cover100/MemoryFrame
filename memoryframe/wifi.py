@@ -59,11 +59,27 @@ def validate(ssid, password, current_ssid, current_password):
 # ---------------- current Wi-Fi ----------------
 
 def current_wifi(conn):
-    """(ssid, password) the hotspot uses now: a committed MF-18 change wins over hotspot.conf."""
+    """(ssid, password) the hotspot uses now.
+
+    #89: the SSID is the one the NetworkManager profile MemoryFrame-hotspot really broadcasts
+    (deploy/netmode.sh writes it to netmode.json, SSID only). The app never reads the password back
+    from NetworkManager, so the password comes from a copy that is known to belong to that SSID:
+    the committed MF-18 value, else hotspot.conf. If neither matches the live SSID (the profile was
+    edited by hand) the password is None: no Wi-Fi QR, rather than a QR with a wrong password.
+    Without a profile SSID (dev machines, first boot, nmcli down) the old order applies: a committed
+    MF-18 change, then MEMORYFRAME_SSID / hotspot.conf."""
     ssid, password = get_setting(conn, "wifi_ssid"), get_setting(conn, "wifi_password")
-    if ssid and password:
-        return ssid, password
-    return frameinfo.hotspot_conf()
+    live = frameinfo.netmode_state()["hotspot_ssid"]
+    if not live:
+        if ssid and password:
+            return ssid, password
+        return frameinfo.hotspot_conf()
+    if ssid == live and password:
+        return live, password
+    conf_ssid, conf_password = frameinfo.hotspot_conf()
+    if conf_ssid == live and conf_password:
+        return live, conf_password
+    return live, None
 
 
 def _row(conn):
@@ -194,6 +210,9 @@ def startup_check(app):
             set_setting(conn, "wifi_reset_boot", nm["boot_id"])
             conn.commit()
         has_pending = reconcile(conn, nm) == "rollback"
+        stored = get_setting(conn, "wifi_ssid")
+        if nm.get("hotspot_ssid") and stored and stored != nm["hotspot_ssid"]:
+            log.warning("stored Wi-Fi name differs from the hotspot profile; the profile wins (#89)")
     finally:
         conn.close()
     if has_pending:

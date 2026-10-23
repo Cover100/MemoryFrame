@@ -309,8 +309,10 @@ def netmode_state():
     out = {"mode": "dev", "dev_fallback": False, "hotspot_error": False, "boot_id": "", "reset": False,
            "hotspot_uuid": "", "wifi_profiles": False, "commit_recovered": False, "hotspot_ssid": ""}
     try:
-        with open(path) as f:
-            raw = json.load(f)
+        with open(path, "rb") as f:
+            data = f.read(65536)
+        # #89: one odd byte or control character in a field must not discard the whole state
+        raw = json.loads(data.decode("utf-8", "replace"), strict=False)
     except (OSError, ValueError):
         return out
     if not isinstance(raw, dict):

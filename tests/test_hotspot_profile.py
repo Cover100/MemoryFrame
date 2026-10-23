@@ -197,3 +197,44 @@ def test_phone_wifi_panel_rules(mf_app, nm):
         ctx = {}
         mf_app.update_template_context(ctx)
         assert ctx["phone_wifi"]()["ssid"] == ""                       # dev mode: never the hotspot name
+
+
+# ---------- Juniper's #105 review ----------
+
+def test_one_bad_field_does_not_discard_the_state(mf_app, nm, tmp_path):
+    (tmp_path / "netmode.json").write_bytes(b'{"mode": "product", "hotspot_error": true, "reset": true, '
+                                            b'"active": "a\x1bb\xff", "hotspot_ssid": "x\x1by"}')
+    s = frameinfo.netmode_state()
+    assert s["mode"] == "product" and s["hotspot_error"] is True and s["reset"] is True
+    assert s["hotspot_ssid"] == ""
+
+
+def test_overlay_join_line_when_password_unknown(mf_app, nm, client):
+    nm(hotspot_ssid="Hand Edited")
+    st = client.get("/pairing/state", environ_base=LOCAL).get_json()
+    assert st["wifi_qr_svg"] is None and st["wifi_join_name"] == "Hand Edited"
+    nm(hotspot_ssid="ConfName")                                         # password known: QR, no join line
+    st = client.get("/pairing/state", environ_base=LOCAL).get_json()
+    assert "<svg" in st["wifi_qr_svg"] and st["wifi_join_name"] is None
+    from conftest import pair_client
+    nm(hotspot_ssid="Hand Edited")
+    pair_client(client)
+    assert client.get("/pairing/state", environ_base=LOCAL).get_json()["wifi_join_name"] is None
+
+
+def test_join_line_markup_is_csp_safe():
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    html = (root / "templates" / "index.html").read_text()
+    line = next(l for l in html.splitlines() if 'id="wifiJoin"' in l)
+    assert "style=" not in line and 'class="stepText"' in line and "with its password" in line
+    js = (root / "static" / "pairing.js").read_text()
+    assert '$("wifiJoinName").textContent' in js and "wifi_join_name" in js
+
+
+def test_startup_logs_no_qr_names_only(mf_app, nm, caplog):
+    nm(hotspot_ssid="Hand Edited")
+    with caplog.at_level(logging.WARNING):
+        wifi.startup_check(mf_app)
+    msgs = " ".join(r.getMessage() for r in caplog.records)
+    assert "no Wi-Fi QR" in msgs and SECRET not in msgs

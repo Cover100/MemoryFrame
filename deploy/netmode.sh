@@ -149,7 +149,14 @@ profiles() { "$NMCLI" -g NAME connection show; }
 prop() { "$NMCLI" -g "$2" connection show "$1" 2>/dev/null || true; }
 # #89: the SSID the hotspot profile really broadcasts. "-e no" = raw value (no ':' / '\' escaping).
 # Only the SSID is ever read here: the password is never read back, printed or put in netmode.json.
-hotspot_ssid() { "$NMCLI" -e no -g 802-11-wireless.ssid connection show "$HOTSPOT_CON" 2>/dev/null | head -n1 || true; }
+# Empty unless the name is clean: valid UTF-8, 1-32 bytes, no control characters.
+hotspot_ssid() {
+    local s LC_ALL=C
+    s="$("$NMCLI" -e no -g 802-11-wireless.ssid connection show "$HOTSPOT_CON" 2>/dev/null || true)"
+    case "$s" in *[[:cntrl:]]*) s="" ;; esac
+    if [ "${#s}" -gt 32 ] || ! utf8_ok "$s"; then s=""; fi
+    printf '%s' "$s"
+}
 active() { "$NMCLI" -g GENERAL.CONNECTION device show "$IFACE" 2>/dev/null || true; }
 
 client_profiles() {
@@ -176,7 +183,17 @@ hotspot_autoconnect() {   # yes|no: only ever the MemoryFrame hotspot profile is
     fi
 }
 
-json_str() { local s="${1//\\/\\\\}"; s="${s//\"/\\\"}"; printf '"%s"' "${s//[$'\t\r\n']/ }"; }
+utf8_ok() {   # valid UTF-8? (iconv is in libc-bin; without it, only ASCII counts as valid)
+    if command -v iconv >/dev/null 2>&1; then printf '%s' "$1" | iconv -f UTF-8 -t UTF-8 >/dev/null 2>&1
+    else [[ "$1" != *[^\ -~]* ]]; fi
+}
+json_str() {   # #89: never corrupts netmode.json: invalid UTF-8 -> "", TAB/CR/LF -> space, other controls dropped
+    local s="$1" LC_ALL=C
+    utf8_ok "$s" || s=""
+    s="${s//[$'\t\r\n']/ }"; s="${s//[[:cntrl:]]/}"
+    s="${s//\\/\\\\}"; s="${s//\"/\\\"}"
+    printf '"%s"' "$s"
+}
 
 write_state() {   # mode requested dev_fallback hotspot_error
     local boot_id=""

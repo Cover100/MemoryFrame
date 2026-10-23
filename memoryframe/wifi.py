@@ -213,6 +213,8 @@ def startup_check(app):
         stored = get_setting(conn, "wifi_ssid")
         if nm.get("hotspot_ssid") and stored and stored != nm["hotspot_ssid"]:
             log.warning("stored Wi-Fi name differs from the hotspot profile; the profile wins (#89)")
+        if nm.get("hotspot_ssid") and current_wifi(conn)[1] is None:
+            log.warning("no Wi-Fi QR: the hotspot profile name has no known password (#89)")
     finally:
         conn.close()
     if has_pending:

@@ -655,3 +655,36 @@ def test_state_never_contains_a_password(env):
     assert SECRET not in (env["state"] / "netmode.json").read_text()
     assert "802-11-wireless-security" not in (env["d"] / "log").read_text()
     assert "show-secrets" not in (env["d"] / "log").read_text()
+
+
+@pytest.mark.parametrize("raw,expect", [
+    (b"Esc\x1bName", ""), (b"Bad\xffByte", ""), (b"Tab\tName", ""), (b"x" * 33, ""),
+    (b'Fam "home"', 'Fam "home"'), (b"back\\slash", "back\\slash"), ("Oma's Fotos ü".encode(), "Oma's Fotos ü"),
+])
+def test_odd_ssid_never_corrupts_state(env, raw, expect):
+    """Juniper's #105 must-fix: the real script keeps netmode.json valid JSON, other flags survive."""
+    (env["boot"] / "memoryframe-mode.txt").write_text("product\n")
+    (env["d"] / "p" / HOT / "ssid").write_bytes(raw + b"\n")
+    (env["d"] / "fail").write_text(HOT + "\n")                     # hotspot_error must survive too
+    run(env, "boot")
+    data = (env["state"] / "netmode.json").read_bytes()
+    s = json.loads(data.decode("utf-8"))                             # strict: valid UTF-8 and JSON
+    assert s["mode"] == "product" and s["hotspot_error"] is True and s["boot_id"] == "boot-1"
+    assert s["hotspot_ssid"] == expect
+
+
+def test_newline_ssid_is_dropped(env):
+    (env["boot"] / "memoryframe-mode.txt").write_text("product\n")
+    (env["d"] / "p" / HOT / "ssid").write_bytes(b"two\nlines\n")
+    run(env, "boot")
+    s = json.loads((env["state"] / "netmode.json").read_text())
+    assert s["mode"] == "product" and s["hotspot_ssid"] == ""
+
+
+def test_json_str_strips_controls_for_every_field(env):
+    """The 'active' field (connection name) can't corrupt the file either."""
+    r = subprocess.run(["bash", "-c", f'source <(sed -n "/^utf8_ok()/,/^}}/p;/^json_str()/,/^}}/p" {SCRIPT}); '
+                       'json_str "$(printf "A\\x1bB\\tC\\"D%sE" "\\\\")"; echo; json_str "$(printf "bad\\xff")"'],
+                       capture_output=True, text=True, env=env["env"])
+    a, b = r.stdout.splitlines()
+    assert json.loads(a) == 'AB C"D\\E' and json.loads(b) == ""

@@ -123,7 +123,10 @@ def save(data_dir, text):
 
 def sweep_tmp(data_dir):
     """Startup: remove temp files left by a crash mid-write."""
+    from . import storage
     for p in glob.glob(os.path.join(glob.escape(data_dir), TMP_PREFIX + "*" + TMP_SUFFIX)):
+        if not storage.settled(p):            # F1: may be a save in flight in another process
+            continue
         try:
             os.remove(p)
         except OSError:

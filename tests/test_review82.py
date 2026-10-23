@@ -209,6 +209,8 @@ def test_startup_sweep_removes_tmp_leftovers_but_not_trash(mf_app):
     left = ["upload-" + "a" * 32, "b" * 32 + ".jpg", "c" * 32 + ".jpg.tmp", "d" * 32 + ".gif", "x.tmp"]
     for n in left:
         open(os.path.join(tmp, n), "wb").write(b"x" * 10)
+        os.utime(os.path.join(tmp, n), (1, 1))                 # older than storage.SETTLE_S (#100 F1)
+    open(os.path.join(tmp, "e" * 32 + ".jpg"), "wb").write(b"live")   # fresh: may be another process's upload
     os.makedirs(os.path.join(tmp, "trash"), exist_ok=True)
     open(os.path.join(tmp, "keep.txt"), "w").write("not ours")
     conn = mfdb.connect(mf_app.config["DB_PATH"])
@@ -216,7 +218,7 @@ def test_startup_sweep_removes_tmp_leftovers_but_not_trash(mf_app):
         imaging.sweep(conn, d)
     finally:
         conn.close()
-    assert sorted(os.listdir(tmp)) == ["keep.txt", "trash"]
+    assert sorted(os.listdir(tmp)) == ["e" * 32 + ".jpg", "keep.txt", "trash"]
 
 
 # ---------------- env caps ----------------

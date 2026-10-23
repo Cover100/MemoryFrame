@@ -168,6 +168,7 @@ def test_stale_tmp_swept_on_startup(mf_app):
     d = mf_app.config["DATA_DIR"]
     stale = os.path.join(d, "frame_message.abc123.tmp")
     open(stale, "w").write("half")
+    os.utime(stale, (1, 1))                       # older than storage.SETTLE_S (#100 F1)
     keep = os.path.join(d, "other.tmp")
     open(keep, "w").write("x")
     create_app({"TESTING": True, "DATA_DIR": d, "DB_PATH": mf_app.config["DB_PATH"]})

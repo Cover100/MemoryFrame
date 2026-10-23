@@ -3,6 +3,8 @@ leave the service restarted, say what failed, and exit non-zero; a clean install
 Runs install.sh hermetically (same stubs as test_install_never_arms_product)."""
 import re
 
+import pytest
+
 from test_install_never_arms_product import STUB, SUDO, run_install
 from test_netmode_script import ac, active, env, mutations, run, state  # noqa: F401  (fixtures)
 
@@ -12,6 +14,13 @@ RESTART = "sudo systemctl restart memoryframe.service"
 def fail_audit(app):
     """Force a failure after the stop and before the normal restart."""
     (app / "deploy" / "audit-autostart.sh").write_text(STUB + "exit 1\n")
+
+
+def kill_self(sig):
+    """Force a signal mid-install: the audit step signals its parent (install.sh), then succeeds."""
+    def tweak(app):
+        (app / "deploy" / "audit-autostart.sh").write_text(STUB + f"kill -{sig} $PPID\nexit 0\n")
+    return tweak
 
 
 def calls(log, what):
@@ -61,3 +70,48 @@ def test_failure_after_the_restart_does_not_restart_again(env, tmp_path):
     assert r.returncode == 9
     assert len(calls(log, "restart")) == 1
     assert "Restarting memoryframe.service" not in r.stderr
+
+
+def test_service_not_active_before_install_is_never_restarted_by_the_trap(env, tmp_path):
+    # Fresh install or a service stopped on purpose: a failure must not start it, nor print "restarted".
+    r, log = run_install(tmp_path, env, tweak=fail_audit, active=False)
+    assert r.returncode == 1
+    assert "systemctl is-active" in log and not calls(log, "restart")
+    assert "restarted" not in r.stderr and "Restarting" not in r.stderr and "ERROR: install.sh failed" not in r.stderr
+
+
+def test_clean_install_with_inactive_service_still_restarts_once_as_before(env, tmp_path):
+    r, log = run_install(tmp_path, env, active=False)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert len(calls(log, "restart")) == 1 and "ERROR" not in r.stderr
+
+
+@pytest.mark.parametrize("sig,code", [("INT", 130), ("TERM", 143), ("HUP", 129)])
+def test_signal_mid_install_restarts_service_once(env, tmp_path, sig, code):
+    r, log = run_install(tmp_path, env, tweak=kill_self(sig))
+    assert r.returncode == code
+    assert len(calls(log, "stop")) == 1 and len(calls(log, "restart")) == 1
+    assert f"ERROR: install.sh was interrupted (exit {code})" in r.stderr
+    assert "memoryframe.service restarted" in r.stderr
+    assert "Done." not in r.stdout
+
+
+def test_explicit_exit_without_err_record_says_unknown_step(env, tmp_path):
+    # An ERR record from a different exit status must not be reported for this exit (no stale line/command).
+    def tweak(app):
+        script = app / "deploy" / "install.sh"
+        script.write_text(script.read_text().replace(
+            '"$APP_DIR/deploy/audit-autostart.sh" --disable', 'false || true; exit 4', 1))
+    r, log = run_install(tmp_path, env, tweak=tweak)
+    assert r.returncode == 4 and len(calls(log, "restart")) == 1
+    assert "failed (exit 4) at an unknown step" in r.stderr
+
+
+def test_trap_restart_is_capped_by_timeout(env, tmp_path):
+    # `timeout 60` must wrap the trap's restart: stub timeout records its arguments and passes through.
+    (tmp_path / "bin").mkdir(exist_ok=True)
+    (tmp_path / "bin" / "timeout").write_text(STUB + 'shift; exec "$@"\n')
+    (tmp_path / "bin" / "timeout").chmod(0o755)
+    r, log = run_install(tmp_path, env, tweak=fail_audit)
+    assert r.returncode == 1
+    assert "timeout 60 sudo systemctl restart memoryframe.service" in log

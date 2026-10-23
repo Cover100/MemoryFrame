@@ -103,7 +103,18 @@ def test_library_select_delete_flow(page, server, mf_app, lib):
     page.pump(0.4)
     s = state(page)
     assert s["err"] and s["selecting"] and s["tiles"] == 5 and s["pressed"].count("true") == 2 and rows(mf_app) == 5
+    # a network failure (fetch rejects with TypeError) shows "Can't reach the frame"; the selection stays
+    js(page, "window.fetch = () => Promise.reject(new TypeError('Failed to fetch'))")
+    click(page, "document.getElementById('delBtn')")
+    click(page, "document.getElementById('confirmDelete')")
+    page.pump(0.4)
+    assert js(page, "!document.getElementById('offline').hidden && document.getElementById('page').hidden")
+    assert rows(mf_app) == 5
     js(page, "window.fetch = window.__f")
+    click(page, "document.getElementById('offlineRetry')")        # Try again pings /healthz and restores the page
+    page.pump(0.5)
+    s = state(page)
+    assert js(page, "document.getElementById('offline').hidden") and s["selecting"] and s["pressed"].count("true") == 2
     # success: one request, tiles go, mode exits, header count follows
     click(page, "document.getElementById('delBtn')")
     assert js(page, "document.getElementById('confirmTitle').textContent") == "Delete 2 photos?"

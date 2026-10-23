@@ -158,7 +158,12 @@
                 gone.push(...res.deleted, ...res.missing); // missing = already deleted elsewhere: gone too
                 if(res.failed.length){ ok = false; }
             }
-        }catch(e){ ok = false; }
+        }catch(e){
+            ok = false;
+            // fetch rejects with TypeError when the frame can't be reached: show the shared offline view
+            // (the selection stays; Try again restores the page). HTTP errors keep the generic message.
+            if(e instanceof TypeError && window.memoryFramePhone){ window.memoryFramePhone.offline(); }
+        }
         const fading = [];
         gone.forEach((id)=>{
             const li = grid.querySelector('li[data-id="' + Number(id) + '"]');

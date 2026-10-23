@@ -424,6 +424,14 @@ def test_bulk_delete_validates_ids_and_deletes_nothing(paired, lib, mf_app, body
     assert media_ids(mf_app) == before
 
 
+def test_bulk_delete_deeply_nested_json_is_400_not_500(paired, lib, mf_app):
+    add_photos(lib, 2)
+    before = media_ids(mf_app)
+    body = "[" * 15000 + "]" * 15000                       # under the 32 KB cap; json.loads raises RecursionError
+    r = paired.post(BULK, data=body, content_type="application/json", environ_base=PHONE)
+    assert r.status_code == 400 and media_ids(mf_app) == before
+
+
 def test_bulk_delete_cap_on_count_and_body_size(paired, lib, mf_app):
     from memoryframe import api
     add_photos(lib, 1)

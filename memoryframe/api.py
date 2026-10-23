@@ -176,7 +176,7 @@ def delete_many():
         return jsonify({"error": "request too large"}), 413
     try:
         data = json.loads(raw.decode("utf-8"))
-    except (ValueError, UnicodeDecodeError):
+    except (ValueError, UnicodeDecodeError, RecursionError):  # deeply nested brackets -> 400, not 500
         data = None
     ids = data.get("ids") if isinstance(data, dict) and set(data) == {"ids"} else None
     # bool is an int subclass in Python: refuse it explicitly, like every other non-integer

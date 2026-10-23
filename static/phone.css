@@ -146,25 +146,50 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
 .mf-phone .grid a { display: block; height: 100%; }
 .mf-phone .grid a:focus-visible { outline-offset: -3px; }   /* the tile clips (overflow:hidden): ring stays inside */
 .mf-phone .grid img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.mf-phone .grid li.hid img { opacity: .35; }
-.mf-phone .tag { position: absolute; left: 6px; bottom: 6px; background: var(--mf-forest-900); color: var(--mf-linen);
-  font-size: 13px; padding: 2px 8px; border-radius: var(--mf-r-pill); }
 .mf-phone .empty-lib { text-align: center; padding: 20px 16px; }
 
-/* Library ("See all") */
-.mf-phone #grid { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-.mf-phone #grid li { border: 1px solid var(--mf-line); border-radius: var(--mf-r-md); overflow: hidden; background: var(--mf-card);
-  position: relative; }
-.mf-phone #grid li.hidden img { opacity: .35; }
-.mf-phone #grid li.hidden::after { content: "Hidden"; position: absolute; left: 6px; top: 6px; background: var(--mf-forest-900);
-  color: var(--mf-linen); font-size: 13px; padding: 2px 8px; border-radius: var(--mf-r-pill); }
-.mf-phone #grid img { display: block; width: 100%; height: auto; aspect-ratio: 1; object-fit: cover; background: var(--mf-line); }
-.mf-phone #grid .name { font-size: var(--mf-p-small); padding: 6px 8px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mf-phone #grid .actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; }
-.mf-phone #grid .actions button { flex: 1 1 auto; min-height: var(--mf-touch-phone); padding: 0 8px; white-space: nowrap; font-size: var(--mf-p-small);
-  background: var(--mf-card); color: var(--mf-text); border: 1.5px solid var(--mf-outline); }
-.mf-phone #grid .actions button:last-child { color: var(--mf-red-text); }
-.mf-phone #grid .actions button[disabled] { color: var(--mf-text-2); opacity: .6; }
+/* 09 Library (#80, phone/09-LIBRARY.md): full-bleed 3-column grid; a tap selects (no preview); body.selecting swaps
+   the bar for "N selected" + Select all and shows the bottom toolbar. Selected = leaf border + .88 inset + tick. */
+.mf-phone .libhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 22px 0 12px; }
+.mf-phone .libhead h1 { font-size: var(--mf-p-h2); margin: 0; min-width: 0; }
+.mf-phone .libhead small { display: block; font-size: var(--mf-p-small); font-weight: 400; color: var(--mf-text-2); }
+.mf-phone .lib { list-style: none; margin: 0 -16px; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
+.mf-phone .lib li { aspect-ratio: 1; position: relative; transition: opacity 150ms var(--mf-ease); }
+.mf-phone .lib li.gone { opacity: 0; }
+.mf-phone .tile { all: unset; box-sizing: border-box; display: block; width: 100%; height: 100%; position: relative;
+  overflow: hidden; background: var(--mf-forest-900); cursor: pointer; -webkit-touch-callout: none; user-select: none;
+  -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+.mf-phone .lib .tile:active { transform: none; }
+.mf-phone .tile:focus-visible { outline: var(--mf-ring-width) solid var(--mf-focus); outline-offset: -3px; }  /* never clipped */
+.mf-phone .tile img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform var(--mf-t-fast) var(--mf-ease); }
+.mf-phone .tile.plain { border: 1px solid var(--mf-forest-700); }
+.mf-phone .tile .ph { position: absolute; left: 50%; top: 50%; width: 30px; height: 22px; margin: -11px 0 0 -15px;
+  border: 2px solid var(--mf-oat); border-radius: 3px; opacity: .6; }
+.mf-phone.selecting .tile::after { content: ""; position: absolute; top: 6px; left: 6px; width: 26px; height: 26px;
+  box-sizing: border-box; border-radius: 50%; border: 2px solid #fff; background: rgba(14, 19, 17, .5); }   /* ~3:1 even on a white photo */
+.mf-phone.selecting .tile[aria-pressed="true"] { border: 3px solid var(--mf-leaf); }
+.mf-phone.selecting .tile[aria-pressed="true"] img { transform: scale(.88); border-radius: 6px; }
+.mf-phone.selecting .tile[aria-pressed="true"]::after { background: var(--mf-forest-600); }
+.mf-phone.selecting .tile[aria-pressed="true"]::before { content: ""; position: absolute; z-index: 1; top: 14px; left: 13px;
+  width: 10px; height: 5px; border: solid #fff; border-width: 0 0 2.5px 2.5px; transform: rotate(-45deg); }  /* tick */
+.mf-phone .selbar, .mf-phone .sel-only, .mf-phone .toolbar { display: none; }
+.mf-phone.selecting .bar:not(.selbar), .mf-phone.selecting > .strip, .mf-phone.selecting .normal-only { display: none; }
+.mf-phone.selecting .selbar { display: flex; position: sticky; top: 0; z-index: 5; }
+.mf-phone.selecting .sel-only { display: block; }
+.mf-phone .selhint { margin: 0 0 12px; }
+.mf-phone .btn-onbar { background: transparent; color: var(--mf-linen); border: 1.5px solid var(--mf-outline); padding: 0 14px;
+  white-space: nowrap; }
+.mf-phone.selecting .toolbar { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; flex-direction: column; gap: 10px;
+  background: var(--mf-forest-900); border-top: 1px solid var(--mf-forest-700);
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); }
+.mf-phone .toolbar .tbtns { display: flex; gap: 12px; }
+.mf-phone .toolbar .err { margin: 0; }
+.mf-phone .lib[hidden], .mf-phone .empty-lib[hidden] { display: none; }
+.mf-phone .toolbar button { flex: 1 1 0; min-width: 0; padding: 0 8px; white-space: nowrap; }
+.mf-phone .toolbar .btn-neutral { background: transparent; }
+/* last row clears the toolbar: library.js sets --toolbar-h (its real height, error line included) */
+.mf-phone.selecting main { padding-bottom: calc(var(--toolbar-h, 96px) + 16px); }
+.mf-phone.sheet-open { overflow: hidden; }
 
 /* 03 Upload */
 .mf-phone .pick { position: relative; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center;

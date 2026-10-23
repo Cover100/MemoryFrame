@@ -125,9 +125,9 @@ def _item(media_id):
 @bp.route("/media")
 def list_media():
     rows = get_db().execute(
-        "SELECT id, original_name, kind, hidden, size_bytes, created_at FROM media "
+        "SELECT id, original_name, kind, size_bytes, created_at FROM media "
         "ORDER BY created_at DESC, id DESC").fetchall()
-    return jsonify([{"id": r["id"], "name": r["original_name"], "kind": r["kind"], "hidden": bool(r["hidden"]),
+    return jsonify([{"id": r["id"], "name": r["original_name"], "kind": r["kind"],
                      "size": r["size_bytes"], "created_at": r["created_at"],
                      "thumb": f"/api/v1/media/{r['id']}/thumb"} for r in rows])
 
@@ -144,19 +144,64 @@ def thumb(media_id):
     return resp
 
 
-@bp.route("/media/<int:media_id>/hidden", methods=["PUT"])
-def set_hidden(media_id):
-    _item(media_id)
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict) or not isinstance(data.get("hidden"), bool):
-        return jsonify({"error": "Body must be JSON like {\"hidden\": true}."}), 400
-    db = get_db()
-    db.execute("UPDATE media SET hidden = ? WHERE id = ?", (int(data["hidden"]), media_id))
-    db.commit()
-    if data["hidden"]:
-        clear_show_now(current_app, _item(media_id)["stored_name"])
+# #80: the Hide feature is gone (PUT /media/<id>/hidden removed); db.init_db clears old flags.
+
+
+@bp.route("/media/<int:media_id>", methods=["DELETE"])
+def delete_media(media_id):
+    _item(media_id)                                 # 404 for bad / unknown ids
+    try:
+        found, removed = _delete_one(media_id)
+    except imaging.UnsafeName:                      # a stored name that isn't a bare file name: nothing was moved
+        current_app.logger.error("refused to delete media %s: unsafe stored name", media_id)
+        return jsonify({"error": "This photo's file name is not safe to delete."}), 400
+    if not found:                                   # another delete finished while we waited
+        abort(404)
     bump_media_rev(current_app)
-    return jsonify({"id": media_id, "hidden": data["hidden"]})
+    return jsonify({"id": media_id, "deleted": True, "files_removed": removed})
+
+
+# #80 bulk delete (phone Library). Paired session (blueprint hook), Origin + CSRF (websec), JSON only.
+MAX_BULK = 1000                 # ids per request; the phone sends larger selections in chunks of this size
+MAX_BULK_BODY = 32 * 1024       # 1000 ids of up to 19 digits plus commas fit with room to spare
+
+
+@bp.route("/media/delete", methods=["POST"])
+def delete_many():
+    """Body {"ids": [1, 2, 3]}. Deletes each photo (original + derivatives) with the same steps as the
+    single delete. 200 {"deleted": [...], "missing": [...], "failed": [...]}; 400 for any bad id."""
+    import json
+    if not request.is_json:
+        return jsonify({"error": "expected JSON"}), 415
+    if (request.content_length or 0) > MAX_BULK_BODY:
+        return jsonify({"error": "request too large"}), 413
+    raw = request.stream.read(MAX_BULK_BODY + 1)            # chunked bodies: bounded read
+    if len(raw) > MAX_BULK_BODY:
+        return jsonify({"error": "request too large"}), 413
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError, RecursionError):  # deeply nested brackets -> 400, not 500
+        data = None
+    ids = data.get("ids") if isinstance(data, dict) and set(data) == {"ids"} else None
+    # bool is an int subclass in Python: refuse it explicitly, like every other non-integer
+    if (not isinstance(ids, list) or not ids
+            or not all(type(i) is int and 0 < i <= SQLITE_MAX_INT for i in ids)):
+        return jsonify({"error": "ids must be a non-empty list of photo ids"}), 400
+    ids = list(dict.fromkeys(ids))                          # drop repeats, keep order
+    if len(ids) > MAX_BULK:
+        return jsonify({"error": f"at most {MAX_BULK} photos per request"}), 413
+    deleted, missing, failed = [], [], []
+    for media_id in ids:
+        try:
+            found, _ = _delete_one(media_id)
+        except Exception:  # noqa: BLE001 - one bad photo must not stop the rest; it stays in the library
+            current_app.logger.exception("bulk delete of %s failed", media_id)
+            failed.append(media_id)
+            continue
+        (deleted if found else missing).append(media_id)
+    if deleted:
+        bump_media_rev(current_app)
+    return jsonify({"deleted": deleted, "missing": missing, "failed": failed})
 
 
 # Deletes of the same id are serialised in-process (waitress runs one process, many threads).
@@ -164,48 +209,36 @@ def set_hidden(media_id):
 _DELETE_LOCKS = [threading.Lock() for _ in range(64)]
 
 
-@bp.route("/media/<int:media_id>", methods=["DELETE"])
-def delete_media(media_id):
-    _item(media_id)                                 # 404 for bad / unknown ids
+def _delete_one(media_id):
+    """Delete one photo. Returns (found, files_removed); found is False if the row is already gone."""
     with _DELETE_LOCKS[media_id % len(_DELETE_LOCKS)]:
+        data_dir = current_app.config["DATA_DIR"]
+        db = get_db()
+        rows = db.execute("SELECT stored_name FROM media WHERE id = ?", (media_id,)).fetchall()
+        if not rows:
+            return False, 0
+        stored = rows[0]["stored_name"]
+        # 1) move every file into tmp/trash (atomic renames, same filesystem; refuses unsafe names)
+        staged = imaging.stage_delete(data_dir, stored, media_id)
         try:
-            return _delete_locked(media_id)
-        except imaging.UnsafeName:                  # a stored name that isn't a bare file name: nothing was moved
-            current_app.logger.error("refused to delete media %s: unsafe stored name", media_id)
-            return jsonify({"error": "This photo's file name is not safe to delete."}), 400
-
-
-def _delete_locked(media_id):
-    data_dir = current_app.config["DATA_DIR"]
-    db = get_db()
-    rows = db.execute("SELECT stored_name FROM media WHERE id = ?", (media_id,)).fetchall()
-    if not rows:                                    # another delete finished while we waited
-        abort(404)
-    stored = rows[0]["stored_name"]
-    # 1) move every file into tmp/trash (atomic renames, same filesystem)
-    staged = imaging.stage_delete(data_dir, stored, media_id)
-    try:
-        # 2) remove the row
-        gone = db.execute("DELETE FROM media WHERE id = ?", (media_id,)).rowcount
-        db.commit()
-    except Exception:
-        db.rollback()
-        imaging.unstage_delete(staged)           # DB step failed: row survives, so put files back
-        raise
-    # 3) the row is gone (by us, or by another writer): the files must go too, never restore
-    removed = imaging.purge_staged(staged)
-    if gone == 0:
-        abort(404)
-    clear_show_now(current_app, stored)
-    bump_media_rev(current_app)
-    return jsonify({"id": media_id, "deleted": True, "files_removed": removed})
+            # 2) remove the row
+            gone = db.execute("DELETE FROM media WHERE id = ?", (media_id,)).rowcount
+            db.commit()
+        except Exception:
+            db.rollback()
+            imaging.unstage_delete(staged)       # DB step failed: row survives, so put files back
+            raise
+        # 3) the row is gone (by us, or by another writer): the files must go too, never restore
+        removed = imaging.purge_staged(staged)
+        if gone == 0:
+            return False, removed
+        clear_show_now(current_app, stored)
+        return True, removed
 
 
 @bp.route("/media/<int:media_id>/show-now", methods=["POST"])
 def show_now(media_id):
     row = _item(media_id)
-    if row["hidden"]:
-        return jsonify({"error": "This photo is hidden. Unhide it first."}), 409
     import time
     state = current_app.extensions.setdefault("mf_show_now", {"seq": 0, "filename": None, "at": 0})
     state.update(seq=state["seq"] + 1, filename=row["stored_name"], at=time.time())

@@ -22,16 +22,20 @@ exit 0
 '''
 
 
-def install(tmp_path, envd):
+def run_install(tmp_path, envd, sudo=SUDO, tweak=None):
+    """Run the sandboxed install.sh; returns (CompletedProcess, stub call log). `tweak(app)` may edit the
+    sandbox copy of the repo (used to force a failure); `sudo` replaces the sudo stub."""
     app = tmp_path / "app"
     if not app.exists():
         shutil.copytree(ROOT / "deploy", app / "deploy")
         shutil.copy(ROOT / "requirements.txt", app / "requirements.txt")
         # if install.sh ever ran the helper, we'd see it
         (app / "deploy" / "netmode.sh").write_text(STUB + "exit 0\n")
+        if tweak:
+            tweak(app)
     bin_ = tmp_path / "bin"
     bin_.mkdir(exist_ok=True)
-    for name, body in (("sudo", SUDO), ("python3", PY3), ("chromium", STUB + "exit 0\n"),
+    for name, body in (("sudo", sudo), ("python3", PY3), ("chromium", STUB + "exit 0\n"),
                        ("crontab", STUB + "exit 1\n"), ("nmcli", STUB + "exit 0\n"), ("pkaction", STUB + "exit 0\n")):
         (bin_ / name).write_text(body)
         (bin_ / name).chmod(0o755)
@@ -44,8 +48,13 @@ def install(tmp_path, envd):
     e.pop("SUDO_USER", None)
     r = subprocess.run(["bash", str(app / "deploy" / "install.sh")], env=e, capture_output=True,
                        text=True, timeout=60)
+    return r, (log.read_text() if log.exists() else "")
+
+
+def install(tmp_path, envd):
+    r, log = run_install(tmp_path, envd)
     assert r.returncode == 0, r.stdout + r.stderr
-    return log.read_text()
+    return log
 
 
 def test_install_text_never_arms_product():

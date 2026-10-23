@@ -41,7 +41,29 @@ mkdir -p "$APP_DIR/uploads"
 echo "== Data directory and one-time photo migration (MF-11)"
 DATA_DIR=/var/lib/memoryframe
 sudo install -d -o "$APP_USER" -g "$(id -gn)" -m 750 "$DATA_DIR"
+# #90: from the stop below until the normal restart, a failure (set -e) would leave the frame
+# stopped with no screen. Remember the failing line, and on any non-clean exit restart the service once,
+# say what failed, and keep the original exit status. The trap is cleared first so it can't loop.
+SERVICE_STOPPED=0
+FAIL_AT=""
+trap 'FAIL_AT="line $LINENO: $BASH_COMMAND"' ERR
+restart_if_stopped() {
+    local rc=$?
+    trap - EXIT ERR
+    if [ "$SERVICE_STOPPED" = 1 ]; then
+        [ "$rc" -ne 0 ] && echo "ERROR: install.sh failed (exit $rc) at ${FAIL_AT:-an unknown step}." >&2
+        echo "Restarting memoryframe.service, which install.sh had stopped, so the frame keeps its screen." >&2
+        if sudo systemctl restart memoryframe.service; then
+            echo "memoryframe.service restarted. The install is incomplete: fix the error above and re-run install.sh." >&2
+        else
+            echo "ERROR: could not restart memoryframe.service: run 'sudo systemctl restart memoryframe.service'." >&2
+        fi
+    fi
+    exit "$rc"
+}
+trap restart_if_stopped EXIT
 # Stop the running app first so the migration has the database to itself.
+SERVICE_STOPPED=1
 sudo systemctl stop memoryframe.service 2>/dev/null || true
 # Backs up uploads/ to $DATA_DIR/backups/legacy-uploads-<time>.tar (verified),
 # then COPIES the photos into $DATA_DIR/originals. uploads/ is never changed.
@@ -102,6 +124,7 @@ fi
 sudo systemctl enable memoryframe-netmode.service
 sudo systemctl enable memoryframe.service
 sudo systemctl restart memoryframe.service
+SERVICE_STOPPED=0   # restarted normally: the exit trap has nothing left to do
 
 echo "== Case fan (gpio-fan overlay, GPIO 14, on at 60 C)"
 if ! sudo env MEMORYFRAME_BOOT_CONFIG="${MEMORYFRAME_BOOT_CONFIG:-}" bash "$APP_DIR/deploy/fan-overlay.sh"; then

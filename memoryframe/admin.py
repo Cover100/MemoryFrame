@@ -26,14 +26,16 @@ def _phone_context():
         # Juniper's #77 review: no SSID unless this visitor is paired, and never the hotspot SSID in dev
         # mode (the frame is on the developer's Wi-Fi then, and the hotspot name would be wrong and leak).
         from . import frameinfo, wifi
-        if getattr(g, "device_id", None) is None and auth.current_device() is None:
+        device = g.get("device_id")                         # set by require_session; else one cookie/session lookup
+        if device is None:
+            device = auth.current_device()
+        if device is None:
             return {"ssid": "", "mode": "unknown"}          # unpaired visitors never see the SSID
         try:
             mode = frameinfo.network().get("mode")
         except Exception:  # noqa: BLE001 - never break a page over this hint
             mode = "unknown"
-        device = g.get("device_id") or auth.current_device()
-        if device is None or frameinfo.dev_mode():
+        if frameinfo.dev_mode():
             return {"ssid": "", "mode": mode}
         return {"ssid": wifi.current_wifi(get_db())[0] or "", "mode": mode}
     return {"phone_wifi": phone_wifi, "slide_label": slide_label, "phone_storage": phone_storage}
@@ -89,6 +91,8 @@ def home():
     preview = conn.execute("SELECT id, original_name FROM media ORDER BY created_at DESC, id DESC "
                            "LIMIT ?", (PREVIEW,)).fetchall()
     total = conn.execute("SELECT COUNT(*) FROM media").fetchone()[0]
+    # #92: the Wi-Fi row names the configured frame Wi-Fi to a PAIRED phone, in dev mode too (the Wi-Fi page shows
+    # the same name). Only the offline panel (phone_wifi) hides it in dev: there it says which network to rejoin.
     return render_template("admin_home.html", wifi_notice=wifi.admin_notice(conn),
                            just_paired=request.args.get("paired") == "1", preview=preview, total=total,
                            st=phone_storage(), s=settings.get_all(conn), ssid=wifi.current_wifi(conn)[0] or "")

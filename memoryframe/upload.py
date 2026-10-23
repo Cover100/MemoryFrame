@@ -23,11 +23,15 @@ FORMAT_EXT = {"JPEG": ".jpg", "MPO": ".jpg", "PNG": ".png", "WEBP": ".webp", "GI
               "HEIF": ".heic", "AVIF": ".heic"}
 MAX_PIXELS = 150_000_000         # 150 MP (#82: 108 MP phones). JPEGs are decoded at reduced size (imaging.draft_jpeg),
                                  # so peak RAM stays small; override with MEMORYFRAME_MAX_MEGAPIXELS.
-MAX_NONJPEG_PIXELS = 50_000_000  # HEIC/PNG/WebP/AVIF cannot be decoded at reduced size: ~11 B/pixel peak for HEIC
-                                 # (~600 MB at 50 MP). Override with MEMORYFRAME_MAX_NONJPEG_MEGAPIXELS.
+MAX_NONJPEG_PIXELS = 50_000_000  # HEIC/PNG/WebP/AVIF cannot be decoded at reduced size. Measured peak RSS just under
+                                 # the cap: RGBA PNG ~840 MB, WebP ~840 MB, AVIF ~570 MB, HEIC ~480 MB (see README).
+                                 # Override with MEMORYFRAME_MAX_NONJPEG_MEGAPIXELS.
+                                 # GIFs (kept as sent) count as non-JPEG: same cap.
 TOO_BIG = "This photo is too large for the frame (over {mp} megapixels). Please send a smaller copy."
 TOO_BIG_OTHER = ("This {fmt} photo is too large for the frame (over {mp} megapixels). "
                  "Please send it as a JPEG or a smaller copy.")
+TOO_BIG_GIF = ("This GIF is too large for the frame (over {mp} megapixels). "
+               "Please send a smaller GIF or a still photo.")
 NOT_A_PHOTO = "This file is not a photo the frame can show (JPEG, PNG, WebP, GIF or HEIC)."
 NOT_JPEG = ("JPEG", "MPO")
 FORMAT_NAME = {"HEIF": "HEIC", "AVIF": "HEIC", "PNG": "PNG", "WEBP": "WebP", "GIF": "GIF"}
@@ -61,21 +65,29 @@ def _looks_like_video(head, name):
     return any(m in head[:16] for m in VIDEO_MAGIC) or head[:4] == b"\x1aE\xdf\xa3"
 
 
+def pixel_cap(fmt, max_pixels=MAX_PIXELS, max_nonjpeg_pixels=MAX_NONJPEG_PIXELS):
+    """The pixel cap for an image format (PIL format name): JPEG max_pixels; everything else, GIF included
+    (cannot be decoded at reduced size), the lower of max_pixels and max_nonjpeg_pixels."""
+    return max_pixels if fmt in NOT_JPEG else min(max_pixels, max_nonjpeg_pixels)
+
+
 def sniff_image(path, max_pixels=MAX_PIXELS, max_nonjpeg_pixels=MAX_NONJPEG_PIXELS):
     """Return the stored extension for a real image, else None.
-    Raises UploadError(415) if the header says it is larger than max_pixels (or, for formats other than JPEG,
-    max_nonjpeg_pixels, whichever is lower; GIFs are kept as they are), checked before any pixel data is decoded."""
+    Raises UploadError(415) if the header says it is larger than pixel_cap(format): checked before any
+    pixel data is decoded. The message quotes the megapixel number that applies."""
     from PIL import Image
     try:
         with Image.open(path) as im:           # reads the header only
             fmt = im.format
             w, h = im.size
-            if fmt not in NOT_JPEG and fmt != "GIF" and w * h > min(max_pixels, max_nonjpeg_pixels):
-                if max_nonjpeg_pixels < max_pixels:
-                    raise UploadError(415, TOO_BIG_OTHER.format(fmt=FORMAT_NAME.get(fmt, fmt),
-                                                                mp=max_nonjpeg_pixels // 1_000_000))
-            if w * h > max_pixels:
-                raise UploadError(415, TOO_BIG.format(mp=max_pixels // 1_000_000))
+            cap = pixel_cap(fmt, max_pixels, max_nonjpeg_pixels)
+            if w * h > cap:
+                mp = cap // 1_000_000
+                if fmt == "GIF":
+                    raise UploadError(415, TOO_BIG_GIF.format(mp=mp))
+                if cap < max_pixels:
+                    raise UploadError(415, TOO_BIG_OTHER.format(fmt=FORMAT_NAME.get(fmt, fmt), mp=mp))
+                raise UploadError(415, TOO_BIG.format(mp=mp))
             im.verify()
     except UploadError:
         raise

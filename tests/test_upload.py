@@ -277,15 +277,15 @@ def test_disk_full_while_saving_the_stored_copy_is_507_not_415(mf_app, paired, m
     """#82: a full disk while writing the shrunk copy is 'frame is full', not 'not a photo'."""
     import errno
     real_save = Image.Image.save
+    data = jpeg()
 
     def save(self, fp, *a, **k):
-        if str(fp).endswith(".tmp") or "tmp" in str(fp):
-            with open(fp, "wb") as f:
-                f.write(b"partial")
+        if not isinstance(fp, str):                  # the stored copy is written through an open file
+            fp.write(b"partial")
             raise OSError(errno.ENOSPC, "No space left on device")
         return real_save(self, fp, *a, **k)
 
     monkeypatch.setattr(Image.Image, "save", save)
-    r = post(paired, jpeg())
+    r = post(paired, data)
     assert r.status_code == 507 and "full" in r.get_json()["error"]
     assert media_rows(mf_app) == [] and _tmp_empty(mf_app)

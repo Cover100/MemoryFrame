@@ -136,8 +136,8 @@ def test_truncated_jpeg_is_415_and_leaves_nothing(mf_app, paired):
 def test_big_jpeg_is_decoded_at_reduced_size(mf_app, paired, monkeypatch):
     """A 30 MP JPEG is decoded at 1/4 scale (1600x1200), never at 6400x4800 (~92 MB)."""
     seen = []
-    orig = imaging.ImageOps.exif_transpose
-    monkeypatch.setattr(imaging.ImageOps, "exif_transpose", lambda im, *a, **k: seen.append(im.size) or orig(im, *a, **k))
+    orig = imaging._resizable
+    monkeypatch.setattr(imaging, "_resizable", lambda im: seen.append(im.size) or orig(im))   # size after draft
     b = io.BytesIO()
     Image.new("RGB", (6400, 4800), (30, 90, 160)).save(b, "JPEG", quality=70)
     assert post(paired, b.getvalue()).status_code == 201
@@ -150,17 +150,17 @@ def test_only_one_photo_is_decoded_at_a_time(tmp_path, monkeypatch):
     import threading
     import time
     inside, worst = [0], [0]
-    orig = imaging.ImageOps.exif_transpose
+    orig = imaging._resizable
 
     def slow(im, *a, **k):
         inside[0] += 1
         worst[0] = max(worst[0], inside[0])
         time.sleep(0.05)
-        out = orig(im, *a, **k)
+        out = orig(im)
         inside[0] -= 1
         return out
 
-    monkeypatch.setattr(imaging.ImageOps, "exif_transpose", slow)
+    monkeypatch.setattr(imaging, "_resizable", slow)
     src = tmp_path / "a.jpg"
     src.write_bytes(jpeg(900, 600))
     ts = [threading.Thread(target=imaging.make_stored_copy, args=(str(src), str(tmp_path / f"o{i}.jpg"), (1000, 600)))

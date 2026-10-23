@@ -57,7 +57,10 @@ def add_file(conn, data_dir, src, original_name, source, display_target=None, st
         os.remove(tmp)
         raise CopyVerificationError(f"copy verification failed for {original_name}")
     original = os.path.join(data_dir, "originals", stored)
+    if not shrink:
+        imaging.fsync_path(tmp)               # the stored copy is already fsynced by make_stored_copy
     os.replace(tmp, original)
+    imaging.fsync_dir(os.path.dirname(original))   # file + directory entry are on disk before the row exists
     try:
         conn.execute(
             "INSERT INTO media (stored_name, original_name, kind, sha256, size_bytes, source, created_at)"

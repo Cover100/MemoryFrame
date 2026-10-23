@@ -104,7 +104,7 @@ def upload_media():
 @bp.app_errorhandler(RequestEntityTooLarge)
 def too_large(_e):
     mb = current_app.config["MAX_CONTENT_LENGTH"] // (1024 * 1024)
-    return jsonify({"error": f"This file is too large. The limit is {mb} MB per photo."}), 413
+    return jsonify({"error": f"This file is too large. The limit is {mb} MB per photo. Please try a smaller photo (a lower-resolution copy)."}), 413
 
 
 

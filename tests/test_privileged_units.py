@@ -27,6 +27,12 @@ def test_app_service_hardening_restored_and_extended():
     assert len(rw) == 1 and "/var/lib/memoryframe" in rw[0] and "@APP_DIR@/uploads" in rw[0]
 
 
+def test_app_service_has_a_memory_guard():
+    """#82: a huge decode must not starve the kiosk Chromium."""
+    d = directives((ROOT / "deploy" / "memoryframe.service").read_text())
+    assert "MemoryHigh=2G" in d and "MemoryMax=2500M" in d and "Environment=MALLOC_ARENA_MAX=1" in d
+
+
 @pytest.mark.parametrize("u", UNITS)
 def test_oneshot_units(u):
     text = (ROOT / "deploy" / "units" / f"memoryframe-{u}.service").read_text()

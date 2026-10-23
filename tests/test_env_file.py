@@ -64,8 +64,10 @@ def test_site_url_rejected(tmp_path, bad):
 def test_max_megapixels_key(tmp_path):
     assert run(tmp_path, "MEMORYFRAME_MAX_MEGAPIXELS", "48").returncode == 0
     assert "MEMORYFRAME_MAX_MEGAPIXELS=48\n" in content(tmp_path)
-    for bad in ("abc", "0", "-5", "64 ", "1e3", "99999"):
+    for bad in ("abc", "0", "-5", "64 ", "1e3", "99999", "151", "1000"):
         assert run(tmp_path, "MEMORYFRAME_MAX_MEGAPIXELS", bad).returncode == 2
+    assert run(tmp_path, "MEMORYFRAME_MAX_NONJPEG_MEGAPIXELS", "150").returncode == 0
+    assert run(tmp_path, "MEMORYFRAME_MAX_NONJPEG_MEGAPIXELS", "151").returncode == 2
     assert run(tmp_path, "MEMORYFRAME_MAX_MEGAPIXELS", "").returncode == 0
     assert "MAX_MEGAPIXELS" not in content(tmp_path)
 

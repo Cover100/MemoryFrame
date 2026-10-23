@@ -10,6 +10,7 @@ Originals are only ever read. Animated GIFs keep being served as originals.
 HEIC/HEIF (Android/iPhone) is read through pillow-heif when it is installed.
 """
 import logging
+import re
 import os
 import threading
 
@@ -45,8 +46,9 @@ def draft_jpeg(im, want):
     """#82: ask Pillow's JPEG decoder for a 1/2, 1/4 or 1/8 scale decode (DCT scaling), so a 108-150 MP
     JPEG is never expanded to full size in RAM (~3 bytes/pixel). Must be called before the image is
     loaded. The result is never smaller than `want` (width, height) in either side; photos that are
-    not much bigger than `want` are unchanged. Non-JPEG and CMYK/other modes are left alone."""
-    if getattr(im, "format", None) not in ("JPEG", "MPO") or im.mode not in ("RGB", "L"):
+    not much bigger than `want` are unchanged. Non-JPEG files and other modes are left alone. CMYK/YCCK
+    (print-workflow JPEGs) are scaled too: Pillow's draft() supports them."""
+    if getattr(im, "format", None) not in ("JPEG", "MPO") or im.mode not in ("RGB", "L", "CMYK"):
         return im
     try:
         orient = im.getexif().get(0x0112, 1)
@@ -276,14 +278,46 @@ def stored_size(target):
     return round(target[0] * STORE_FACTOR), round(target[1] * STORE_FACTOR)
 
 
-def _flatten(im):
-    if im.mode in ("RGB", "L"):
+_T = Image.Transpose if Image is not None else None
+_TRANSPOSE = {2: _T.FLIP_LEFT_RIGHT, 3: _T.ROTATE_180, 4: _T.FLIP_TOP_BOTTOM, 5: _T.TRANSPOSE,
+              6: _T.ROTATE_270, 7: _T.TRANSVERSE, 8: _T.ROTATE_90} if _T is not None else {}
+
+
+def _orientation(im):
+    """EXIF orientation 1-8 (1 = upright). Read before pixels are loaded; never raises."""
+    try:
+        o = int(im.getexif().get(0x0112, 1))
+    except Exception:  # noqa: BLE001
+        return 1
+    return o if o in _TRANSPOSE else 1
+
+
+def _upright(im, orient):
+    """Rotate/flip a (small) image for the EXIF orientation. Done AFTER shrinking: ImageOps.exif_transpose
+    would copy the full-size image first (#82 memory)."""
+    return im.transpose(_TRANSPOSE[orient]) if orient in _TRANSPOSE else im
+
+
+def _resizable(im):
+    """Mode that resizes properly and cheaply: RGB, L, RGBA, LA and CMYK stay as they are (CMYK is
+    shrunk first and converted after); palette images (resize would use NEAREST) and the rest are
+    converted. Alpha is flattened later, on the small image (_flatten)."""
+    if im.mode in ("RGB", "L", "RGBA", "LA", "CMYK"):
         return im
-    if im.mode in ("RGBA", "LA", "P", "PA") or "transparency" in im.info:
+    if im.mode in ("P", "PA") or "transparency" in im.info:
+        return im.convert("RGBA")
+    return im.convert("RGB")
+
+
+def _flatten(im):
+    """Small image -> RGB/L without alpha (transparent areas black) and without CMYK."""
+    if im.mode in ("RGBA", "LA"):
         rgba = im.convert("RGBA")
         bg = Image.new("RGB", im.size, (0, 0, 0))
         bg.paste(rgba, mask=rgba.getchannel("A"))
         return bg
+    if im.mode in ("RGB", "L"):
+        return im
     return im.convert("RGB")
 
 
@@ -294,40 +328,81 @@ def _to_srgb(im, profile):
         from PIL import ImageCms
         src = ImageCms.ImageCmsProfile(io.BytesIO(profile))
         dst = ImageCms.createProfile("sRGB")
-        return ImageCms.profileToProfile(im.convert("RGB"), src, dst, outputMode="RGB")
+        return ImageCms.profileToProfile(im if im.mode == "CMYK" else im.convert("RGB"), src, dst,
+                                         outputMode="RGB")
     except Exception:  # noqa: BLE001 - keep the pixels as they are
         return im
 
 
+def fsync_path(path):
+    """Flush a finished file to disk (the stored copy is the only copy: #82)."""
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def fsync_dir(path):
+    """Make a rename/create in this directory durable. Best effort: some filesystems refuse it."""
+    try:
+        fd = os.open(path, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        pass
+    finally:
+        os.close(fd)
+
+
 def make_stored_copy(src, dst, target):
     """Write the ONLY copy of an uploaded photo (#82): decoded at reduced size where the format allows
-    (JPEG draft), EXIF orientation applied (upright), scaled down so it still COVERS stored_size(target)
-    (aspect kept, NOT cropped: the display copy crops at display time), no metadata, sRGB, JPEG.
-    Never upscales. Returns (width, height). Raises ImageUnreadable if the file cannot be decoded."""
+    (JPEG draft), scaled down so it still COVERS stored_size(target) (aspect kept, NOT cropped: the
+    display copy crops at display time), EXIF orientation applied (upright; on the small image), no
+    metadata (no EXIF/GPS/XMP/IPTC/ICC/comment), sRGB, JPEG, fsynced. Never upscales.
+    Returns (width, height). Raises ImageUnreadable if the file cannot be decoded."""
     want = stored_size(target)
     with _store_lock:
         try:
             with Image.open(src) as im:
+                orient = _orientation(im)
                 draft_jpeg(im, want)
                 profile = im.info.get("icc_profile")
-                im = ImageOps.exif_transpose(im)
-                im = _flatten(im)
-                w, h = cover_size(im.size, want)
+                im = _resizable(im)
+                sideways = orient in (5, 6, 7, 8)
+                w, h = cover_size((im.height, im.width) if sideways else im.size, want)
                 if max(w, h) > STORE_MAX_SIDE:
                     k = STORE_MAX_SIDE / max(w, h)
                     w, h = max(1, round(w * k)), max(1, round(h * k))
+                if sideways:
+                    w, h = h, w                       # size in the stored (unrotated) orientation
                 if (w, h) != im.size:
                     im = im.resize((w, h), Image.LANCZOS, reducing_gap=3.0)
-                if profile:
+                cmyk = im.mode == "CMYK"
+                if cmyk and profile:
+                    im = _to_srgb(im, profile)          # CMYK profile -> sRGB straight from the CMYK data
+                im = _flatten(im)
+                if profile and not cmyk and im.mode == "RGB":
                     im = _to_srgb(im, profile)
+                im = _upright(im, orient)
+                im.load()                               # (a small, unchanged photo is still the open file)
         except (Image.DecompressionBombError, MemoryError) as e:
             raise ImageUnreadable(str(e) or type(e).__name__) from e
         except (OSError, ValueError, SyntaxError, EOFError, Image.UnidentifiedImageError) as e:
             raise ImageUnreadable(str(e)) from e
         tmp = dst + ".tmp"
         try:
-            im.save(tmp, "JPEG", quality=STORE_QUALITY, optimize=True)          # no exif= / icc: stripped
+            im.info = {}                               # nothing (e.g. a COM comment) rides along
+            with open(tmp, "wb") as f:
+                im.save(f, "JPEG", quality=STORE_QUALITY, optimize=True, comment=b"")
+                f.flush()
+                os.fsync(f.fileno())
+            with Image.open(tmp) as check:
+                check.verify()                         # a bad write must not become the only copy
             os.replace(tmp, dst)
+            fsync_dir(os.path.dirname(dst))
         finally:
             if os.path.exists(tmp):
                 os.remove(tmp)
@@ -344,18 +419,16 @@ def thumb_path(data_dir, stored_name):
 
 
 def make_thumb(src, dst, size=THUMB_SIZE):
-    """Square 240 px JPEG (cover + centre crop), orientation applied, no metadata."""
+    """Square 240 px JPEG (cover + centre crop), orientation applied, no metadata (no comment either)."""
     with Image.open(src) as im:
+        orient = _orientation(im)
         draft_jpeg(im, (2 * size, 2 * size))
-        im = ImageOps.exif_transpose(im)
-        if im.mode not in ("RGB", "L"):
-            bg = Image.new("RGB", im.size, (0, 0, 0))
-            rgba = im.convert("RGBA")
-            bg.paste(rgba, mask=rgba.getchannel("A"))
-            im = bg
-        im = ImageOps.fit(im, (size, size), Image.LANCZOS)
+        im = _resizable(im)
+        im = ImageOps.fit(im, (size, size), Image.LANCZOS)     # square, centred: commutes with the rotation
+        im = _upright(_flatten(im), orient)
+        im.info = {}
         tmp = dst + ".tmp"
-        im.save(tmp, "JPEG", quality=75, optimize=True)
+        im.save(tmp, "JPEG", quality=75, optimize=True, comment=b"")
         os.replace(tmp, dst)
 
 
@@ -377,8 +450,8 @@ def ensure_thumb(data_dir, stored_name):
 
 def over_pixel_cap(path, max_pixels, max_nonjpeg_pixels=None):
     """True if the image header says width*height > max_pixels (formats other than JPEG:
-    max_nonjpeg_pixels if given and lower). No pixel data is decoded. Unreadable files return
-    False; callers validate content separately."""
+    max_nonjpeg_pixels if given and lower; GIF included). No pixel data is decoded.
+    Unreadable files return False; callers validate content separately."""
     from PIL import Image
     try:
         with Image.open(path) as im:
@@ -541,11 +614,31 @@ def _sweep_trash(conn, data_dir):
     return restored, removed, kept
 
 
+_TMP_LEFTOVER = re.compile(r"^(upload-[0-9a-f]{32}|[0-9a-f]{32}\.[a-z0-9]+(\.tmp)?|.*\.tmp)$")
+
+
+def _sweep_tmp(data_dir):
+    """Start-up: remove upload/save leftovers (up to 50 MB each) from tmp/ after a crash. Nothing is in
+    flight at start-up. tmp/trash (a directory, handled by _sweep_trash) is never touched."""
+    d = os.path.join(data_dir, "tmp")
+    n = 0
+    for f in os.listdir(d) if os.path.isdir(d) else []:
+        p = os.path.join(d, f)
+        if _TMP_LEFTOVER.match(f) and os.path.isfile(p):
+            try:
+                os.remove(p)
+                n += 1
+            except OSError:
+                pass
+    return n
+
+
 def sweep(conn, data_dir):
     """Start-up cleanup: recover tmp/trash (see _sweep_trash), then remove display copies and
     thumbnails whose photo is no longer in the database. Originals are never deleted here."""
     known = {os.path.splitext(r[0])[0] for r in conn.execute("SELECT stored_name FROM media")}
     restored, swept, kept = _sweep_trash(conn, data_dir)
+    swept += _sweep_tmp(data_dir)
     for sub in ("display", "thumbs"):
         d = os.path.join(data_dir, sub)
         for f in os.listdir(d) if os.path.isdir(d) else []:

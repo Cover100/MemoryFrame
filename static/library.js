@@ -15,7 +15,10 @@
     const sheet = $("confirm"), delBtn = $("delBtn"), err = $("delErr");
     const BULK = 1000;                                     // = api.MAX_BULK
     const LONG_MS = 500, MOVE_PX = 10;
-    let selecting = false, popGuard = 0;
+    let selecting = false, popGuard = 0, busy = false;   // busy: a delete request is in flight
+    const toolbar = $("toolbar");
+    function fit(){ document.documentElement.style.setProperty("--toolbar-h", toolbar.offsetHeight + "px"); }   // CSSOM: allowed by the CSP
+    window.addEventListener("resize", fit);
 
     // ----- missing thumbnails (undecodable or video): plain tile, CSS glyph -----
     function plain(img){
@@ -44,7 +47,8 @@
         $("selCount").textContent = n + " selected";
         $("selAll").textContent = n && n === all ? "Unselect all" : "Select all";
         delBtn.textContent = "Delete (" + n + ")";
-        delBtn.disabled = n === 0;
+        delBtn.disabled = busy || n === 0;
+        fit();
     }
     function setPressed(tile, on){
         tile.setAttribute("aria-pressed", on ? "true" : "false");
@@ -76,7 +80,7 @@
     let press = null, longFired = false;
     grid.addEventListener("click", (e)=>{
         const t = e.target.closest(".tile");
-        if(!t){ return; }
+        if(!t || busy){ return; }
         if(longFired){ longFired = false; return; }       // the long press already handled this touch
         if(!selecting){ enterSelect(t); return; }
         setPressed(t, t.getAttribute("aria-pressed") !== "true");
@@ -130,7 +134,7 @@
         behind().forEach((el)=>{ el.inert = false; });
         delBtn.focus();
     }
-    delBtn.addEventListener("click", ()=>{ if(selected.size){ openSheet(); } });
+    delBtn.addEventListener("click", ()=>{ if(selected.size && !busy){ openSheet(); } });
     $("confirmCancel").addEventListener("click", ()=> closeSheet(false));
     sheet.addEventListener("click", (e)=>{ if(e.target === sheet){ closeSheet(false); } });   // scrim tap
     document.addEventListener("keydown", (e)=>{
@@ -146,12 +150,14 @@
         return r.json();
     }
     $("confirmDelete").addEventListener("click", async ()=>{
+        if(busy){ return; }
         const ids = [...selected].map(Number);
         closeSheet(false);
-        delBtn.disabled = true;                            // no double send while the request runs
-        err.hidden = true;
+        busy = true;                                       // no double send while the request runs
+        delBtn.disabled = true; $("selCancel").disabled = true;
+        err.hidden = true; fit();
         const gone = [];
-        let ok = true;
+        let ok = true, offline = false;
         try{
             for(let i = 0; i < ids.length; i += BULK){     // one request unless more than 1000 are selected
                 const res = await post(ids.slice(i, i + BULK));
@@ -162,7 +168,7 @@
             ok = false;
             // fetch rejects with TypeError when the frame can't be reached: show the shared offline view
             // (the selection stays; Try again restores the page). HTTP errors keep the generic message.
-            if(e instanceof TypeError && window.memoryFramePhone){ window.memoryFramePhone.offline(); }
+            if(e instanceof TypeError && window.memoryFramePhone){ offline = true; window.memoryFramePhone.offline(); }
         }
         const fading = [];
         gone.forEach((id)=>{
@@ -174,10 +180,16 @@
         });
         setTimeout(()=>{
             fading.forEach((li)=> li.remove());
-            $("count").textContent = countText(tiles().length);
-            if(!tiles().length){ $("selectBtn").hidden = true; }   // nothing left to select
+            const left = tiles().length;
+            $("count").textContent = countText(left);
+            tiles().forEach((t, i)=> t.setAttribute("aria-label", "Photo " + (i + 1) + " of " + left));   // no stale numbers
+            if(!left){ $("selectBtn").hidden = true; grid.hidden = true; $("emptyLib").hidden = false; }   // nothing left
+            busy = false; $("selCancel").disabled = false;
             if(ok){ exitSelect(false); }
-            else { update(); err.hidden = false; }          // the rest stays selected; say what went wrong
+            else {                                          // the rest stays selected; say what went wrong
+                update(); err.hidden = false; fit();       // the error sits in the fixed toolbar: always on screen
+                if(!offline){ delBtn.focus(); }
+            }
         }, fading.length ? 160 : 0);
     });
 })();

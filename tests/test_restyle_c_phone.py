@@ -67,6 +67,8 @@ def test_home_merges_library_preview_and_rows(paired, lib, mf_app):
     conn.commit()
     conn.close()
     h = htmlmod.unescape(body(paired, "/admin/"))
+    assert h.count('/thumb" alt=""') == 9 and "pic" not in h.split("Newest photos")[1].split("</ul>")[0]   # no file names
+    assert 'aria-label="Photo 1"' in h
     assert h.count('/thumb" alt=') == 9 and f'/api/v1/media/{newest}/thumb' in h
     assert "hid" not in h.replace("hidden", "") and "Hidden" not in h      # #80: nothing on the phone hides a photo
     assert '<a class="btn btn-neutral block see-all" href="/admin/library"><span>See all 12 photos</span>' in h

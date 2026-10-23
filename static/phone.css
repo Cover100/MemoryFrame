@@ -167,7 +167,7 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
 .mf-phone .tile .ph { position: absolute; left: 50%; top: 50%; width: 30px; height: 22px; margin: -11px 0 0 -15px;
   border: 2px solid var(--mf-oat); border-radius: 3px; opacity: .6; }
 .mf-phone.selecting .tile::after { content: ""; position: absolute; top: 6px; left: 6px; width: 26px; height: 26px;
-  box-sizing: border-box; border-radius: 50%; border: 2px solid #fff; background: rgba(31, 42, 36, .35); }
+  box-sizing: border-box; border-radius: 50%; border: 2px solid #fff; background: rgba(14, 19, 17, .5); }   /* ~3:1 even on a white photo */
 .mf-phone.selecting .tile[aria-pressed="true"] { border: 3px solid var(--mf-leaf); }
 .mf-phone.selecting .tile[aria-pressed="true"] img { transform: scale(.88); border-radius: 6px; }
 .mf-phone.selecting .tile[aria-pressed="true"]::after { background: var(--mf-forest-600); }
@@ -180,12 +180,16 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
 .mf-phone .selhint { margin: 0 0 12px; }
 .mf-phone .btn-onbar { background: transparent; color: var(--mf-linen); border: 1.5px solid var(--mf-outline); padding: 0 14px;
   white-space: nowrap; }
-.mf-phone.selecting .toolbar { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; gap: 12px;
+.mf-phone.selecting .toolbar { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; flex-direction: column; gap: 10px;
   background: var(--mf-forest-900); border-top: 1px solid var(--mf-forest-700);
   padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); }
+.mf-phone .toolbar .tbtns { display: flex; gap: 12px; }
+.mf-phone .toolbar .err { margin: 0; }
+.mf-phone .lib[hidden], .mf-phone .empty-lib[hidden] { display: none; }
 .mf-phone .toolbar button { flex: 1 1 0; min-width: 0; padding: 0 8px; white-space: nowrap; }
 .mf-phone .toolbar .btn-neutral { background: transparent; }
-.mf-phone.selecting main { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }   /* last row clears the toolbar */
+/* last row clears the toolbar: library.js sets --toolbar-h (its real height, error line included) */
+.mf-phone.selecting main { padding-bottom: calc(var(--toolbar-h, 96px) + 16px); }
 .mf-phone.sheet-open { overflow: hidden; }
 
 /* 03 Upload */

@@ -17,15 +17,19 @@
   </div>
 </div>
 <p class="muted small sel-only selhint">Tap photos to select or unselect them.</p>
-<p class="err" id="delErr" role="alert" hidden>Couldn't delete the photos. Check you're connected to the frame and try again.</p>
 {% if n %}
 <ul id="grid" class="lib" aria-label="Photos on the frame">
 {% for m in items %}<li data-id="{{ m.id }}"><button type="button" class="tile{% if m.kind != 'image' %} plain{% endif %}" aria-label="Photo {{ loop.index }} of {{ n }}">{% if m.kind == 'image' %}<img src="/api/v1/media/{{ m.id }}/thumb" alt="" width="240" height="240" loading="lazy" decoding="async">{% else %}<span class="ph" aria-hidden="true"></span>{% endif %}</button></li>
 {% endfor %}</ul>
+<div class="card empty-lib" id="emptyLib" hidden><p class="muted flush">No photos yet. Tap <b>Upload photos</b> to send some to the frame.</p></div>
 {% else %}
 <div class="card empty-lib"><p class="muted flush">No photos yet. Tap <b>Upload photos</b> to send some to the frame.</p></div>
 {% endif %}
-<div class="toolbar" id="toolbar"><button type="button" class="btn-neutral" id="selCancel">Cancel</button><button type="button" class="btn-danger" id="delBtn" disabled>Delete (0)</button></div>
+<div class="toolbar" id="toolbar">
+  {# inside the fixed toolbar so a failed delete is always on screen, wherever the list is scrolled #}
+  <p class="err" id="delErr" role="alert" hidden>Couldn't delete the photos. Check you're connected to the frame and try again.</p>
+  <div class="tbtns"><button type="button" class="btn-neutral" id="selCancel">Cancel</button><button type="button" class="btn-danger" id="delBtn" disabled>Delete (0)</button></div>
+</div>
 <div id="confirm" class="scrim" hidden>
   <div class="sheet" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmBody">
     <h2 id="confirmTitle">Delete this photo?</h2>

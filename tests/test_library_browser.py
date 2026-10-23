@@ -103,6 +103,10 @@ def test_library_select_delete_flow(page, server, mf_app, lib):
     page.pump(0.4)
     s = state(page)
     assert s["err"] and s["selecting"] and s["tiles"] == 5 and s["pressed"].count("true") == 2 and rows(mf_app) == 5
+    # the error sits in the fixed toolbar (on screen wherever the list is scrolled); focus is back on Delete
+    assert js(page, "(()=>{const r=document.getElementById('delErr').getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight&&r.height>0})()")
+    assert js(page, "document.getElementById('delErr').closest('#toolbar') !== null")
+    assert s["focus"] == "delBtn" and not s["delOff"]
     # a network failure (fetch rejects with TypeError) shows "Can't reach the frame"; the selection stays
     js(page, "window.fetch = () => Promise.reject(new TypeError('Failed to fetch'))")
     click(page, "document.getElementById('delBtn')")
@@ -122,6 +126,8 @@ def test_library_select_delete_flow(page, server, mf_app, lib):
     page.pump(0.8)
     s = state(page)
     assert s["tiles"] == 3 and not s["selecting"] and not s["err"] and s["head"] == "3 photos on the frame"
+    assert js(page, "[...document.querySelectorAll('.lib .tile')].map(t => t.getAttribute('aria-label')).join('|')") \
+        == "Photo 1 of 3|Photo 2 of 3|Photo 3 of 3"                  # labels renumbered after a delete
     assert set(s["pressed"]) == {None} and rows(mf_app) == 3
     # Select (nothing selected) then Cancel; singular wording for one photo
     click(page, "document.getElementById('selectBtn')")
@@ -134,6 +140,18 @@ def test_library_select_delete_flow(page, server, mf_app, lib):
     click(page, "document.getElementById('selCancel')")
     s = state(page)
     assert not s["selecting"] and set(s["pressed"]) == {None} and rows(mf_app) == 3
+    # delete everything: the empty state shows straight away; while the request runs Delete stays disabled
+    click(page, "document.getElementById('selectBtn')")
+    click(page, "document.getElementById('selAll')")
+    click(page, "document.getElementById('delBtn')")
+    js(page, "window.__f2 = window.fetch; window.fetch = (...a) => new Promise(r => setTimeout(() => r(window.__f2(...a)), 400))")
+    click(page, "document.getElementById('confirmDelete')")
+    t = js(page, "document.querySelector('.lib .tile').click(); document.getElementById('delBtn').disabled")
+    assert t is True                                                  # a tap during the request can't re-enable Delete
+    page.pump(1.2)
+    assert rows(mf_app) == 0
+    assert js(page, "!document.getElementById('emptyLib').hidden && document.getElementById('grid').hidden")
+    assert js(page, "document.getElementById('count').textContent") == "0 photos on the frame"
     assert page.exceptions() == []
 
 
@@ -209,4 +227,44 @@ def test_library_fits_and_is_3_columns(page, server, mf_app, lib, w, zoom):
     # the bottom toolbar stays compact and the Delete label is not clipped
     assert js(page, "document.getElementById('toolbar').getBoundingClientRect().height") < 100 * zoom
     assert js(page, "(()=>{const b=document.getElementById('delBtn'); return b.scrollWidth <= b.clientWidth + 1;})()")
+    assert page.exceptions() == []
+
+
+@pytest.mark.parametrize("w,zoom", [(412, 1.0), (360, 1.3)])
+def test_failed_delete_error_is_visible_when_scrolled_down(page, server, mf_app, lib, w, zoom):
+    """Wren M1: the error lives in the fixed toolbar, so it is on screen however far the list is scrolled, and the
+    last row still clears the (taller) toolbar. MF_SHOTS=<dir> also saves a screenshot."""
+    import base64
+    import os
+    fresh(mf_app)
+    for i in range(40):
+        lib.add(f"pic{i}.jpg", PNG + bytes([i]))
+    _phone(page, server, mf_app, "admin/library")
+    page.call("Emulation.setDeviceMetricsOverride", {"width": w, "height": 800, "deviceScaleFactor": 1, "mobile": True})
+    js(page, f"document.documentElement.style.zoom = '{zoom}'")
+    page.pump(0.5)
+    click(page, "document.getElementById('selectBtn')")
+    js(page, "window.scrollTo(0, document.documentElement.scrollHeight)")
+    page.pump(0.3)
+    js(page, "window.fetch = () => Promise.resolve(new Response('{}', {status: 500}))")
+    click(page, "document.querySelectorAll('.lib .tile')[39]")
+    click(page, "document.getElementById('delBtn')")
+    click(page, "document.getElementById('confirmDelete')")
+    page.pump(0.5)
+    js(page, "window.scrollTo(0, document.documentElement.scrollHeight)")   # the taller toolbar adds padding: scroll to the end
+    page.pump(0.3)
+    r = json.loads(js(page, """(()=>{const e=document.getElementById('delErr').getBoundingClientRect(),
+      t=document.getElementById('toolbar').getBoundingClientRect(),
+      l=document.querySelectorAll('.lib .tile')[39].getBoundingClientRect(), z=parseFloat(document.documentElement.style.zoom)||1;
+      return JSON.stringify({errTop:e.top, errBottom:e.bottom, vh:innerHeight, tbTop:t.top, lastBottom:l.bottom,
+        scrolled: scrollY > 100, focus: document.activeElement.id})})()"""))
+    assert r["scrolled"] and r["focus"] == "delBtn"
+    assert r["errTop"] >= r["tbTop"] - 0.5 and 0 <= r["errTop"] and r["errBottom"] <= r["vh"] + 0.5, r   # inside the toolbar, on screen
+    assert r["lastBottom"] <= r["tbTop"] + 0.5, r                    # last photo not hidden under the error + buttons
+    out = os.environ.get("MF_SHOTS")
+    if out:
+        os.makedirs(out, exist_ok=True)
+        png = page.call("Page.captureScreenshot", {"format": "png"})["result"]["data"]
+        with open(os.path.join(out, f"{w}{'-130' if zoom != 1 else ''}-failed-delete-scrolled.png"), "wb") as f:
+            f.write(base64.b64decode(png))
     assert page.exceptions() == []

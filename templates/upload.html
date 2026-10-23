@@ -1,9 +1,17 @@
 {% extends "_phone.html" %}
+{% from "_storage.html" import storage_meter %}
 {% block title %}Upload photos - Memory Frame{% endblock %}
 {% block heading %}Upload photos{% endblock %}
 {% block content %}
-<p id="storage" class="muted small">Checking free space...</p>
-<label class="pick btn btn-neutral block big"><span id="pickLabel">Choose photos</span>
+<div id="storage" class="card storeCard">
+  {% if st %}{{ storage_meter(st) }}
+  <p class="small muted flush" id="storeRoom">{% if st.photos_left is not none %}Room for about {{ "{:,}".format(st.photos_left) }} more photos.{% endif %}</p>
+  {% else %}<p class="small muted flush">Free space unknown.</p>{% endif %}
+</div>
+<label class="pick drop" id="drop">
+  <span class="dropIco" aria-hidden="true">＋</span>
+  <span class="btn big block" id="pickLabel">Choose photos</span>
+  <span class="small muted dropHint">From your phone's gallery. JPEG, PNG, WebP, GIF or HEIC.</span>
   <input id="files" type="file" accept="image/*,.heic,.heif" multiple>
 </label>
 <div id="summary" class="ok-box" aria-live="polite"></div>

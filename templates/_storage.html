@@ -1,0 +1,8 @@
+{# #79: free-space meter, the frame menu's storage markup (#74 / mock 07-menu-final) on the paper theme.
+   The fill width is set from data-used by phone.js (CSP: no inline styles). #}
+{% macro storage_meter(st, cls="") %}
+<div class="store{% if cls %} {{ cls }}{% endif %}">
+  <p class="storeVal"><span>Free storage</span><b class="storeFree">{{ st.free_gb }} GB free <span>of {{ st.total_gb }} GB</span></b></p>
+  <div class="track" role="meter" aria-label="Storage used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ st.pct }}" aria-valuetext="{{ st.free_gb }} GB free of {{ st.total_gb }} GB"><div class="used" data-used="{{ st.used }}"></div></div>
+</div>
+{% endmacro %}

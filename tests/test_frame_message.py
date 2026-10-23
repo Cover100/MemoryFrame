@@ -203,4 +203,4 @@ def test_remove_message_needs_confirm(paired):
     assert 'getElementById("messageRemoveYes").addEventListener("click", ()=> saveMessage(""))' in js
     css = (ROOT / "static" / "phone.css").read_text().replace(" ", "")   # restyle C: one phone stylesheet
     assert "white-space:nowrap" in css[css.index("#messageCount{"):].split("}")[0]
-    assert ".msgRemove{" in css and "color:var(--mf-red)" in css[css.index(".msgRemove{"):].split("}")[0]
+    assert ".msgRemove{" in css and "color:var(--mf-red-text)" in css[css.index(".msgRemove{"):].split("}")[0]   # dark: brick-text

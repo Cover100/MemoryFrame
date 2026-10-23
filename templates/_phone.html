@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#16261D">
 {% block meta %}<meta name="csrf-token" content="{{ csrf_token() }}">{% endblock %}
 <title>{% block title %}Memory Frame{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('display.frame_fonts') }}">
 <link rel="stylesheet" href="{{ static('tokens.css') }}">
 <link rel="stylesheet" href="{{ static('phone.css') }}">
 </head>
@@ -22,14 +23,14 @@
 <div class="page">
   <div class="big-ico" aria-hidden="true">!</div>
   <h1 class="center">Can't reach the frame</h1>
-  <p class="muted center">Network error. Are you still on the frame's Wi‑Fi?</p>
+  <p class="muted center">Network error. Are you still on the frame's <span class="nw">Wi-Fi</span>?</p>
   <div class="card">
     <ol class="steps">
-      <li>Open your phone's Wi-Fi settings.</li>
-      {% if w.ssid %}<li>Join <b>{{ w.ssid }}</b>{% if w.mode == "hotspot" %} (or scan the Wi-Fi QR on the frame){% endif %}.</li>{% else %}<li>Join the frame's Wi-Fi.</li>{% endif %}
+      <li>Open your phone's <span class="nw">Wi-Fi</span> settings.</li>
+      {% if w.ssid %}<li>Join <b>{{ w.ssid }}</b>{% if w.mode == "hotspot" %} (or scan the <span class="nw">Wi-Fi</span> QR on the frame){% endif %}.</li>{% else %}<li>Join the frame's <span class="nw">Wi-Fi</span>.</li>{% endif %}
       <li>Come back and tap <b>Try again</b>.</li>
     </ol>
-    {% if w.mode == "hotspot" %}<p class="small muted flush">Your phone may say "No internet". That's normal: the frame has its own Wi-Fi.</p>{% endif %}
+    {% if w.mode == "hotspot" %}<p class="small muted flush">Your phone may say "No internet". That's normal: the frame has its own <span class="nw">Wi-Fi</span>.</p>{% endif %}
   </div>
   <button type="button" class="block big" id="offlineRetry">Try again</button>
   <p class="small muted center mt" id="offlineStill" role="status" hidden>Still can't reach the frame.</p>

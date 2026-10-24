@@ -319,3 +319,25 @@ body.mf-phone.sheet-open { overflow: hidden; }   /* polish (Wren N5): the page b
 
 /* 08 Can't reach the frame */
 .mf-phone .big-ico { background: var(--mf-red-50); color: var(--mf-red-text); }
+
+/* #68 home Wi-Fi (Wren 12a-12f) */
+.mf-phone .hw-eye { min-width: 72px; min-height: 52px; }
+.mf-phone .hw-eye:focus-visible, .mf-phone #homeForm .field:focus { outline: 3px solid var(--mf-brass); border-color: var(--mf-brass); }
+.mf-phone .hw-err { color: var(--mf-brick-text); font-size: var(--mf-p-small); font-weight: 700; margin: 6px 0 0; }
+.mf-phone .field.bad { border-color: var(--mf-brick-text); }
+.mf-phone .hw-hint { margin-top: 6px; }
+.mf-phone .hw-state { text-align: center; padding: 40px 8px 0; }
+.mf-phone .hw-state h1 { font-size: 24px; margin: 16px 0 8px; overflow-wrap: anywhere; }
+.mf-phone .hw-state p { color: var(--mf-text-2); margin: 0 0 12px; overflow-wrap: anywhere; }
+.mf-phone .hw-spin { width: 56px; height: 56px; margin: 0 auto; border-radius: 50%; border: 5px solid var(--mf-forest-700);
+    border-top-color: var(--mf-leaf); box-sizing: border-box; animation: hw-spin 1.2s linear infinite; }
+@keyframes hw-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .mf-phone .hw-spin { animation: none; } }
+.mf-phone .hw-ic { width: 64px; height: 64px; margin: 0 auto; border-radius: 50%; display: flex; align-items: center;
+    justify-content: center; font-size: 34px; color: #fff; font-weight: 700; }
+.mf-phone .hw-ok { background: var(--mf-green); }
+.mf-phone .hw-no { background: var(--mf-brick); }
+.mf-phone .hw-steps { text-align: left; background: var(--mf-forest-900); border: 1px solid var(--mf-forest-700); border-radius: 12px;
+    padding: 12px 14px 12px 34px; margin: 8px 0 16px; color: var(--mf-text); }
+.mf-phone .hw-steps li { margin: 4px 0; }
+.mf-phone .hw-accent { color: var(--mf-accent-text); font-weight: 700; overflow-wrap: anywhere; }

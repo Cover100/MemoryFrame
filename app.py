@@ -9,7 +9,7 @@ import threading
 import time
 import webbrowser
 
-from memoryframe import create_app
+from memoryframe import create_app, watchdog
 from memoryframe.migrate import MigrationError, migrate_legacy
 
 app = create_app()
@@ -62,6 +62,10 @@ def main():
     listen = " ".join(f"{host}:{p}" for p in ports)
 
     print(f"Memory Frame serving on {listen}")
+
+    progress = watchdog.Progress(app.wsgi_app)       # #95: upload progress, so a busy upload isn't a hang
+    app.wsgi_app = progress
+    watchdog.start(app, progress, ports[-1] if 5000 not in ports else 5000)
 
     serve(app, listen=listen, threads=4)
 

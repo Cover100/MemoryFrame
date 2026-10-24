@@ -1,0 +1,22 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Welcome W0, home Wi-Fi (no Wi-Fi QR)</title>
+<!-- Memory Frame mock 16b Welcome (#98) W0 without the Wi-Fi step. 800x480. Mocks only. -->
+<link rel="stylesheet" href="frame.css"><style>.pair { position:absolute; inset:0; background:var(--mf-ink); padding:18px 24px; display:flex; flex-direction:column; }
+.pair h1 { font-size:40px; margin:0; line-height:1.1; }
+.sub { color:var(--mf-oat); font-size:22px; margin:4px 0 12px; }
+.cols { display:flex; gap:14px; flex:1; min-height:0; }
+.col { flex:1; background:var(--mf-forest-900); border:1px solid var(--mf-forest-700); border-radius:var(--mf-r-lg);
+       padding:10px 12px; display:flex; flex-direction:column; align-items:center; gap:6px; min-width:0; }
+.col h2 { margin:0; font-size:22px; display:flex; gap:10px; align-items:center; align-self:flex-start; white-space:nowrap; }
+.qr { width:240px; height:240px; background:#fff; box-sizing:border-box; }
+.qr img{width:100%;height:100%;display:block}
+.cap { font-size:20px; color:var(--mf-oat); text-align:center; line-height:1.2; }
+.cap b { color:var(--mf-linen); }
+.code { font-family:"DejaVu Sans Mono",monospace; font-size:52px; font-weight:700; letter-spacing:2px; color:var(--mf-linen); white-space:nowrap; }
+.codecol { justify-content:center; }
+.foot { font-size:20px; color:var(--mf-oat); margin-top:8px; text-align:center; }
+.foot b{color:var(--mf-linen)}</style></head><body><div id="frame"><div class="pair" id="welcome">
+<h1>Welcome to your Memory Frame</h1><div class="sub">Send photos from your phone and they appear here.</div>
+<div class="cols">
+<div class="col"><h2><span class="step-badge">1</span>Open the site on your phone</h2><div class="qr"><img src="../assets/qr-site.svg" alt=""></div><div class="cap"><b>http://192.168.1.40</b></div></div>
+<div class="col codecol"><h2><span class="step-badge">2</span>Type this code</h2><div style="flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:10px"><div class="code" style="font-size:64px">482913</div><div class="cap">New code every 2 minutes</div></div></div>
+</div><div class="foot">Then tap <b>Upload</b> on your phone.</div></div></div></body></html>

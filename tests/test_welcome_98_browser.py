@@ -31,6 +31,16 @@ def no_overlap(page):
     return evaluate(page, js)
 
 
+def titles_inside_cards(page):
+    """Wren: every visible step title's box sits inside its card (no run-over), text >= 20 px."""
+    js = ("[...document.querySelectorAll('#pairBox .step')].filter(s=>s.offsetParent).map(s=>{"
+          "const t=s.querySelector('.stepTitle'), a=t.getBoundingClientRect(), c=s.getBoundingClientRect();"
+          "const fs=parseFloat(getComputedStyle(t).fontSize);"
+          "return (a.left>=c.left&&a.right<=c.right&&a.top>=c.top&&a.bottom<=c.bottom&&t.scrollWidth<=t.clientWidth+1&&fs>=20)"
+          "?'':t.innerText}).filter(x=>x).join('|')")
+    return evaluate(page, js)
+
+
 def test_w0_three_steps_fit_and_no_forbidden_words(page, server, mf_app, net):
     page.pump(3)
     assert overlay(page)["visible"] and visible(page, "welcomeHead") and visible(page, "wifiStep")
@@ -40,7 +50,7 @@ def test_w0_three_steps_fit_and_no_forbidden_words(page, server, mf_app, net):
     for q in ("wifiQr", "pairQr"):
         assert evaluate(page, f"Math.round(document.querySelector('#{q} svg').getBoundingClientRect().width)") == 240
     assert inside(page, ["welcomeHead", "wifiStep", "codeStep", "welcomeFoot", "pairQr", "wifiQr", "pairCode"])
-    assert no_overlap(page) == ""
+    assert no_overlap(page) == "" and titles_inside_cards(page) == ""
     shown = evaluate(page, "document.getElementById('pairBox').innerText")
     assert "Wi-Fi name" not in shown and "or open" not in shown
     assert evaluate(page, "document.documentElement.scrollHeight <= 480 && document.documentElement.scrollWidth <= 800")
@@ -57,6 +67,7 @@ def test_w0_two_steps_without_wifi_qr(page, server, mf_app, net, monkeypatch):
     assert text(page, "siteTitle") == "Open the site on your phone" and text(page, "codeTitle") == "Type this code"
     assert text(page, "siteBadge") == "1" and text(page, "codeBadge") == "2"
     assert inside(page, ["welcomeHead", "codeStep", "welcomeFoot", "pairQr", "pairCode"])
+    assert titles_inside_cards(page) == ""
     assert no_overlap(page) == "" and "or open" not in evaluate(page, "document.getElementById('pairBox').innerText")
 
 

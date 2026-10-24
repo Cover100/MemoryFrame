@@ -136,5 +136,7 @@ def frame_status():
     return jsonify({"ips": frameinfo.own_ips(), "ssid": name, "version": frameinfo.version(),
                     "network": urls["mode"], "site": urls["primary"] + "/", "site_fallback":
                     urls["fallback"] + "/" if urls["fallback"] else None,
-                    "storage": frameinfo.free_storage(current_app.config["DATA_DIR"]),
+                    "storage": frameinfo.free_storage(current_app.config["DATA_DIR"],
+                                                      storage.min_free(current_app.config)),
+                    "orphans": current_app.config.get("ORPHANS_REPORTED", 0),     # #96: files kept, not deleted
                     "paired": auth.paired_count(get_db())})

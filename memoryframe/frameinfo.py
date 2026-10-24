@@ -12,7 +12,10 @@ log = logging.getLogger(__name__)
 
 
 def hotspot_conf():
-    """SSID/PASSWORD from deploy/hotspot.conf (git-ignored), overridable by env."""
+    """SSID/PASSWORD from deploy/hotspot.conf (git-ignored), overridable by env. The env override is
+    per key: MEMORYFRAME_SSID and MEMORYFRAME_WIFI_PASSWORD are each used on their own when set and
+    non-empty, otherwise that key comes from the file. This is only the seed value for the hotspot:
+    the NetworkManager profile MemoryFrame-hotspot holds what is broadcast."""
     out = {}
     try:
         with open(os.path.join(storage.REPO_DIR, "deploy", "hotspot.conf")) as f:

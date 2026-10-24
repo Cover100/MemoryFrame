@@ -59,7 +59,10 @@ def validate(ssid, password, current_ssid, current_password):
 # ---------------- current Wi-Fi ----------------
 
 def current_wifi(conn):
-    """(ssid, password) the hotspot uses now: a committed MF-18 change wins over hotspot.conf."""
+    """(ssid, password) the app SHOWS (overlay, QR, phone pages): a committed MF-18 change wins over
+    MEMORYFRAME_SSID / hotspot.conf, but only when BOTH wifi_ssid and wifi_password are stored; with
+    only one of them, neither is used and the pair comes from frameinfo.hotspot_conf(). This is not
+    read from NetworkManager; the profile MemoryFrame-hotspot is what the radio broadcasts."""
     ssid, password = get_setting(conn, "wifi_ssid"), get_setting(conn, "wifi_password")
     if ssid and password:
         return ssid, password
@@ -185,7 +188,7 @@ def reconcile(conn, nm):
 def startup_check(app):
     """Reconcile a pending change with the real profiles (see reconcile); only a still-existing
     pending profile is rolled back. After a memoryframe-reset boot the hotspot.conf defaults are
-    back: drop the override."""
+    back: drop the override (the app then shows the hotspot.conf seed again)."""
     conn = connect(app.config["DB_PATH"])
     try:
         nm = frameinfo.netmode_state()

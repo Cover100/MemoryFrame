@@ -85,7 +85,8 @@ def test_n2_last_hard_coded_colours_are_tokens():
     assert "#2a2a2a" not in flat.lower() and "rgba(" not in flat and "rgb(" not in flat
     assert "border: 3px solid var(--mf-forest-800)" in flat
     assert "background: var(--mf-scrim-phone)" in flat
-    assert re.search(r"--mf-scrim-phone:\s*rgba\(31, 42, 36, 0\.55\);", TOKENS)
+    assert len(re.findall(r"--mf-scrim-phone:", TOKENS)) == 1             # #92: defined once, in the dark .mf-phone block
+    assert re.search(r"\.mf-phone \{[^}]*--mf-scrim-phone:\s*rgba\(0, 0, 0, \.6\);", TOKENS)
     others = set(re.findall(r"#[0-9a-fA-F]{3,6}\b", flat))
     assert others <= {"#fff"}, others                              # white on fills only (matches tokens.css)
 

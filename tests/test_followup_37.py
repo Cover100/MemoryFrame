@@ -72,7 +72,7 @@ def test_missing_original_with_stale_copy_counts_failed_and_is_not_retried(mf_ap
     os.remove(os.path.join(d, "originals", stored))
     assert imaging.backfill(conn, d, T) == (0, 1)
     calls = []
-    monkeypatch.setattr(imaging, "ensure_display_copy", lambda *a: calls.append(a))
+    monkeypatch.setattr(imaging, "_ensure_copy", lambda *a: calls.append(a) or (None, None))
     assert imaging.backfill(conn, d, T) == (0, 1)           # next start: skipped
     assert calls == []
     conn.close()

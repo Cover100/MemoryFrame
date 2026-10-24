@@ -17,8 +17,10 @@
 # anything. Only use --test with someone at the device
 # (keyboard + screen, or Ethernet).
 #
-# SSID/password come from deploy/hotspot.conf (git-ignored, see
-# hotspot.conf.example) or are prompted for. Nothing secret is stored in git.
+# SSID/password are seeded from deploy/hotspot.conf (git-ignored, see
+# hotspot.conf.example) or prompted for, and saved into the NetworkManager profile
+# MemoryFrame-hotspot; that profile is what the radio broadcasts afterwards.
+# Nothing secret is stored in git.
 # When active, the frame is reachable at http://10.42.0.1/ (or http://memoryframe.lan/).
 #
 # Other NetworkManager profiles (e.g. the home Wi-Fi or the old manual

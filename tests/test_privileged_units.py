@@ -56,7 +56,8 @@ def test_polkit_rule_only_app_user_four_units_start_and_poweroff():
     js = (ROOT / "deploy" / "memoryframe-polkit.rules").read_text()
     assert 'subject.user !== "@USER@"' in js and "return polkit.Result.NOT_HANDLED" in js
     assert 'action.lookup("verb") === "start"' in js
-    assert sorted(re.findall(r'"(memoryframe-[a-z-]+\.service)"', js)) == sorted(f"memoryframe-{u}.service" for u in UNITS)
+    assert sorted(re.findall(r'"(memoryframe-[a-z-]+\.service)"', js)) == sorted(
+        [f"memoryframe-{u}.service" for u in UNITS] + ["memoryframe-factory-reset.service"])   # #99
     ids = set(re.findall(r'"(org\.freedesktop\.[\w.-]+)"', js))
     assert ids == {"org.freedesktop.systemd1.manage-units", "org.freedesktop.login1.power-off",
                    "org.freedesktop.login1.power-off-multiple-sessions"}

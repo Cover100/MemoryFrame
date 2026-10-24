@@ -156,6 +156,56 @@
     </div>
 
 
+    <!-- #99: Frame tools (3 s hold anywhere). Close is the default; works offline (localhost only). -->
+    <div id="toolsOverlay" class="overlay">
+        <div id="toolsBox">
+            <div id="toolsMenu" class="toolsPanel">
+                <div class="confirmTitle">Frame tools</div>
+                <div class="toolsList">
+                    <button id="toolsReset" class="mf-btn mf-btn-secondary" type="button">Reset the frame…</button>
+                    <button id="toolsDev" class="mf-btn mf-btn-secondary" type="button">Join developer Wi-Fi…</button>
+                    <button id="toolsClose" class="mf-btn mf-btn-secondary mf-btn-default" type="button">Close</button>
+                </div>
+            </div>
+            <div id="resetChoose" class="toolsPanel" hidden>
+                <div class="confirmTitle">Reset the frame</div>
+                <div class="toolsList">
+                    <button id="resetKeep" class="mf-btn mf-btn-secondary mf-btn-default" type="button">Keep my photos</button>
+                    <button id="resetErase" class="mf-btn mf-btn-danger" type="button">Erase everything</button>
+                    <button id="resetChooseCancel" class="mf-btn mf-btn-secondary" type="button">Cancel</button>
+                </div>
+            </div>
+            <div id="resetKeepAsk" class="toolsPanel" hidden>
+                <div class="confirmTitle">Keep my photos?</div>
+                <div class="confirmBody">Phones sign out and settings reset. Photos stay.</div>
+                <div class="shutdownButtons">
+                    <button id="resetKeepCancel" class="resetCancel" type="button">Cancel</button>
+                    <button id="resetKeepConfirm" type="button">Reset</button>
+                </div>
+            </div>
+            <div id="resetEraseAsk" class="toolsPanel" hidden>
+                <div class="confirmTitle">Erase everything?</div>
+                <div class="confirmBody">This deletes all photos and signs out all phones. The Wi-Fi name and password stay the same. This can't be undone.</div>
+                <div class="shutdownButtons">
+                    <button id="resetEraseCancel" class="resetCancel" type="button">Cancel</button>
+                    <button id="resetEraseHold" type="button"><span class="holdFill" aria-hidden="true"></span><span class="holdLabel">Hold to erase</span></button>
+                </div>
+            </div>
+            <div id="resetFail" class="toolsPanel" hidden>
+                <div class="confirmTitle">Couldn't reset</div>
+                <div class="confirmBody" id="resetFailReason"></div>
+                <div class="shutdownButtons">
+                    <button id="resetFailOk" class="mf-btn mf-btn-secondary" type="button">OK</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- #99: reset in progress (not dismissable); reloads into the welcome screen (#98) when done. -->
+    <div id="resetCover" role="status" hidden>
+        <div class="resetTitle">Resetting…</div>
+        <div class="resetSub">Don't unplug</div>
+    </div>
+
     <!-- MF-51: Dev mode until reboot (confirm) -->
     <div id="devModeOverlay" class="overlay">
         <div id="devModeBox">

@@ -2,6 +2,9 @@
 # Install Memory Frame on a Raspberry Pi 4B (Raspberry Pi OS 64-bit, desktop).
 # Run from the repo checkout as the desktop user (not root):  ./deploy/install.sh
 # Idempotent: safe to re-run after a git pull.
+# #69: the app runs as the system user mfapp from a root-owned copy in /opt/memoryframe; the checkout is
+# only the source. An upgrade saves a rollback pack first (deploy/memoryframe-migrate.sh); a failed or
+# unhealthy upgrade is rolled back automatically, and memoryframe-rollback.txt on bootfs does it at boot.
 # Options:
 #   --extra-hosts LIST   extra Host names/IPs the app answers (comma list, e.g. 192.168.50.124);
 #                        "" removes them. Also taken from $MEMORYFRAME_EXTRA_HOSTS. Omit to keep.
@@ -18,42 +21,101 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-APP_USER="$(id -un)"
-[ "$APP_USER" = root ] && { echo "Run as the desktop user, not root." >&2; exit 1; }
+SRC_DIR="$(cd "$(dirname "$0")/.." && pwd)"     # the git checkout (desktop user's)
+APP_DIR="${MEMORYFRAME_OPT_DIR:-/opt/memoryframe}"   # what runs (root-owned)
+APP_USER=mfapp                                     # runs the web app (unit, polkit rule, data dir)
+DESKTOP_USER="$(id -un)"                           # runs the kiosk browser
+[ "$DESKTOP_USER" = root ] && { echo "Run as the desktop user, not root." >&2; exit 1; }
+HEALTH_URL="http://127.0.0.1:5000/healthz"
+HEALTH_WAIT="${MEMORYFRAME_HEALTH_WAIT:-30}"
+MIGRATE=/usr/local/sbin/memoryframe-migrate
+
+# Write a root-owned file atomically: render to a temp file first (a failing sed stops here, set -e), then
+# install it next to the target and rename over it. A cut leaves the old or the new file, never half of one.
+put_file() {  # src dest mode [group]
+    local new; new="$(dirname "$2")/.$(basename "$2").new"
+    sudo install -o root -g "${4:-root}" -m "$3" "$1" "$new"
+    sudo sync -f "$new"
+    sudo mv -f "$new" "$2"
+}
+render() {  # template dest mode: replaces @USER@ / @APP_DIR@
+    local tmp; tmp="$(mktemp)"
+    sed -e "s#@USER@#$APP_USER#g" -e "s#@APP_DIR@#$APP_DIR#g" "$1" > "$tmp"
+    put_file "$tmp" "$2" "$3"
+    rm -f "$tmp"
+}
+# Bounded wait for the app to answer (#69 addendum): never says "restarted" before it really serves.
+wait_healthy() {
+    local end=$((SECONDS + HEALTH_WAIT))
+    while [ "$SECONDS" -lt "$end" ]; do
+        curl -fsS --max-time 2 "$HEALTH_URL" >/dev/null 2>&1 && return 0
+        sleep 1
+    done
+    return 1
+}
 
 echo "== Packages"
 sudo apt-get update
 # polkitd (#62): lets the app start its root units and power off without sudo. Installed here; if it
 # still isn't there, stop: without it Developer Wi-Fi, Wi-Fi change and Shut down can't work.
-sudo apt-get install -y python3-venv curl polkitd
+sudo apt-get install -y python3-venv curl polkitd rsync
 if ! command -v pkaction >/dev/null 2>&1; then
     echo "ERROR: polkit (polkitd) is not installed and could not be installed: run 'sudo apt-get install polkitd', then re-run install.sh." >&2
     exit 1
 fi
 command -v chromium-browser >/dev/null || command -v chromium >/dev/null || sudo apt-get install -y chromium-browser
 
-echo "== Python environment"
-[ -d "$APP_DIR/.venv" ] || python3 -m venv "$APP_DIR/.venv"
-"$APP_DIR/.venv/bin/pip" install -r "$APP_DIR/requirements.txt"
-mkdir -p "$APP_DIR/uploads"
+echo "== Service user and rollback pack (#69)"
+DATA_DIR=/var/lib/memoryframe
+sudo install -o root -g root -m 0755 "$SRC_DIR/deploy/memoryframe-migrate.sh" "$MIGRATE"
+sudo install -o root -g root -m 0755 "$SRC_DIR/deploy/memoryframe-cli.sh" /usr/local/sbin/memoryframe-cli
+# Upgrade only, once: old unit + rule + data owner + a photo backup, before anything changes.
+sudo "$MIGRATE" save-pack
+sudo "$MIGRATE" ensure-user
+
+echo "== Code in $APP_DIR and its Python environment (old service keeps running)"
+# root-owned copy: no .git, no venv (built below), no photos, no hotspot password
+sudo install -d -o root -g root -m 0755 "$APP_DIR"
+sudo rsync -a --delete --chown=root:root --chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r \
+    --exclude=/.git --exclude=/.venv --exclude=/uploads --exclude=/data --exclude=/deploy/hotspot.conf \
+    --exclude=__pycache__ --exclude=/VERSION "$SRC_DIR/" "$APP_DIR/"
+sudo chmod 0755 "$APP_DIR"/deploy/*.sh
+VER_TMP="$(mktemp)"
+git -C "$SRC_DIR" rev-parse --short HEAD > "$VER_TMP" 2>/dev/null || : > "$VER_TMP"
+put_file "$VER_TMP" "$APP_DIR/VERSION" 0644
+rm -f "$VER_TMP"
+[ -d "$APP_DIR/.venv" ] || sudo python3 -m venv "$APP_DIR/.venv"
+sudo "$APP_DIR/.venv/bin/pip" install -q -r "$APP_DIR/requirements.txt"
+sudo "$APP_DIR/.venv/bin/python" -m compileall -q "$APP_DIR/memoryframe" "$APP_DIR/app.py" >/dev/null
+mkdir -p "$SRC_DIR/uploads"
 
 echo "== Data directory and one-time photo migration (MF-11)"
-DATA_DIR=/var/lib/memoryframe
-sudo install -d -o "$APP_USER" -g "$(id -gn)" -m 750 "$DATA_DIR"
 # #90: if the app is running, a failure (set -e) or a signal between the stop below and the normal restart
 # would leave the frame stopped with no screen. So, only when it was ACTIVE and we stop it, arm an exit trap
 # that restarts it once and keeps the original exit status. A service that was not running (fresh install, or
 # stopped on purpose) is never started by the trap. The trap is cleared before it acts, so it can't loop.
 # The restart comes FIRST and is capped at 60 s; messages follow, best effort: a dropped terminal (SIGHUP,
 # closed or broken stderr) must not stop the restart, so HUP/PIPE are ignored and set -e is off in here.
+# #69: ON_FAIL_CMD (set once the mfapp migration starts) runs BEFORE the restart, so the restart never starts
+# the new unit on a half-migrated data dir. Then a bounded /healthz wait; if unhealthy, ONE more restart
+# (skipped when the normal restart already was one of the two). Never daemon-reload here: the rollback
+# restores and reloads the old unit itself; otherwise the loaded unit is the safe fallback.
+ON_FAIL_CMD=""
+NORMAL_RESTARTED=0
 restart_if_stopped() {
     local rc=$?
     trap - EXIT ERR
     trap '' HUP PIPE
     set +e
-    local restarted=0
+    local restarted=0 healthy=0 rolled=""
+    if [ -n "$ON_FAIL_CMD" ]; then
+        timeout 120 $ON_FAIL_CMD >/dev/null 2>&1 && rolled=ok || rolled=failed
+    fi
     timeout 60 sudo systemctl restart memoryframe.service && restarted=1
+    [ "$restarted" = 1 ] && wait_healthy && healthy=1
+    if [ "$restarted" = 1 ] && [ "$healthy" = 0 ] && [ "$NORMAL_RESTARTED" = 0 ]; then
+        timeout 60 sudo systemctl restart memoryframe.service && wait_healthy && healthy=1
+    fi
     {
         # "interrupted" only when one of our signal traps fired, not for a step that itself exited 129/130/143
         case "$INTERRUPTED$rc" in
@@ -66,8 +128,14 @@ restart_if_stopped() {
                    echo "ERROR: install.sh failed (exit $rc) at an unknown step."
                fi ;;
         esac
-        if [ "$restarted" = 1 ]; then
+        case "$rolled" in
+            ok) echo "The mfapp migration was rolled back (old unit, rule and data owner restored)." ;;
+            failed) echo "ERROR: the automatic rollback failed: put memoryframe-rollback.txt (one line: rollback) on bootfs and reboot." ;;
+        esac
+        if [ "$healthy" = 1 ]; then
             echo "memoryframe.service, which install.sh had stopped, was restarted. The install is incomplete: re-run install.sh."
+        elif [ "$restarted" = 1 ]; then
+            echo "ERROR: memoryframe.service was restarted but is not answering: run the boot-partition rollback flag (memoryframe-rollback.txt with 'rollback' on bootfs, then reboot)."
         else
             echo "ERROR: could not restart memoryframe.service: run 'sudo systemctl restart memoryframe.service'."
         fi
@@ -89,49 +157,56 @@ if systemctl is-active --quiet memoryframe.service 2>/dev/null; then
 fi
 # Stop the running app first so the migration has the database to itself.
 sudo systemctl stop memoryframe.service 2>/dev/null || true
+sync
+# #69: from here a failure must undo the owner change too, but only on the run that migrates (an upgrade with
+# a pack whose data dir isn't mfapp's yet). A later re-install that fails is never rolled back to pre-mfapp.
+if [ "$(stat -c %U "$DATA_DIR" 2>/dev/null)" != "$APP_USER" ] && sudo test -f /etc/memoryframe/rollback/previous-owner; then
+    ON_FAIL_CMD="sudo $MIGRATE rollback"
+fi
+sudo "$MIGRATE" chown-data
+sudo /usr/local/sbin/memoryframe-cli check
+# The legacy uploads/ import reads the checkout as mfapp; if it can't (home dir 0750), skip it (done long ago).
+LEGACY=/nonexistent
+sudo runuser -u "$APP_USER" -- test -r "$SRC_DIR/uploads" -a -x "$SRC_DIR/uploads" 2>/dev/null && LEGACY="$SRC_DIR/uploads"
 # Backs up uploads/ to $DATA_DIR/backups/legacy-uploads-<time>.tar (verified),
 # then COPIES the photos into $DATA_DIR/originals. uploads/ is never changed.
 # Does nothing if the import was already done. Aborts (exit 1) if space is short.
-MEMORYFRAME_DATA_DIR="$DATA_DIR" MEMORYFRAME_LEGACY_UPLOADS="$APP_DIR/uploads" \
-    "$APP_DIR/.venv/bin/python" -m memoryframe migrate \
+sudo env MEMORYFRAME_LEGACY_UPLOADS="$LEGACY" /usr/local/sbin/memoryframe-cli migrate \
     || echo "WARNING: migration failed (see above). Nothing was changed; the service is restarted anyway. Fix and re-run install.sh."
 # MF-15: downscaled display copies for all photos (originals untouched; idempotent).
-MEMORYFRAME_DATA_DIR="$DATA_DIR" "$APP_DIR/.venv/bin/python" -m memoryframe display-copies \
+sudo /usr/local/sbin/memoryframe-cli display-copies \
     || echo "WARNING: some display copies failed; those photos are served as originals."
-MEMORYFRAME_DATA_DIR="$DATA_DIR" MEMORYFRAME_LEGACY_UPLOADS="$APP_DIR/uploads" \
-    "$APP_DIR/.venv/bin/python" -m memoryframe status
+sudo env MEMORYFRAME_LEGACY_UPLOADS="$LEGACY" /usr/local/sbin/memoryframe-cli status
 
 echo "== Audit and disable existing autostart entries"
-"$APP_DIR/deploy/audit-autostart.sh" --disable
+"$SRC_DIR/deploy/audit-autostart.sh" --disable
 
 if [ "$EXTRA_HOSTS_SET" = 1 ]; then
     echo "== Extra allowed hosts (MF-13)"
-    "$APP_DIR/deploy/env-file.sh" MEMORYFRAME_EXTRA_HOSTS "$EXTRA_HOSTS"
+    "$SRC_DIR/deploy/env-file.sh" MEMORYFRAME_EXTRA_HOSTS "$EXTRA_HOSTS"
 fi
 
 echo "== systemd service"
-sed -e "s#@USER@#$APP_USER#g" -e "s#@APP_DIR@#$APP_DIR#g" \
-    "$APP_DIR/deploy/memoryframe.service" | sudo tee /etc/systemd/system/memoryframe.service >/dev/null
-# MF-36/MF-18: root-owned copy of the network helper (the checkout is writable by the app user).
-sudo install -o root -g root -m 0755 "$APP_DIR/deploy/netmode.sh" /usr/local/sbin/memoryframe-netmode
+# Every unit, helper and rule is written atomically (put_file/render); one daemon-reload after all of them.
+render "$SRC_DIR/deploy/memoryframe.service" /etc/systemd/system/memoryframe.service 0644
+# MF-36/MF-18: root-owned copy of the network helper (the checkout is writable by the desktop user).
+put_file "$SRC_DIR/deploy/netmode.sh" /usr/local/sbin/memoryframe-netmode 0755
 # Root-owned hotspot.sh + config for the memoryframe-reset boot path (root never runs checkout files).
-sudo install -o root -g root -m 0755 "$APP_DIR/deploy/hotspot.sh" /usr/local/sbin/memoryframe-hotspot
-if [ -f "$APP_DIR/deploy/hotspot.conf" ]; then
-    sudo install -d -o root -g root -m 0755 /etc/memoryframe
-    sudo install -o root -g root -m 0600 "$APP_DIR/deploy/hotspot.conf" /etc/memoryframe/hotspot.conf
+put_file "$SRC_DIR/deploy/hotspot.sh" /usr/local/sbin/memoryframe-hotspot 0755
+sudo install -d -o root -g root -m 0755 /etc/memoryframe
+if [ -f "$SRC_DIR/deploy/hotspot.conf" ]; then
+    # #69: root:mfapp 0640: root parses it, the app reads SSID/QR from it; nobody else can.
+    put_file "$SRC_DIR/deploy/hotspot.conf" /etc/memoryframe/hotspot.conf 0640 "$APP_USER"
 fi
-sed -e "s#@APP_DIR@#$APP_DIR#g" \
-    "$APP_DIR/deploy/memoryframe-netmode.service" | sudo tee /etc/systemd/system/memoryframe-netmode.service >/dev/null
+render "$SRC_DIR/deploy/memoryframe-netmode.service" /etc/systemd/system/memoryframe-netmode.service 0644
 # #62: root oneshot units for the app's privileged actions + a polkit rule that lets only the app
 # user start them (and power off). No sudoers rules: the app service keeps NoNewPrivileges.
-for u in devtemp wifi-apply wifi-commit wifi-rollback; do
-    sudo install -o root -g root -m 0644 "$APP_DIR/deploy/units/memoryframe-$u.service" "/etc/systemd/system/memoryframe-$u.service"
+# #69: + the boot-flag rollback unit.
+for u in devtemp wifi-apply wifi-commit wifi-rollback rollback; do
+    put_file "$SRC_DIR/deploy/units/memoryframe-$u.service" "/etc/systemd/system/memoryframe-$u.service" 0644
 done
-POLKIT_TMP="$(mktemp)"
-sed -e "s#@USER@#$APP_USER#g" "$APP_DIR/deploy/memoryframe-polkit.rules" > "$POLKIT_TMP"
 [ -d /etc/polkit-1/rules.d ] || sudo install -d -o root -g root -m 0755 /etc/polkit-1/rules.d   # never re-perm the distro's dir
-sudo install -o root -g root -m 0644 "$POLKIT_TMP" /etc/polkit-1/rules.d/50-memoryframe.rules
-rm -f "$POLKIT_TMP"
+render "$SRC_DIR/deploy/memoryframe-polkit.rules" /etc/polkit-1/rules.d/50-memoryframe.rules 0644
 # Old sudoers rules from before #62 (unused now).
 sudo rm -f /etc/sudoers.d/memoryframe /etc/sudoers.d/memoryframe-poweroff
 sudo systemctl daemon-reload
@@ -146,8 +221,15 @@ if [ ! -e "$MODE_FILE" ] && [ -n "$CUR_WIFI" ] && [ "$CUR_WIFI" != "MemoryFrame-
 fi
 # MF-36: applied at the NEXT boot (enabling does not switch the network now).
 sudo systemctl enable memoryframe-netmode.service
-sudo systemctl enable memoryframe.service
+sudo systemctl enable memoryframe.service memoryframe-rollback.service
 sudo systemctl restart memoryframe.service
+# #69: only "restarted" once it answers. If not, exit into the #90 trap (it rolls back first, restarts once).
+if ! wait_healthy; then
+    echo "ERROR: memoryframe.service is not answering $HEALTH_URL after ${HEALTH_WAIT}s." >&2
+    NORMAL_RESTARTED=1
+    exit 1
+fi
+echo "memoryframe.service restarted and answering."
 # Restarted normally: disarm the #90 exit trap and give the signals their default behaviour back.
 if [ "$RESTART_ON_EXIT" = 1 ]; then
     RESTART_ON_EXIT=0
@@ -155,7 +237,7 @@ if [ "$RESTART_ON_EXIT" = 1 ]; then
 fi
 
 echo "== Case fan (gpio-fan overlay, GPIO 14, on at 60 C)"
-if ! sudo env MEMORYFRAME_BOOT_CONFIG="${MEMORYFRAME_BOOT_CONFIG:-}" bash "$APP_DIR/deploy/fan-overlay.sh"; then
+if ! sudo env MEMORYFRAME_BOOT_CONFIG="${MEMORYFRAME_BOOT_CONFIG:-}" bash "$SRC_DIR/deploy/fan-overlay.sh"; then
     echo "WARNING: fan overlay not added" >&2
 fi
 
@@ -164,9 +246,8 @@ sudo rm -f /usr/lib/systemd/system-shutdown/memoryframe-safe-screen
 sudo rm -rf /usr/lib/memoryframe
 
 echo "== Kiosk autostart"
-chmod +x "$APP_DIR/deploy/kiosk.sh"
 mkdir -p "$HOME/.config/autostart"
-sed -e "s#@APP_DIR@#$APP_DIR#g" "$APP_DIR/deploy/memoryframe-kiosk.desktop" \
+sed -e "s#@APP_DIR@#$APP_DIR#g" "$SRC_DIR/deploy/memoryframe-kiosk.desktop" \
     > "$HOME/.config/autostart/memoryframe-kiosk.desktop"
 
 echo "== Session type: ${XDG_SESSION_TYPE:-unknown} (record this in the MF-04 PR)"
@@ -177,8 +258,8 @@ echo "== Kiosk reload (new JS/CSS)"
 KIOSK_PROFILE="${MEMORYFRAME_STATE_DIR:-$HOME/.cache/memoryframe}/chromium-profile"
 if [ -n "${CI:-}" ] || [ "${MEMORYFRAME_NO_KIOSK_RELOAD:-}" = 1 ]; then
     echo "skipped (CI or MEMORYFRAME_NO_KIOSK_RELOAD=1)"
-elif "${PGREP:-pgrep}" -u "$APP_USER" -f -- "--user-data-dir=$KIOSK_PROFILE" >/dev/null 2>&1; then
-    "${PKILL:-pkill}" -u "$APP_USER" -f -- "--user-data-dir=$KIOSK_PROFILE" || true
+elif "${PGREP:-pgrep}" -u "$DESKTOP_USER" -f -- "--user-data-dir=$KIOSK_PROFILE" >/dev/null 2>&1; then
+    "${PKILL:-pkill}" -u "$DESKTOP_USER" -f -- "--user-data-dir=$KIOSK_PROFILE" || true
     echo "kiosk browser restarted by kiosk.sh with the new assets"
 else
     echo "no kiosk running; nothing to reload"

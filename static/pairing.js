@@ -55,6 +55,8 @@
         return st && st.network === "hotspot" ? "http://10.42.0.1/" : "http://memoryframe.local/";
     }
 
+    let welcome = false;                                 // #98 W0: first-run welcome (no Close)
+    function bareUrl(u){ return u.replace(/\/$/, ""); }
     function render(st){
         paired = st.paired;
         const devTemp = st.dev_temp === true;            // MF-55 G3: no QR, code or address
@@ -68,11 +70,11 @@
         const base = fallbackBase(st);
         $("pairUrl").textContent = okUrl(st.url) ? st.url : base + "pair";
         $("pairUrlAlt").textContent = okUrl(st.url_fallback) ? "or " + st.url_fallback : "";
-        $("emptyUrl").textContent = okUrl(st.site_url) ? st.site_url : base;
+        $("emptyUrl").textContent = bareUrl(okUrl(st.site_url) ? st.site_url : base);
         $("pairSsid").textContent = st.ssid || "";
         const qr = !!st.wifi_qr_svg;
         const join = !qr && typeof st.wifi_join_name === "string" && st.wifi_join_name !== "";   // #89: no known password
-        const wifi = qr || join;
+        const wifi = welcome ? qr : (qr || join);         // #98: W0 Wi-Fi step only with the Wi-Fi QR
         $("wifiStep").hidden = !wifi;
         $("wifiQr").hidden = !qr; $("wifiNameLine").hidden = !qr; $("wifiJoin").hidden = !join;
         $("wifiJoinName").textContent = join ? st.wifi_join_name : "";
@@ -82,11 +84,23 @@
         $("codeBadge").textContent = wifi ? "3" : "2";
         $("pairTitle").textContent = wifi ? "Pair a phone" : "Pair your phone";            // mock 03 / mock 04
         $("siteTitle").textContent = wifi ? "Open site" : "Scan with your phone";
+        $("pairOverlay").classList.toggle("welcome", welcome);
+        $("welcomeHead").hidden = !welcome; $("welcomeFoot").hidden = !welcome;
+        $("codeHint").textContent = welcome ? "New code every 2 minutes" : "Type this on your phone if it asks for a code";
+        if(welcome){                                          // Wren 16 / 16b copy
+            $("siteTitle").textContent = wifi ? "Open the site" : "Open the site on your phone";
+            $("codeTitle").textContent = wifi ? "Type the code" : "Type this code";
+            $("wifiTitle").textContent = "Join the Wi-Fi";
+            $("pairUrl").textContent = bareUrl(okUrl(st.site_url) ? st.site_url : base);
+            $("pairUrlAlt").textContent = "";
+        } else {
+            $("codeTitle").textContent = "Enter code"; $("wifiTitle").textContent = "Join Wi-Fi";
+        }
         if(st.round && typeof st.round.qr_svg === "string" && typeof st.round.code === "string"){
-            $("pairCode").textContent = st.round.code.slice(0, 3) + " " + st.round.code.slice(3);
+            $("pairCode").textContent = welcome ? st.round.code : st.round.code.slice(0, 3) + " " + st.round.code.slice(3);
             $("pairQr").innerHTML = st.round.qr_svg;
         }
-        $("pairClose").hidden = false;              // always dismissable
+        $("pairClose").hidden = welcome;            // #98: no Close in W0; on-demand pairing stays dismissable
     }
 
     // ---------- MF-36: network mode (dev banner, fallback toast, hotspot error) ----------
@@ -185,7 +199,10 @@
             let st = await getJSON("/pairing/state");
             renderNetmode(st.netmode);
             renderWifi(st.wifi_change);
-            const firstRun = st.paired === 0 && st.media === 0 && !dismissed;
+            // #98 W0: unpaired and empty, not dev_temp, no hotspot error (it wins). Not dismissable.
+            // (dev_temp keeps its "Restart the frame to pair a phone" card, which is not W0.)
+            const firstRun = st.paired === 0 && st.media === 0 && $("hotspotError").hidden
+                             && (st.dev_temp !== true || !dismissed);
             const wasPairing = pairOverlay.classList.contains("visible") && Date.now() >= successUntil;
             if(onDemand && onDemandRound && !st.round){
                 onDemand = false;                    // MF-32: on-demand code expired -> close, no renewal
@@ -199,6 +216,7 @@
                 successUntil = Date.now() + SUCCESS_MS;   // MF-33: "Phone paired" for 3 s
                 onDemand = false;
             }
+            welcome = firstRun && !onDemand && st.dev_temp !== true;
             render(st);
             const success = Date.now() < successUntil;
             $("pairSuccess").hidden = !success;
@@ -208,7 +226,7 @@
                 $("pairQr").innerHTML = "";
             }
             if(success){ setTimeout(tick, Math.max(50, successUntil - Date.now() + 20)); }
-            const showPair = success || (st.paired === 0 && st.media === 0 && !dismissed) || onDemand;
+            const showPair = success || firstRun || onDemand;
             const showEmpty = !showPair && !dismissed && st.paired > 0 && st.media === 0;
             pairOverlay.classList.toggle("visible", showPair);
             pairOverlay.classList.toggle("toast", success);   // #70: top-centre toast over the photo

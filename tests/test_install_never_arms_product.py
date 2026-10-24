@@ -15,6 +15,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 STUB = '#!/bin/bash\necho "$(basename "$0") $*" >> "$INSTALL_LOG"\n'
 SUDO = STUB + '[[ " $* " == *" tee "* ]] && cat > /dev/null\nexit 0\n'
+# `systemctl is-active` (unprivileged, called without sudo) answers from $STUB_ACTIVE; the log line is
+# "systemctl is-active ..." so it is never counted as a privileged "sudo systemctl ..." call.
+SYSTEMCTL = STUB + '[ "$1" = is-active ] && exit "${STUB_ACTIVE:-0}"\nexit 0\n'
 PY3 = STUB + '''if [ "$1 $2" = "-m venv" ]; then mkdir -p "$3/bin"
   for b in pip python; do printf '#!/bin/bash\\necho "%s $*" >> "$INSTALL_LOG"\\n' "$b" > "$3/bin/$b"; chmod +x "$3/bin/$b"; done
 fi
@@ -22,16 +25,21 @@ exit 0
 '''
 
 
-def install(tmp_path, envd):
+def run_install(tmp_path, envd, sudo=SUDO, tweak=None, active=True, **popen_kw):
+    """Run the sandboxed install.sh; returns (CompletedProcess, stub call log). `tweak(app)` may edit the
+    sandbox copy of the repo (used to force a failure); `sudo` replaces the sudo stub; `popen_kw` goes to subprocess.run (e.g. stderr); `active` is what the
+    systemctl stub answers to `is-active` (was the service running before install.sh stopped it?)."""
     app = tmp_path / "app"
     if not app.exists():
         shutil.copytree(ROOT / "deploy", app / "deploy")
         shutil.copy(ROOT / "requirements.txt", app / "requirements.txt")
         # if install.sh ever ran the helper, we'd see it
         (app / "deploy" / "netmode.sh").write_text(STUB + "exit 0\n")
+        if tweak:
+            tweak(app)
     bin_ = tmp_path / "bin"
     bin_.mkdir(exist_ok=True)
-    for name, body in (("sudo", SUDO), ("python3", PY3), ("chromium", STUB + "exit 0\n"),
+    for name, body in (("sudo", sudo), ("systemctl", SYSTEMCTL), ("python3", PY3), ("chromium", STUB + "exit 0\n"),
                        ("crontab", STUB + "exit 1\n"), ("nmcli", STUB + "exit 0\n"), ("pkaction", STUB + "exit 0\n")):
         (bin_ / name).write_text(body)
         (bin_ / name).chmod(0o755)
@@ -40,12 +48,18 @@ def install(tmp_path, envd):
     log = tmp_path / "install.log"
     e = dict(envd["env"], PATH=f"{bin_}:/usr/bin:/bin", HOME=str(home), INSTALL_LOG=str(log),
              AUDIT_HOME=str(home), AUDIT_ROOT=str(tmp_path / "root"), SUDO="", CRONTAB=str(bin_ / "crontab"),
-             USER="pi", XDG_SESSION_TYPE="wayland")
+             USER="pi", XDG_SESSION_TYPE="wayland", STUB_ACTIVE="0" if active else "3")
     e.pop("SUDO_USER", None)
-    r = subprocess.run(["bash", str(app / "deploy" / "install.sh")], env=e, capture_output=True,
-                       text=True, timeout=60)
+    popen_kw.setdefault("stderr", subprocess.PIPE)
+    r = subprocess.run(["bash", str(app / "deploy" / "install.sh")], env=e, stdout=subprocess.PIPE,
+                       text=True, timeout=60, **popen_kw)
+    return r, (log.read_text() if log.exists() else "")
+
+
+def install(tmp_path, envd):
+    r, log = run_install(tmp_path, envd)
     assert r.returncode == 0, r.stdout + r.stderr
-    return log.read_text()
+    return log
 
 
 def test_install_text_never_arms_product():

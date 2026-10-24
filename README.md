@@ -172,16 +172,17 @@ nano deploy/hotspot.conf                             # set SSID and PASSWORD
   `deploy/hotspot.conf` is only a **seed**: `hotspot.sh` writes it into that profile, and the
   `memoryframe-reset` boot path uses the root-owned copy `/etc/memoryframe/hotspot.conf` to recreate it.
   A change made from the phone (**Wi-Fi** settings, MF-18) writes the profile directly and does not edit `hotspot.conf`.
-  The app does not read the profile: the name it shows (pairing overlay, Wi-Fi QR, phone pages) is the committed
-  phone change stored in its database if there is one, otherwise `MEMORYFRAME_SSID` / `deploy/hotspot.conf`
-  (see `memoryframe/wifi.py` `current_wifi` and `memoryframe/frameinfo.py` `hotspot_conf`).
+  The name the app shows (pairing overlay, Wi-Fi QR, phone pages) is that profile's SSID, see "Shown name (#89)" below.
+  Without it (dev machines, first boot) it is the committed phone change stored in its database if there is one,
+  otherwise `MEMORYFRAME_SSID` / `deploy/hotspot.conf` (see `memoryframe/wifi.py` `current_wifi` and
+  `memoryframe/frameinfo.py` `hotspot_conf`); the QR password always comes from those copies.
   Two details: the stored phone change is used only when **both** the SSID and the password are stored (and non-empty);
   if only one is stored, both values come from the env/file instead. The env override is **per key**:
   `MEMORYFRAME_SSID` and `MEMORYFRAME_WIFI_PASSWORD` are each applied on their own when set and non-empty, and
   whichever one is not set falls back to the same key in `deploy/hotspot.conf`.
 - **Change password/SSID from the shell:** edit `deploy/hotspot.conf`, re-run `./deploy/install.sh` (it copies the file to root-owned `/etc/memoryframe/hotspot.conf`, which the `memoryframe-reset` boot path uses), and re-run `./deploy/hotspot.sh`
-  (same profile, no duplicates, autoconnect stays off). If a phone change was already committed, the app keeps showing that
-  stored name and password instead of the file, so change it from the phone, or use `memoryframe-reset`, which clears the stored values.
+  (same profile, no duplicates, autoconnect stays off). After the next reboot the app shows the profile's name; the QR uses the
+  file's password because its SSID matches the profile (a stored phone change with another name is no longer used).
 - **Rollback:** `./deploy/hotspot.sh --rollback`. If wlan0 does not come back on its own:
   `sudo nmcli connection up <your Wi-Fi profile>`.
 - On-device runbook: `docs/runbooks/MF-04-MF-09-pi-runbook.md`.
@@ -218,7 +219,7 @@ Files in `originals/` (stored copies since #82) are only read by this step, neve
 ## Pairing a phone (MF-12)
 
 There is one owner (D6), who may pair several phones.
-- **Overlay:** with no paired phone, the frame shows a pairing overlay: a QR code, a 6-digit code, and the Wi-Fi name (the name saved by a committed phone Wi-Fi change, otherwise `MEMORYFRAME_SSID` or `deploy/hotspot.conf`; the app does not read it from NetworkManager). Double-tap the screen to open the menu, then **Pair new device**, to show it at any time.
+- **Overlay:** with no paired phone, the frame shows a pairing overlay: a QR code, a 6-digit code, and the Wi-Fi name (the name of the NetworkManager profile `MemoryFrame-hotspot`, see "Wi-Fi QR" below). Double-tap the screen to open the menu, then **Pair new device**, to show it at any time.
 - **Pairing:** scan the QR (it opens `http://10.42.0.1/pair?t=…`; tap "Pair this phone"), or open `http://10.42.0.1/pair` and type the code. Either lands on `/admin/`.
 - **Code rules:** codes and QR links are single-use and expire after 120 s. 5 wrong codes rotate the code. More than 10 attempts per minute from one phone get HTTP 429.
 - **Session:** the phone gets an HttpOnly, SameSite=Strict cookie (`mf_session`, valid 1 year). Only its SHA-256 is stored in the database.
@@ -276,7 +277,8 @@ There is one owner (D6), who may pair several phones.
 - **Address shown to users:** `http://10.42.0.1/pair` (hotspot). Developer-only addresses used while on home Wi-Fi are described in the developer notes below.
   - The Host check accepts the frame's own current IP addresses automatically.
   - **Override:** `MEMORYFRAME_SITE_URL=http://frame.home` (no path) replaces the detected address. Set it on the Pi with `deploy/env-file.sh MEMORYFRAME_SITE_URL http://…` and restart the service. The `PAIR_BASE_URL` app config key still wins for tests and development.
-- **Wi-Fi QR:** shown only on the hotspot, and **on by default** (D3). Turn it off with `MEMORYFRAME_SHOW_WIFI_QR=0` or the database setting `show_wifi_qr=0` (the settings UI comes with MF-17). SSID and password are the ones saved by a committed phone Wi-Fi change (MF-18), otherwise `MEMORYFRAME_SSID` / `MEMORYFRAME_WIFI_PASSWORD`, otherwise `deploy/hotspot.conf`. The app does not read them from the NetworkManager profile `MemoryFrame-hotspot`, which is what the radio actually broadcasts.
+- **Wi-Fi QR:** shown only on the hotspot, and **on by default** (D3). Turn it off with `MEMORYFRAME_SHOW_WIFI_QR=0` or the database setting `show_wifi_qr=0` (the settings UI comes with MF-17). SSID and password are the ones saved by a committed phone Wi-Fi change (MF-18), otherwise `MEMORYFRAME_SSID` / `MEMORYFRAME_WIFI_PASSWORD`, otherwise `deploy/hotspot.conf`.
+  **Shown name (#89):** the name on the overlay, the QR and the phone pages is the SSID of the NetworkManager profile `MemoryFrame-hotspot`, i.e. what is really broadcast. `deploy/netmode.sh` writes it (SSID only) into `/run/memoryframe/netmode.json` as `hotspot_ssid` whenever it writes that file: at boot, after a Wi-Fi change is kept or rolled back, and after `memoryframe-reset`. So after editing the profile with `nmcli` by hand, the app shows the new name after the next reboot or the next such change. The app never reads the password back from NetworkManager and never calls `nmcli`: the QR password is the stored phone-change password or the `hotspot.conf` / env one, and only when that copy belongs to the same SSID as the profile. If it does not (the profile was edited by hand), the QR is left out and the overlay says "Join {name} with its password" instead, rather than showing a wrong password. A profile name that is not clean UTF-8 of 1-32 bytes without control characters is not used (empty `hotspot_ssid`, old order). At start-up a stored name that differs from the profile is logged (names only, no password) and the profile wins. Without `hotspot_ssid` (dev machines, first boot, `nmcli` down) the old order applies: the committed phone change, then `MEMORYFRAME_SSID` / `deploy/hotspot.conf`.
 - **Privacy:** these screens use localhost-only routes (`/pairing/state`, `/frame/status`). The Wi-Fi password only leaves the frame as the on-screen QR.
 
 ## Library management (MF-16)

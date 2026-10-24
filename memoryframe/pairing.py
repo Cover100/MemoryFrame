@@ -30,7 +30,10 @@ def qr_svg(data):
     import segno
     # MF-23: 4-module white quiet zone (QR spec minimum) and a viewBox with no fixed size, so CSS
     # scales the whole symbol + margin to fit the 800x480 screen instead of cropping it.
-    svg = segno.make(data, error="m").svg_inline(border=QR_BORDER, omitsize=True, dark="#000", light="#fff")
+    # #105 (Hollis): a non-ASCII Wi-Fi name is encoded as UTF-8 with an ECI header, so scanners don't
+    # guess Latin-1 or Kanji. ASCII payloads (all site links) stay byte-for-byte as before.
+    qr = segno.make(data, error="m") if data.isascii() else segno.make(data, error="m", encoding="utf-8", eci=True)
+    svg = qr.svg_inline(border=QR_BORDER, omitsize=True, dark="#000", light="#fff")
     return svg.replace("<svg ", f'<svg data-border="{QR_BORDER}" preserveAspectRatio="xMidYMid meet" ', 1)
 
 
@@ -45,12 +48,15 @@ def _state():
     out = {"paired": auth.paired_count(conn), "ssid": name, "url": base + "/pair", "round": None,
            "network": urls["mode"], "url_fallback": fallback + "/pair" if fallback else None,
            "site_url": base + "/", "media": conn.execute("SELECT COUNT(*) FROM media WHERE hidden = 0").fetchone()[0],
-           "wifi_qr_svg": None}
+           "wifi_qr_svg": None, "wifi_join_name": None}
     # MF-19 / D3: Wi-Fi join QR (shown before the site QR), only while no phone is paired and
     # only when the frame's hotspot is the active network (on home Wi-Fi it would not exist).
     if (out["paired"] == 0 and urls["mode"] == "hotspot" and name and password
             and frameinfo.show_wifi_qr(conn)):
         out["wifi_qr_svg"] = qr_svg(frameinfo.wifi_qr_payload(name, password))
+    elif (out["paired"] == 0 and urls["mode"] == "hotspot" and name and not password
+            and frameinfo.show_wifi_qr(conn)):
+        out["wifi_join_name"] = name          # #89: password unknown for the live name: text, no QR
     out["wifi_change"] = wifi.frame_state(conn)
     nm = frameinfo.netmode_state()
     lan_ip = None
@@ -65,7 +71,7 @@ def _state():
     # MF-55 G3: in temporary Developer Wi-Fi phones can't reach the frame's site; pairing shows
     # "Restart the frame to pair a phone" and the state carries no address, QR or code.
     if nm.get("temp"):
-        out.update({"url": None, "url_fallback": None, "site_url": None, "wifi_qr_svg": None, "dev_temp": True})
+        out.update({"url": None, "url_fallback": None, "site_url": None, "wifi_qr_svg": None, "wifi_join_name": None, "dev_temp": True})
         return out
     if rnd:
         link = f"{base}/pair?t={rnd['token']}"

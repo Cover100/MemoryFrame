@@ -29,7 +29,8 @@ def test_missing_state_is_dev(monkeypatch, tmp_path):
     monkeypatch.setenv("MEMORYFRAME_NETMODE_STATE", str(tmp_path / "nope.json"))
     assert frameinfo.netmode_state() == {"mode": "dev", "dev_fallback": False, "hotspot_error": False,
                                          "boot_id": "", "reset": False, "hotspot_uuid": "",
-                                         "wifi_profiles": False, "commit_recovered": False}
+                                         "wifi_profiles": False, "commit_recovered": False,
+                                         "hotspot_ssid": ""}
 
 
 @pytest.mark.parametrize("raw", ["", "{", "[]", '{"mode": "evil", "hotspot_error": "yes"}'])

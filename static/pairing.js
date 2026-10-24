@@ -70,9 +70,14 @@
         $("pairUrlAlt").textContent = okUrl(st.url_fallback) ? "or " + st.url_fallback : "";
         $("emptyUrl").textContent = okUrl(st.site_url) ? st.site_url : base;
         $("pairSsid").textContent = st.ssid || "";
-        const wifi = !!st.wifi_qr_svg;
+        const qr = !!st.wifi_qr_svg;
+        const join = !qr && typeof st.wifi_join_name === "string" && st.wifi_join_name !== "";   // #89: no known password
+        const wifi = qr || join;
         $("wifiStep").hidden = !wifi;
-        if(wifi && typeof st.wifi_qr_svg === "string"){ $("wifiQr").innerHTML = st.wifi_qr_svg; }     // SVG from our own server
+        $("wifiQr").hidden = !qr; $("wifiNameLine").hidden = !qr; $("wifiJoin").hidden = !join;
+        $("wifiJoinName").textContent = join ? st.wifi_join_name : "";
+        if(qr && typeof st.wifi_qr_svg === "string"){ $("wifiQr").innerHTML = st.wifi_qr_svg; }     // SVG from our own server
+        else { $("wifiQr").innerHTML = ""; }
         $("siteBadge").textContent = wifi ? "2" : "1";      // #70 03/04: numbered brass badges
         $("codeBadge").textContent = wifi ? "3" : "2";
         $("pairTitle").textContent = wifi ? "Pair a phone" : "Pair your phone";            // mock 03 / mock 04

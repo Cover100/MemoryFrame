@@ -15,3 +15,6 @@ data/
 
 # Python wheels / downloads
 *.whl
+
+# #69: written by install.sh into /opt/memoryframe
+/VERSION

@@ -41,6 +41,52 @@ mkdir -p "$APP_DIR/uploads"
 echo "== Data directory and one-time photo migration (MF-11)"
 DATA_DIR=/var/lib/memoryframe
 sudo install -d -o "$APP_USER" -g "$(id -gn)" -m 750 "$DATA_DIR"
+# #90: if the app is running, a failure (set -e) or a signal between the stop below and the normal restart
+# would leave the frame stopped with no screen. So, only when it was ACTIVE and we stop it, arm an exit trap
+# that restarts it once and keeps the original exit status. A service that was not running (fresh install, or
+# stopped on purpose) is never started by the trap. The trap is cleared before it acts, so it can't loop.
+# The restart comes FIRST and is capped at 60 s; messages follow, best effort: a dropped terminal (SIGHUP,
+# closed or broken stderr) must not stop the restart, so HUP/PIPE are ignored and set -e is off in here.
+restart_if_stopped() {
+    local rc=$?
+    trap - EXIT ERR
+    trap '' HUP PIPE
+    set +e
+    local restarted=0
+    timeout 60 sudo systemctl restart memoryframe.service && restarted=1
+    {
+        # "interrupted" only when one of our signal traps fired, not for a step that itself exited 129/130/143
+        case "$INTERRUPTED$rc" in
+            1*) echo "ERROR: install.sh was interrupted by a signal (exit $rc)." ;;
+            00) ;;
+            # FAIL_AT is only trusted if it was recorded for this same exit status (no stale line or command)
+            *) if [ "${FAIL_RC:-}" = "$rc" ] && [ -n "${FAIL_AT:-}" ]; then
+                   echo "ERROR: install.sh failed (exit $rc) at $FAIL_AT."
+               else
+                   echo "ERROR: install.sh failed (exit $rc) at an unknown step."
+               fi ;;
+        esac
+        if [ "$restarted" = 1 ]; then
+            echo "memoryframe.service, which install.sh had stopped, was restarted. The install is incomplete: re-run install.sh."
+        else
+            echo "ERROR: could not restart memoryframe.service: run 'sudo systemctl restart memoryframe.service'."
+        fi
+    } >&2 2>/dev/null
+    exit "$rc"
+}
+RESTART_ON_EXIT=0
+if systemctl is-active --quiet memoryframe.service 2>/dev/null; then
+    RESTART_ON_EXIT=1
+    FAIL_RC=""; FAIL_AT=""; INTERRUPTED=0
+    trap 'FAIL_RC=$?; FAIL_AT="line $LINENO: $BASH_COMMAND"' ERR
+    trap restart_if_stopped EXIT
+    # Signals must run the EXIT trap too (bash runs it on `exit`): Ctrl-C / SIGHUP / SIGTERM mid-install.
+    trap 'INTERRUPTED=1; exit 130' INT
+    trap 'INTERRUPTED=1; exit 143' TERM
+    trap 'INTERRUPTED=1; exit 129' HUP
+    # bash prints "Terminated"/"Hangup" for a killed step to stderr; if that pipe is gone the default SIGPIPE kills bash before the EXIT trap
+    trap '' PIPE
+fi
 # Stop the running app first so the migration has the database to itself.
 sudo systemctl stop memoryframe.service 2>/dev/null || true
 # Backs up uploads/ to $DATA_DIR/backups/legacy-uploads-<time>.tar (verified),
@@ -102,6 +148,11 @@ fi
 sudo systemctl enable memoryframe-netmode.service
 sudo systemctl enable memoryframe.service
 sudo systemctl restart memoryframe.service
+# Restarted normally: disarm the #90 exit trap and give the signals their default behaviour back.
+if [ "$RESTART_ON_EXIT" = 1 ]; then
+    RESTART_ON_EXIT=0
+    trap - EXIT ERR INT TERM HUP PIPE
+fi
 
 echo "== Case fan (gpio-fan overlay, GPIO 14, on at 60 C)"
 if ! sudo env MEMORYFRAME_BOOT_CONFIG="${MEMORYFRAME_BOOT_CONFIG:-}" bash "$APP_DIR/deploy/fan-overlay.sh"; then

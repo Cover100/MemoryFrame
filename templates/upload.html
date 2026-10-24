@@ -5,14 +5,14 @@
 {% block content %}
 <div id="storage" class="card storeCard">
   {% if st %}{{ storage_meter(st) }}
-  <p class="small muted flush" id="storeRoom">{% if st.photos_left is not none %}Room for about {{ "{:,}".format(st.photos_left) }} more photos.{% endif %}</p>
+  <p class="small muted flush" id="storeRoom">{% if st.photos_left == 0 %}The frame is almost full. Delete some photos and try again.{% elif st.photos_left is not none %}Room for about {{ "{:,}".format(st.photos_left) }} more photos.{% endif %}</p>
   {% else %}<p class="small muted flush">Free space unknown.</p>{% endif %}
 </div>
-<label class="pick drop" id="drop">
+<label class="pick drop{% if st and st.photos_left == 0 %} busy{% endif %}" id="drop"{% if st and st.photos_left == 0 %} aria-disabled="true"{% endif %}>
   <span class="dropIco" aria-hidden="true">＋</span>
   <span class="btn big block" id="pickLabel">Choose photos</span>
   <span class="small muted dropHint">From your phone's gallery. JPEG, PNG, WebP, GIF or HEIC. Big photos are made smaller to fit the frame, and the full-size original isn't kept.</span>
-  <input id="files" type="file" accept="image/*,.heic,.heif" multiple data-store-w="{{ store_w }}" data-store-h="{{ store_h }}">
+  <input id="files" type="file" accept="image/*,.heic,.heif" multiple{% if st and st.photos_left == 0 %} disabled{% endif %} data-store-w="{{ store_w }}" data-store-h="{{ store_h }}">
 </label>
 <div id="summary" class="ok-box" aria-live="polite"></div>
 <ul id="list" class="mt"></ul>

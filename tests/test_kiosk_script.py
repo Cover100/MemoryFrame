@@ -205,3 +205,18 @@ def test_log_records_full_launch_command(env):
     for flag in ("--password-store=basic", "--no-first-run", "--ozone-platform-hint=auto",
                  "--disable-gpu", "http://localhost:5000"):
         assert flag in line, flag
+
+
+def test_log_rotated_inside_a_crash_loop(env):
+    """#96: rotation is checked before every launch, so a crash loop can't grow the log without bound."""
+    tmp_path, _, _, e = env
+    noisy = tmp_path / "bin" / "chromium"
+    noisy.write_text(f'#!/bin/bash\nprintf "%s\\n" "$@" > "{tmp_path}/calls.$(date +%s%N)"\n'
+                     'printf "%*s\\n" 400000 "" >&2\nexit 1\n')
+    log = tmp_path / ".cache" / "memoryframe-kiosk.log"
+    old = tmp_path / ".cache" / "memoryframe-kiosk.log.1"
+    run_until(e, lambda: len(launches(tmp_path)) >= 7, timeout=60)
+    assert old.exists()
+    assert log.stat().st_size <= 1048576 + 500000 and old.stat().st_size <= 1048576 + 500000
+    assert sorted(p.name for p in log.parent.glob("memoryframe-kiosk.log*")) == ["memoryframe-kiosk.log",
+                                                                              "memoryframe-kiosk.log.1"]

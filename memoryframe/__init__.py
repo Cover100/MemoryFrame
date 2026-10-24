@@ -65,7 +65,11 @@ def _refresh_copies_in_background(app):
     from . import imaging
 
     def run():
-        try:                    # #86: low priority (this thread only), so the kiosk browser is not starved
+        # #86: low priority (this thread only), so the kiosk browser is not starved. A request that needs the
+        # decode lock while this thread holds it waits for at most ONE photo (the lock is taken per photo and the
+        # pause is outside it). Not worth fixing (#92): an unprivileged thread cannot raise its priority back, and
+        # copying outside the lock would allow two decodes at once on a small-RAM Pi.
+        try:
             os.setpriority(os.PRIO_PROCESS, threading.get_native_id(), 10)
         except (AttributeError, OSError):
             pass

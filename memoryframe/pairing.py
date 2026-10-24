@@ -8,6 +8,7 @@
   GET  /frame/status           frame (localhost): IP, SSID, free storage, version (MF-19 menu)
 """
 import os
+import time
 
 from flask import Blueprint, current_app, jsonify, make_response, redirect, render_template, request
 

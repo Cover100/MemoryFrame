@@ -65,7 +65,7 @@ def main():
 
     progress = watchdog.Progress(app.wsgi_app)       # #95: upload progress, so a busy upload isn't a hang
     app.wsgi_app = progress
-    watchdog.start(app, progress, ports[-1] if 5000 not in ports else 5000)
+    watchdog.start(app, progress, 5000 if 5000 in ports else ports[0])
 
     serve(app, listen=listen, threads=4)
 

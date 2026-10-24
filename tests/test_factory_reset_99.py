@@ -86,7 +86,7 @@ def test_erase_exact_set_and_nothing_else(fr):
 
 def test_marker_removed_last(fr):
     s = SCRIPT.read_text().split("erase() {", 1)[1].split("\n}\n", 1)[0]
-    assert s.index('rm -f "$MARKER"') > s.index("rm -rf") > s.index("mv -f")
+    assert s.index('rm -f "$MARKER"') > s.index("rm -rf --one-file-system -- \"$t\"") > s.index("mv -f -t")
     assert s.index('rm -f "$MARKER"') < s.index("--no-block start")
 
 
@@ -306,3 +306,53 @@ def test_keep_photos_confirm_then_reload(page, server, mf_app, net, tmp_path):
     page.pump(2.5)
     assert evaluate(page, "window.__before === undefined")                   # reloaded
     assert not out.exists()
+
+
+# ---------------- Sage MF-113-1 / MF-113-2: planted symlinks in the app-owned data dir ----------------
+
+def test_planted_marker_tmp_and_marker_symlinks_never_written_through(fr):
+    victim = fr.outside / "authorized_keys"
+    before = victim.read_text()
+    (fr.data / ".factory-reset.tmp").symlink_to(victim)      # the old fixed tmp name
+    (fr.data / ".factory-reset").symlink_to(fr.outside / "hotspot.conf")
+    fr.request()
+    r = fr.run()
+    assert r.returncode == 0, r.stderr
+    assert victim.read_text() == before and (fr.outside / "hotspot.conf").read_text() == "hotspot.conf-content"
+    assert fr.log.read_text().splitlines()[0] == "systemctl stop memoryframe.service"   # stop before the marker
+    s = SCRIPT.read_text()
+    assert 'mktemp "$DATA/.factory-reset.XXXXXX"' in s and 'mv -fT -- "$tmp" "$MARKER"' in s
+    assert '> "$MARKER.tmp"' not in s
+
+
+def test_planted_erasing_symlink_on_demand_is_unlinked_not_followed(fr, tmp_path):
+    import time
+    trap = tmp_path / "attacker"
+    trap.mkdir()
+    now = int(time.time())
+    for i in range(-2, 30):                                  # the id is date +%s: cover the run
+        (fr.data / f".erasing-{now + i}").symlink_to(trap)
+    fr.request()
+    r = fr.run()
+    assert r.returncode == 0, r.stderr
+    assert list(trap.iterdir()) == []                        # nothing moved into the attacker's dir
+    end_state_ok(fr)
+
+
+def test_planted_erasing_symlink_and_foreign_dir_on_boot(fr, tmp_path):
+    trap = tmp_path / "attacker"
+    trap.mkdir()
+    (fr.data / ".factory-reset").write_text("erase 4242\n")   # mfapp chose the id
+    (fr.data / ".erasing-4242").symlink_to(trap)
+    r = fr.run()
+    assert r.returncode == 0, r.stderr
+    assert list(trap.iterdir()) == []
+    end_state_ok(fr)
+    # a pre-made directory that isn't ours/0700 is removed, not reused
+    (fr.data / ".factory-reset").write_text("erase 4343\n")
+    d = fr.data / ".erasing-4343"
+    d.mkdir(mode=0o755); os.chmod(d, 0o755)
+    (fr.data / "frame_message.txt").write_text("m")
+    r = fr.run()
+    assert r.returncode == 0, r.stderr
+    end_state_ok(fr)

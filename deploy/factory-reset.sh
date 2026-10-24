@@ -11,9 +11,10 @@
 # Changing the hotspot name or password is a PC script only, never this helper.
 #
 # Steps (each power-cut safe; boot resumes from the marker):
-#   1 marker  $DATA/.factory-reset ("erase <id>"), fsync
-#   2 stop the app (on demand only; at boot it has not started)
-#   3 mkdir $DATA/.erasing-<id>, mv the targets in (same filesystem: atomic renames), sync
+#   1 stop the app (on demand only; at boot it has not started), so mfapp can't plant links from here on
+#   2 marker  $DATA/.factory-reset ("erase <id>"): mktemp (O_EXCL, never follows a link) + mv -fT, sync
+#   3 fresh root-owned 0700 $DATA/.erasing-<id> (a planted link/dir is removed first), mv -t the targets in
+#     (same filesystem: atomic renames), sync
 #   4 rm -rf every .erasing-*, fstrim where supported, recreate the empty layout (data dir owner, 0750)
 #   5 remove the marker LAST, sync, start the app (--no-block: this unit is ordered before it)
 # Files are unlinked and trimmed, not forensically wiped (see docs/runbooks/factory-reset.md).
@@ -66,12 +67,21 @@ valid_id() { [[ "$1" =~ ^[0-9]{1,20}$ ]]; }
 erase() {   # $1 = id; $2 = on-demand|boot
     local id="$1" t owner group
     [ -d "$DATA" ] && [ ! -L "$DATA" ] || { log "data dir missing"; exit 1; }
-    if [ "$2" = on-demand ]; then
-        "$SYSTEMCTL" stop memoryframe.service || log "could not stop the app"
+    # Sage MF-113-2: the app (mfapp) owns $DATA and the id is predictable, so .erasing-<id> may be a planted
+    # symlink or directory. Only a dir we made (ours, 0700, from an interrupted reset) is reused; anything
+    # else is removed (a link is unlinked, never followed), then created fresh without -p and checked.
+    local dir="$DATA/.erasing-$id" me; me="$(id -u)"
+    if [ -L "$dir" ] || { [ -e "$dir" ] && [ ! -d "$dir" ]; }; then
+        rm -f -- "$dir"
+    elif [ -d "$dir" ] && [ "$(stat -c %u:%a "$dir")" != "$me:700" ]; then
+        rm -rf --one-file-system -- "$dir"
     fi
-    mkdir -p "$DATA/.erasing-$id"
+    [ -d "$dir" ] || mkdir -m 0700 -- "$dir"
+    if [ ! -d "$dir" ] || [ -L "$dir" ] || [ "$(stat -c %u "$dir")" != "$me" ]; then
+        log "refused: $dir is not our own directory"; exit 1
+    fi
     for t in $TARGETS; do
-        if [ -e "$DATA/$t" ] || [ -L "$DATA/$t" ]; then mv -f -- "$DATA/$t" "$DATA/.erasing-$id/"; fi
+        if [ -e "$DATA/$t" ] || [ -L "$DATA/$t" ]; then mv -f -t "$dir" -- "$DATA/$t"; fi
     done
     "$SYNC" || true
     for t in "$DATA"/.erasing-*; do
@@ -99,11 +109,17 @@ marker_id() {
 rc=0; read_request || rc=$?
 if [ "$rc" = 2 ]; then exit 2; fi
 if [ "$rc" = 0 ]; then
-    if [ -L "$MARKER" ]; then rm -f "$MARKER"; fi
-    id="$(date +%s)"
-    ( umask 077; printf 'erase %s\n' "$id" > "$MARKER.tmp"; mv -f "$MARKER.tmp" "$MARKER" )
-    "$SYNC" || true
     log "erase everything requested"
+    # Stop the app FIRST: from here mfapp can't race us with new links in $DATA.
+    "$SYSTEMCTL" stop memoryframe.service || log "could not stop the app"
+    [ -d "$DATA" ] && [ ! -L "$DATA" ] || { log "data dir missing"; exit 1; }
+    id="$(date +%s)"
+    # Sage MF-113-1: never write through a path mfapp could have made a symlink. mktemp creates a new file
+    # (O_EXCL, 0600); mv -fT renames it over the marker (a planted marker link is replaced, not followed).
+    tmp="$(mktemp "$DATA/.factory-reset.XXXXXX")"
+    printf 'erase %s\n' "$id" > "$tmp"
+    mv -fT -- "$tmp" "$MARKER"
+    "$SYNC" || true
     erase "$id" on-demand
     exit 0
 fi

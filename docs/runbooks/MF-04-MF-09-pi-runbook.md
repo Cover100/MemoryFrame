@@ -325,7 +325,7 @@ git worktree add ~/mf-hotspot origin/mf-09-hotspot
 cd ~/mf-hotspot
 grep -q "MANUAL ONLY" deploy/hotspot.sh && echo "fixed version"   # must print "fixed version"
 cp deploy/hotspot.conf.example deploy/hotspot.conf && chmod 600 deploy/hotspot.conf
-nano deploy/hotspot.conf          # SSID + a NEW password, 12+ chars (git-ignored, never commit)
+nano deploy/hotspot.conf          # SSID + a NEW password, 12+ chars (git-ignored, never commit); seeds the MemoryFrame-hotspot profile
 nmcli -t -f NAME,DEVICE connection show --active > ~/nm-active-before.txt   # baseline
 ./deploy/hotspot.sh               # default: save only
 nmcli -f connection.autoconnect,802-11-wireless.mode connection show MemoryFrame-hotspot   # autoconnect: no, mode: ap

@@ -111,30 +111,67 @@ def test_service_binds_port_80_without_root():
 @needs_dnsmasq
 @pytest.mark.skipif(shutil.which("dig") is None, reason="dig not installed")
 def test_dns_answers_lan_names_and_fast_nxdomain(env, tmp_path):
-    """Run the real dnsmasq with our drop-in on a high port (as NM's shared mode would)."""
+    """Run the real dnsmasq with our drop-in on a high port (as NM's shared mode would).
+
+    Deflaked: the port used to be probed with a UDP socket only, then closed, and dnsmasq given 0.5 s.
+    dnsmasq also listens on TCP on that port, so a TCP user of that ephemeral port (or a race with
+    another process) made it exit with "Address already in use" (CI, pytest 3.13 on main d106318/d1dd670).
+    Now the port must be free for UDP and TCP, an address-in-use exit retries on a new port, and the test
+    waits until dnsmasq answers instead of sleeping a fixed time. The checks below are unchanged."""
     import socket
     import time
     _, root, _, e = env
     run(e)
     conf = root / "etc/NetworkManager/dnsmasq-shared.d/memoryframe.conf"
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    d = subprocess.Popen([DNSMASQ, "--keep-in-foreground", "--no-resolv", "--no-hosts",
-                          "--bind-interfaces", "--listen-address=127.0.0.1", f"--port={port}",
-                          f"--conf-file={conf}", "--user=" + __import__("getpass").getuser(),
-                          f"--pid-file={tmp_path}/dnsmasq.pid"],
-                         stderr=subprocess.PIPE, text=True)
-    try:
-        time.sleep(0.5)
-        assert d.poll() is None, d.stderr.read()
 
-        def dig(name):
-            t = time.monotonic()
-            r = subprocess.run(["dig", "+tries=1", "+time=2", "-p", str(port), "@127.0.0.1", name, "A"],
-                               capture_output=True, text=True)
-            return r.stdout, time.monotonic() - t
+    def free_port():
+        while True:
+            u = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            u.bind(("127.0.0.1", 0))
+            port = u.getsockname()[1]
+            t = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            try:
+                t.bind(("127.0.0.1", port))
+                return port
+            except OSError:
+                continue
+            finally:
+                t.close()
+                u.close()
+
+    def dig(name, timeout=2):
+        t = time.monotonic()
+        r = subprocess.run(["dig", "+tries=1", f"+time={timeout}", "-p", str(port), "@127.0.0.1", name, "A"],
+                           capture_output=True, text=True)
+        return r.stdout, time.monotonic() - t
+
+    d = None
+    for _attempt in range(5):
+        port = free_port()
+        d = subprocess.Popen([DNSMASQ, "--keep-in-foreground", "--no-resolv", "--no-hosts",
+                              "--bind-interfaces", "--listen-address=127.0.0.1", f"--port={port}",
+                              f"--conf-file={conf}", "--user=" + __import__("getpass").getuser(),
+                              f"--pid-file={tmp_path}/dnsmasq.pid"],
+                             stderr=subprocess.PIPE, text=True)
+        deadline = time.monotonic() + 10
+        ready = False
+        while time.monotonic() < deadline and d.poll() is None:
+            if "status: NOERROR" in dig("memoryframe.lan", timeout=1)[0]:
+                ready = True
+                break
+            time.sleep(0.05)
+        if ready:
+            break
+        if d.poll() is None:
+            d.terminate()
+            d.wait(timeout=5)
+            pytest.fail("dnsmasq started but never answered within 10 s")
+        err = d.stderr.read()
+        assert "Address already in use" in err, err      # any other start failure is a real failure
+    else:
+        pytest.fail("dnsmasq: port in use on 5 attempts")
+    try:
+        assert d.poll() is None, d.stderr.read()
 
         out, _ = dig("memoryframe.lan")
         assert "status: NOERROR" in out and "10.42.0.1" in out

@@ -64,7 +64,7 @@ def current_wifi(conn):
     #89: the SSID is the one the NetworkManager profile MemoryFrame-hotspot really broadcasts
     (deploy/netmode.sh writes it to netmode.json, SSID only). The app never reads the password back
     from NetworkManager, so the password comes from a copy that is known to belong to that SSID:
-    the committed MF-18 value, else hotspot.conf. If neither matches the live SSID (the profile was
+    the committed MF-18 value (only when BOTH wifi_ssid and wifi_password are stored), else hotspot.conf. If neither matches the live SSID (the profile was
     edited by hand) the password is None: no Wi-Fi QR, rather than a QR with a wrong password.
     Without a profile SSID (dev machines, first boot, nmcli down) the old order applies: a committed
     MF-18 change, then MEMORYFRAME_SSID / hotspot.conf."""
@@ -201,7 +201,7 @@ def reconcile(conn, nm):
 def startup_check(app):
     """Reconcile a pending change with the real profiles (see reconcile); only a still-existing
     pending profile is rolled back. After a memoryframe-reset boot the hotspot.conf defaults are
-    back: drop the override."""
+    back: drop the override (the app then shows the hotspot.conf seed again)."""
     conn = connect(app.config["DB_PATH"])
     try:
         nm = frameinfo.netmode_state()

@@ -119,10 +119,11 @@ accepted because the commands are fixed; a dedicated system user would be a late
 - Pending: old profile kept, frame shows the new Wi-Fi QR and a 5:00 countdown.
 - Keep: a paired phone on the new hotspot (10.42.0.0/24) taps `Keep new Wi-Fi` → pending becomes
   `MemoryFrame-hotspot`, old profile deleted. The app stores the new name/password (for the QR)
-  in its database; `deploy/hotspot.conf` is not changed.
+  in its database (the password is never read back from the profile; the shown name comes from it, #89); `deploy/hotspot.conf` is not changed, so it
+  no longer matches the live hotspot.
 - Rollback: timeout, activation failure, app restart or reboot while pending → old hotspot back,
   pending profile deleted. Mode switches (`netmode.sh product|dev|dev-temp`) are refused while pending, and
   Wi-Fi changes are refused (409) in developer mode (incl. until-reboot) or during a switch.
-- `memoryframe-reset` recreates the hotspot from `deploy/hotspot.conf`; the app then drops its stored
+- `memoryframe-reset` recreates the `MemoryFrame-hotspot` profile from `/etc/memoryframe/hotspot.conf` (the `install.sh` copy of `deploy/hotspot.conf`); the app then drops its stored
   name/password so the QR matches again.
 - After updating the code, re-run `deploy/install.sh` so the root-owned helper copy is refreshed.

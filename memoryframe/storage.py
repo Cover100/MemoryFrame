@@ -53,6 +53,22 @@ def resolve_data_dir():
     return fallback
 
 
+# Hollis on #100 (F1): start-up cleanup can run while another process serves uploads (a dev run, or a
+# second start racing the service). A file that changed in the last minute may belong to a live upload,
+# so the tmp sweeps and the orphan reconcile leave it for the next start. An age check needs no lock
+# shared between processes and cannot deadlock; a real upload's temp file never sits unchanged for 60 s.
+SETTLE_S = 60
+
+
+def settled(path, now=None):
+    """True if path was last modified at least SETTLE_S ago (False if it vanished)."""
+    import time
+    try:
+        return (now if now is not None else time.time()) - os.path.getmtime(path) >= SETTLE_S
+    except OSError:
+        return False
+
+
 MAX_CAP_MP = 150      # no pixel cap may be set above this (Pillow's own limit is raised to exactly this, imaging.py)
 
 

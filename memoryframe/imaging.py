@@ -758,17 +758,19 @@ def _sweep_trash(conn, data_dir):
     return restored, removed, kept
 
 
-_TMP_LEFTOVER = re.compile(r"^(upload-[0-9a-f]{32}|[0-9a-f]{32}\.[a-z0-9]+(\.tmp)?|.*\.tmp)$")
+_TMP_LEFTOVER = re.compile(r"^(upload-[0-9a-f]{32}|[0-9a-f]{32}\.[a-z0-9]+(\.tmp|\.sha256)?|.*\.tmp)$")
 
 
 def _sweep_tmp(data_dir):
     """Start-up: remove upload/save leftovers (up to 50 MB each) from tmp/ after a crash. Nothing is in
-    flight at start-up. tmp/trash (a directory, handled by _sweep_trash) is never touched."""
+    flight in THIS process at start-up; files changed in the last storage.SETTLE_S may belong to another
+    process's upload and are kept (F1). tmp/trash (a directory, handled by _sweep_trash) is never touched."""
+    from . import storage
     d = os.path.join(data_dir, "tmp")
     n = 0
     for f in os.listdir(d) if os.path.isdir(d) else []:
         p = os.path.join(d, f)
-        if _TMP_LEFTOVER.match(f) and os.path.isfile(p):
+        if _TMP_LEFTOVER.match(f) and os.path.isfile(p) and storage.settled(p):
             try:
                 os.remove(p)
                 n += 1
@@ -792,8 +794,5 @@ def sweep(conn, data_dir):
                     swept += 1
                 except OSError:
                     pass
-    odir = os.path.join(data_dir, "originals")
-    orphans = [f for f in os.listdir(odir) if os.path.splitext(f)[0] not in known] if os.path.isdir(odir) else []
-    if orphans:
-        log.warning("%d original(s) not in the database were kept: %s", len(orphans), orphans[:5])
+    # originals/ files without a row are handled by library.reconcile_orphans (adopt or report, never delete)
     return swept

@@ -202,6 +202,13 @@
     </div>
     <!-- #99: reset in progress (not dismissable); reloads into the welcome screen (#98) when done. -->
     <div id="resetCover" role="status" hidden>
+        <!-- Wren nit: static brass plug mark like the shutdown screen (no animation) -->
+        <svg class="resetPlug" viewBox="0 0 168 168" aria-hidden="true" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="84" cy="84" r="78" stroke-width="6"/>
+            <path d="M70 40v20M98 40v20" stroke-width="8"/>
+            <path d="M58 60h52v18a26 26 0 0 1-52 0z" fill="currentColor" stroke-width="6"/>
+            <path d="M84 104v14a12 12 0 0 0 12 12h6" stroke-width="7"/>
+        </svg>
         <div class="resetTitle">Resetting…</div>
         <div class="resetSub">Don't unplug</div>
     </div>

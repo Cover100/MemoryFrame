@@ -540,7 +540,9 @@ body:has(.overlay.visible,#shuttingDown:not([hidden]),#safeScreen:not([hidden]),
 /* 08/09-v2: 600 px cards, 28 px padding, 64 px buttons pinned to the bottom */
 #devModeBox,#shutdownBox,#confirmBox{width:600px;min-height:272px;padding:28px;display:flex;flex-direction:column}
 #devModeAsk,#devModeDone,#shutdownAsk,#confirmAsk{flex:1;display:flex;flex-direction:column}
-.shutdownButtons{display:flex;justify-content:space-between;margin-top:auto}
+/* Wren #113: 16 px gap so a default button's brass ring never touches its neighbour */
+.shutdownButtons{display:flex;justify-content:space-between;gap:16px;margin-top:auto}
+.shutdownButtons>button{min-width:0}
 #shutdownCancel{background:var(--mf-forest-800);color:var(--mf-linen);border:2px solid var(--mf-forest-700)}
 #shutdownConfirm{background:var(--mf-brick);color:#fff}
 #shutdownError{font-size:20px;color:var(--mf-brick-text);margin-top:10px}
@@ -626,13 +628,14 @@ body.mf-safe-final .media{animation:none!important;transition:none!important}
 .toolsPanel{flex:1;display:flex;flex-direction:column}
 .toolsPanel[hidden]{display:none}
 .toolsList{display:flex;flex-direction:column;gap:12px;margin-top:16px}
-.toolsList button{min-height:56px;font-size:22px}
+.toolsList button{min-height:64px;height:64px;font-size:22px}
 #toolsClose,#resetKeep,.resetCancel{outline:var(--mf-ring-width) solid var(--mf-brass);outline-offset:3px}
 .resetCancel{background:var(--mf-forest-800);color:var(--mf-linen);border:2px solid var(--mf-forest-700);flex:1.4;font-size:24px}
-#resetKeepConfirm{background:var(--mf-brass);color:var(--mf-ink)}
-#resetEraseHold{position:relative;overflow:hidden;background:var(--mf-forest-800);color:var(--mf-brick-text);
-  border:2px solid var(--mf-brick-text)}
-#resetEraseHold .holdFill{position:absolute;inset:0;background:var(--mf-brick-text);opacity:.35;
+#resetKeepConfirm{background:var(--mf-forest-600);color:var(--mf-linen);flex:1}   /* quieter than the default ring */
+/* Wren must-fix: clearly destructive (brick fill, linen label); hold progress = a 6 px linen bar along the
+   bottom, grown with transform only */
+#resetEraseHold{position:relative;overflow:hidden;background:var(--mf-brick);color:var(--mf-linen);border:0;flex:1}
+#resetEraseHold .holdFill{position:absolute;left:0;right:0;bottom:0;height:6px;background:var(--mf-linen);
   transform:scaleX(0);transform-origin:left center}
 #resetEraseHold.holding .holdFill{transform:scaleX(1);transition:transform 2s linear}
 #resetEraseHold .holdLabel{position:relative}
@@ -640,4 +643,5 @@ body.mf-safe-final .media{animation:none!important;transition:none!important}
   flex-direction:column;align-items:center;justify-content:center;font-family:var(--mf-font-frame);touch-action:none}
 #resetCover[hidden]{display:none}
 #resetCover .resetTitle{font-size:40px;font-weight:700}
-#resetCover .resetSub{font-size:24px;margin-top:12px}
+#resetCover .resetSub{font-size:30px;font-weight:700;margin-top:12px;color:var(--mf-brass)}
+#resetCover .resetPlug{color:var(--mf-brass);width:120px;height:120px;margin-bottom:20px}

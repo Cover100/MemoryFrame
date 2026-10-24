@@ -95,7 +95,8 @@ def home():
     # the same name). Only the offline panel (phone_wifi) hides it in dev: there it says which network to rejoin.
     return render_template("admin_home.html", wifi_notice=wifi.admin_notice(conn),
                            just_paired=request.args.get("paired") == "1", preview=preview, total=total,
-                           st=phone_storage(), s=settings.get_all(conn), ssid=wifi.current_wifi(conn)[0] or "")
+                           st=phone_storage(), s=settings.get_all(conn), ssid=wifi.current_wifi(conn)[0] or "",
+                           home_wifi=_home_wifi_link())
 
 
 @bp.route("/sign-out-all", methods=["POST"])
@@ -131,3 +132,9 @@ def settings_page():
     return render_template("settings.html", s=settings.get_all(get_db()), slides=settings.SLIDE_SECONDS,
                            message=message.get(current_app.config["DATA_DIR"]),
                            message_max=message.MAX_LEN, about=about)
+
+
+def _home_wifi_link():
+    """#68: the menu entry only while the page's gate holds."""
+    from . import homewifi, wifi as _wifi
+    return homewifi.available() and _wifi._from_hotspot()

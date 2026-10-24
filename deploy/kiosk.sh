@@ -105,7 +105,8 @@ LIVE_EVERY="${MEMORYFRAME_LIVENESS_EVERY:-20}"
 LIVE_MAX_AGE="${MEMORYFRAME_LIVENESS_MAX_AGE:-120}"
 LIVE_KILLS=3
 LIVE_WINDOW=600
-KILLS_FILE="${XDG_RUNTIME_DIR:-/tmp}/memoryframe-kiosk.kills"
+# Sage (#111): never /tmp (shared, predictable name); the user's own state dir if there is no runtime dir.
+KILLS_FILE="${XDG_RUNTIME_DIR:-$STATE_DIR}/memoryframe-kiosk.kills"
 BACKOFF_BASE="${MEMORYFRAME_KIOSK_BACKOFF:-2}"
 BACKOFF_MAX=60
 

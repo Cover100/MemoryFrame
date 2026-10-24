@@ -239,3 +239,10 @@ def test_liveness_no_kill_when_fresh_or_shutting_down(env, body):
 def test_crash_backoff_doubles():
     s = SCRIPT.read_text()
     assert 'delay=$((delay * 2))' in s and "BACKOFF_MAX=60" in s and '-gt 60 ] && delay="$BACKOFF_BASE"' in s
+
+
+def test_kills_file_never_in_tmp():
+    """Sage (#111): the kill-rate file lives in $XDG_RUNTIME_DIR or the kiosk state dir, never /tmp."""
+    s = SCRIPT.read_text()
+    assert 'KILLS_FILE="${XDG_RUNTIME_DIR:-$STATE_DIR}/memoryframe-kiosk.kills"' in s
+    assert "/tmp" not in [l for l in s.splitlines() if l.startswith("KILLS_FILE=")][0]

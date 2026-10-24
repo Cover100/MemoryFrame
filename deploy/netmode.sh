@@ -519,7 +519,7 @@ valid_home_psk() { printf '%s' "$1" | LC_ALL=C grep -qxE '[ -~]{8,63}|[0-9A-Fa-f
 hex_to_bytes() {   # even-length lowercase/uppercase hex -> raw bytes on stdout
     local h="$1" i
     [[ "$h" =~ ^([0-9A-Fa-f]{2}){1,32}$ ]] || return 1
-    for ((i = 0; i < ${#h}; i += 2)); do printf "\\x${h:i:2}"; done
+    for ((i = 0; i < ${#h}; i += 2)); do printf '%b' "\\x${h:i:2}"; done
 }
 
 delete_home_pending() {

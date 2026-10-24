@@ -181,9 +181,8 @@ nano deploy/hotspot.conf                             # set SSID and PASSWORD
   `MEMORYFRAME_SSID` and `MEMORYFRAME_WIFI_PASSWORD` are each applied on their own when set and non-empty, and
   whichever one is not set falls back to the same key in `deploy/hotspot.conf`.
 - **Change password/SSID from the shell:** edit `deploy/hotspot.conf`, re-run `./deploy/install.sh` (it copies the file to root-owned `/etc/memoryframe/hotspot.conf`, which the `memoryframe-reset` boot path uses), and re-run `./deploy/hotspot.sh`
-  (same profile, no duplicates, autoconnect stays off). The shown name follows the profile after the next reboot. If a phone change
-  was already committed, its stored password no longer matches, so the QR is replaced by "Join {name} with its password"
-  until `memoryframe-reset` (which clears the stored values) or a new change from the phone.
+  (same profile, no duplicates, autoconnect stays off). After the next reboot the app shows the profile's name; the QR uses the
+  file's password because its SSID matches the profile (a stored phone change with another name is no longer used).
 - **Rollback:** `./deploy/hotspot.sh --rollback`. If wlan0 does not come back on its own:
   `sudo nmcli connection up <your Wi-Fi profile>`.
 - On-device runbook: `docs/runbooks/MF-04-MF-09-pi-runbook.md`.

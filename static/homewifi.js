@@ -33,12 +33,21 @@
     $("hwConfirmName").textContent = ssid.value; $("hwConfirm").hidden = false; $("hwCancel").focus();
   };
   $("hwCancel").onclick = function () { $("hwConfirm").hidden = true; pw.value = ""; setPwShown(false); $("hwSave").focus(); };
-  $("hwConfirm").addEventListener("keydown", function (e) { if (e.key === "Escape") $("hwCancel").onclick(); });
+  $("hwConfirm").addEventListener("keydown", function (e) {
+    if (e.key === "Escape") { $("hwCancel").onclick(); return; }
+    if (e.key !== "Tab") return;
+    // Wren nit: keep Tab inside the modal (wrap between its first and last button).
+    var b = $("hwConfirm").querySelectorAll("button:not([hidden])"), first = b[0], last = b[b.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
   function failed(rateLimited) {
     // 429: "Try again in a few minutes." in the 12f layout, without the Try again button.
     $("hwFailedLine").textContent = rateLimited ? MSG.cooldown : "The frame is back on its own Wi-Fi. Your saved network did not change.";
+    $("hwFailedTitle").textContent = rateLimited ? "Too many tries" : "Couldn't connect";   // nothing was tried on 429
     $("hwFailedSteps").hidden = rateLimited; $("hwRetry").hidden = rateLimited;
     view("hwFailed");
+    if (rateLimited) $("hwFailedTitle").focus();   // Retry is hidden: focus the title, not <body>
   }
   var testing = "";
   function poll() {     // 12d: no countdown; keeps polling while the phone is off the frame's Wi-Fi
@@ -62,7 +71,10 @@
       .then(function (r) { return r.json().then(function (j) { return [r.status, j]; }); })
       .then(function (a) {
         if (a[0] === 429 || (a[1] && a[1].error === "cooldown")) { failed(true); return; }
-        if (a[0] !== 202) { showErr(a[1] && a[1].error, a[1] && a[1].error === "invalid_ssid" ? ssid : pw); return; }
+        if (a[0] !== 202) {
+          var code = a[1] && a[1].error;   // "busy" (409) is not the password's fault: no .bad field
+          showErr(code, code === "invalid_ssid" ? ssid : code === "busy" ? null : pw); return;
+        }
         testing = name; $("hwTestName").textContent = name; view("hwTesting"); setTimeout(poll, 3000);
       })
       .catch(function () { showErr("busy"); });

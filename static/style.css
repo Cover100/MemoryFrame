@@ -619,7 +619,7 @@ body.mf-safe-final .media{animation:none!important;transition:none!important}
 /* #68 (Wren 17a-17c): home Wi-Fi test overlay + 10 s result toast */
 .hw-frame{z-index:8750;font-family:var(--mf-font-frame)}
 .hw-frame-card{text-align:center;color:var(--mf-linen)}
-.hw-frame-card h2{font-size:34px;margin:20px 0 10px}
+.hw-frame-card h2{font-size:44px;margin:20px 0 10px}
 .hw-frame-card p{font-size:20px;color:var(--mf-oat);margin:0}
 .hw-frame-ring{width:72px;height:72px;margin:0 auto;border-radius:50%;border:6px solid var(--mf-forest-700);border-top-color:var(--mf-leaf);
     box-sizing:border-box;animation:hw-frame-spin 1.2s linear infinite}

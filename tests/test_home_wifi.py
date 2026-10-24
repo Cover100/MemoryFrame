@@ -283,3 +283,15 @@ def test_frame_overlay_and_toast_markup():
     assert 'id="homeWifiTesting"' in html and "Phones may disconnect for up to 90 seconds." in html
     assert "HW_TOAST_MS = 10 * 1000" in js and "Home Wi-Fi test failed" in js and "Home Wi-Fi saved" in js
     assert "Used next time the frame starts in developer mode." in js
+
+
+def test_wren_nits_pr108():
+    """Wren's #108 nits: 429 title + focus, busy not a field error, Tab trapped in confirm, 44 px frame title."""
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    js = (root / "static" / "homewifi.js").read_text()
+    assert '"Too many tries"' in js and 'if (rateLimited) $("hwFailedTitle").focus()' in js
+    assert 'code === "busy" ? null : pw' in js
+    assert 'e.key !== "Tab"' in js and "last.focus()" in js and "first.focus()" in js
+    assert 'id="hwFailedTitle" tabindex="-1"' in (root / "templates" / "home_wifi.html").read_text()
+    assert ".hw-frame-card h2{font-size:44px;" in (root / "static" / "style.css").read_text()

@@ -136,5 +136,5 @@ def settings_page():
 
 def _home_wifi_link():
     """#68: the menu entry only while the page's gate holds."""
-    from . import homewifi
-    return homewifi.available() and wifi._from_hotspot()
+    from . import homewifi, wifi as _wifi
+    return homewifi.available() and _wifi._from_hotspot()

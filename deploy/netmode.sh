@@ -269,7 +269,8 @@ dev_profile() {
     # ssid= given: the profile for that SSID. Otherwise the most recently used client profile.
     local ssid="$1" n best="" best_ts=-1 ts
     # #68: the Wi-Fi saved from the phone wins (the later intent; open decision recorded in the PR)
-    if client_profiles | grep -qxF "$HOME_CON"; then printf '%s\n' "$HOME_CON"; return 0; fi
+    local all; all="$(client_profiles)"        # (not piped into grep -q: SIGPIPE + pipefail)
+    if [[ $'\n'"$all"$'\n' == *$'\n'"$HOME_CON"$'\n'* ]]; then printf '%s\n' "$HOME_CON"; return 0; fi
     while IFS= read -r n; do
         if [ -n "$ssid" ]; then
             if [ "$(prop "$n" 802-11-wireless.ssid)" = "$ssid" ]; then printf '%s\n' "$n"; return 0; fi

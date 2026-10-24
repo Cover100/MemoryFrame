@@ -1,0 +1,21 @@
+# #68: root oneshot started by the app via polkit (deploy/memoryframe-polkit.rules); no sudo, no [Install].
+# Tests and saves the developer (home) Wi-Fi while dev mode has fallen back to the hotspot. The request
+# (v1, SSID hex, password) is in the app's 0700 runtime dir; the helper reads and removes it itself.
+# Output (no secrets) goes to /run/memoryframe/home-wifi.out; the result is /run/memoryframe/home-wifi.json.
+[Unit]
+Description=Memory Frame: test and save the developer Wi-Fi
+After=NetworkManager.service memoryframe-netmode.service
+
+[Service]
+Type=oneshot
+ExecStartPre=/bin/sleep 1
+ExecStart=/usr/local/sbin/memoryframe-netmode home-wifi --request
+TimeoutStartSec=120
+RuntimeDirectory=memoryframe
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+StandardOutput=truncate:/run/memoryframe/home-wifi.out
+StandardError=journal
+# Whatever happened (timeout kill included): request gone, hotspot back (idempotent if already up).
+ExecStopPost=/bin/rm -f /run/memoryframe-app/home-wifi
+ExecStopPost=-/usr/local/sbin/memoryframe-netmode home-wifi-restore

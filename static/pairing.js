@@ -229,6 +229,7 @@
             const showPair = success || firstRun || onDemand;
             const showEmpty = !showPair && !dismissed && st.paired > 0 && st.media === 0;
             pairOverlay.classList.toggle("visible", showPair);
+            if(!showPair){ $("pairCode").textContent = ""; $("pairQr").innerHTML = ""; }   // #98: no code in W1/W2
             pairOverlay.classList.toggle("toast", success);   // #70: top-centre toast over the photo
             if(showEmpty && !emptyOverlay.classList.contains("visible")){ openedAt.set(emptyOverlay, Date.now()); }
             emptyOverlay.classList.toggle("visible", showEmpty);

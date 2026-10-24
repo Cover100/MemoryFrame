@@ -3,7 +3,7 @@
   migrate [--no-backup]   back up and import the legacy uploads/ folder (one-time)
   status                  show data dir, database and media counts
   display-copies [--force] create missing display copies (MF-15 backfill)
-  check                   SQLite integrity check of the database (#69; exit 1 unless "ok")
+  check                   SQLite integrity check of the database (#69; exit 1 unless "ok" or if missing)
 """
 import argparse
 import sys
@@ -13,12 +13,13 @@ from .migrate import MigrationError, migrate_legacy
 
 
 def check(db_path):
-    """#69: read-only PRAGMA integrity_check (never creates or migrates the db). 0 only for "ok"."""
+    """#69: read-only PRAGMA integrity_check (mode=ro: never creates or migrates the db). 0 only for "ok";
+    a missing database is an error too (Hale)."""
     import os
     import sqlite3
     if not os.path.exists(db_path):
-        print(f"no database at {db_path} (nothing to check)")
-        return 0
+        print(f"ERROR: database not found: {db_path}", file=sys.stderr)
+        return 1
     try:
         conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=10)
         try:

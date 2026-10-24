@@ -296,7 +296,14 @@ def test_cli_check(tmp_path):
     assert check(str(db)) == 0
     db.write_bytes(b"SQLite format 3\x00" + b"\x00" * 200)
     assert check(str(db)) == 1
-    assert check(str(tmp_path / "none.db")) == 0
+    assert check(str(tmp_path / "none.db")) == 1
+    assert not (tmp_path / "none.db").exists()                  # never created by the check
+
+
+def test_cli_check_missing_db_message(tmp_path, capsys):
+    from memoryframe.__main__ import check
+    assert check(str(tmp_path / "x.db")) == 1
+    assert f"database not found: {tmp_path / 'x.db'}" in capsys.readouterr().err
 
 
 def test_cli_wrapper_runs_as_mfapp():

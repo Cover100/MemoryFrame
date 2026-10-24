@@ -164,7 +164,8 @@ if [ "$(stat -c %U "$DATA_DIR" 2>/dev/null)" != "$APP_USER" ] && sudo test -f /e
     ON_FAIL_CMD="sudo $MIGRATE rollback"
 fi
 sudo "$MIGRATE" chown-data
-sudo /usr/local/sbin/memoryframe-cli check
+# Integrity check of an existing database (a fresh install has none yet; `check` fails on a missing db).
+if sudo test -f "$DATA_DIR/memoryframe.db"; then sudo /usr/local/sbin/memoryframe-cli check; fi
 # The legacy uploads/ import reads the checkout as mfapp; if it can't (home dir 0750), skip it (done long ago).
 LEGACY=/nonexistent
 sudo runuser -u "$APP_USER" -- test -r "$SRC_DIR/uploads" -a -x "$SRC_DIR/uploads" 2>/dev/null && LEGACY="$SRC_DIR/uploads"

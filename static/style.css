@@ -626,10 +626,12 @@ body.mf-safe-final .media{animation:none!important;transition:none!important}
 #pairOverlay.welcome .step{padding:10px 12px;gap:6px;flex:0 0 266px;box-sizing:border-box}
 #pairOverlay.welcome #codeStep{flex:1 1 0;justify-content:center}
 #pairOverlay.welcome #wifiStep[hidden]~.step{flex:1 1 0}
-#pairOverlay.welcome .stepTitle{font-size:22px;white-space:nowrap}
+#pairOverlay.welcome .stepTitle{font-size:22px;white-space:nowrap;padding:0 8px}
 #pairOverlay.welcome .stepBadge{background:var(--mf-brass);color:var(--mf-ink)}
 #pairOverlay.welcome .qr svg,#pairOverlay.welcome #wifiStep[hidden]~.step .qr svg{width:240px;height:240px;max-width:none;background:#fff}
 #pairOverlay.welcome .stepText{font-size:20px}
+/* Wren must-fix: welcome shows only the bold name/URL (the old labels pushed the URL onto the footer) */
+#pairOverlay.welcome .oldLabel{display:none}
 #pairOverlay.welcome #pairCode{font-size:48px;letter-spacing:0}
 #pairOverlay.welcome #wifiStep[hidden]~#codeStep #pairCode{font-size:64px}
 #welcomeFoot{font-size:20px;color:var(--mf-oat);margin-top:8px;text-align:center}

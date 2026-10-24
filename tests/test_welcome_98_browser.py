@@ -20,6 +20,17 @@ def inside(page, ids):
     return evaluate(page, js)
 
 
+def no_overlap(page):
+    """Wren must-fix: no visible step line (name, URL, hint) overlaps the footer or another line."""
+    js = ("(()=>{const els=[...document.querySelectorAll('#pairBox .stepText, #welcomeFoot, #pairCode')]"
+          ".filter(e=>e.offsetParent&&e.getBoundingClientRect().height>0);"
+          "const r=els.map(e=>e.getBoundingClientRect());"
+          "for(let i=0;i<r.length;i++)for(let j=i+1;j<r.length;j++){const a=r[i],b=r[j];"
+          "if(a.left<b.right-1&&b.left<a.right-1&&a.top<b.bottom-1&&b.top<a.bottom-1)return els[i].id+'|'+els[j].id+'|'+els[i].innerText}"
+          "return ''})()")
+    return evaluate(page, js)
+
+
 def test_w0_three_steps_fit_and_no_forbidden_words(page, server, mf_app, net):
     page.pump(3)
     assert overlay(page)["visible"] and visible(page, "welcomeHead") and visible(page, "wifiStep")
@@ -29,6 +40,9 @@ def test_w0_three_steps_fit_and_no_forbidden_words(page, server, mf_app, net):
     for q in ("wifiQr", "pairQr"):
         assert evaluate(page, f"Math.round(document.querySelector('#{q} svg').getBoundingClientRect().width)") == 240
     assert inside(page, ["welcomeHead", "wifiStep", "codeStep", "welcomeFoot", "pairQr", "wifiQr", "pairCode"])
+    assert no_overlap(page) == ""
+    shown = evaluate(page, "document.getElementById('pairBox').innerText")
+    assert "Wi-Fi name" not in shown and "or open" not in shown
     assert evaluate(page, "document.documentElement.scrollHeight <= 480 && document.documentElement.scrollWidth <= 800")
     words = screen_text(page)
     assert not any(b in words for b in BAD), words
@@ -43,6 +57,7 @@ def test_w0_two_steps_without_wifi_qr(page, server, mf_app, net, monkeypatch):
     assert text(page, "siteTitle") == "Open the site on your phone" and text(page, "codeTitle") == "Type this code"
     assert text(page, "siteBadge") == "1" and text(page, "codeBadge") == "2"
     assert inside(page, ["welcomeHead", "codeStep", "welcomeFoot", "pairQr", "pairCode"])
+    assert no_overlap(page) == "" and "or open" not in evaluate(page, "document.getElementById('pairBox').innerText")
 
 
 def test_w0_to_w1_without_reload(page, server, mf_app, net):

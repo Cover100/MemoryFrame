@@ -3,6 +3,7 @@ integrity check), writes units atomically, reloads once, waits for /healthz, and
 (the migration rollback) before its one restart. deploy/memoryframe-migrate.sh is tested against stubs."""
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -138,8 +139,9 @@ def mig(tmp_path):
         (bin_ / name).write_text(f'#!/bin/bash\necho "{name} $*" >> "{log}"\n')
         (bin_ / name).chmod(0o755)
     # getent/id: mfapp exists once $T/user exists
-    (bin_ / "getent").write_text(f'#!/bin/bash\n[ -e "{tmp_path}/user" ]\n')
-    (bin_ / "id").write_text(f'#!/bin/bash\n[ -e "{tmp_path}/user" ]\n')
+    # (they print this test's own uid/gid, so the fchown in chown-data works unprivileged)
+    (bin_ / "getent").write_text(f'#!/bin/bash\n[ -e "{tmp_path}/user" ] && echo "mfapp:x:{os.getgid()}:"\n')
+    (bin_ / "id").write_text(f'#!/bin/bash\n[ -e "{tmp_path}/user" ] && echo {os.getuid()}\n')
     # find: the real one, but -user/-group mfapp would fail without the user: map to the current user
     me = subprocess.run(["id", "-un"], capture_output=True, text=True).stdout.strip()
     (bin_ / "find").write_text(f'#!/bin/bash\nargs=(); for a in "$@"; do [ "$a" = mfapp ] && a={me}; args+=("$a"); done\n'
@@ -198,6 +200,7 @@ def test_ensure_user_is_idempotent(mig):
 
 
 def test_chown_data_sets_modes_and_never_deletes(mig):
+    (mig["tmp"] / "user").touch()
     (mig["data"] / "memoryframe.db-wal").write_bytes(b"wal")
     os.chmod(mig["data"] / "originals" / "a.jpg", 0o664)
     r, log = mig["run"]("chown-data")
@@ -242,6 +245,45 @@ def test_boot_flag_runs_once(mig, content, real):
     assert ("systemctl restart --no-block memoryframe.service" in log) == real
     r, log2 = mig["run"]("boot-flag")                          # flag gone: nothing more
     assert r.returncode == 0 and log2 == log
+
+
+def test_chown_data_never_follows_symlinks_and_tightens_before_chown(mig):
+    (mig["tmp"] / "user").touch()
+    outside = mig["tmp"] / "outside"; outside.write_text("x"); os.chmod(outside, 0o604)
+    (mig["data"] / "link").symlink_to(outside)
+    (mig["data"] / "dirlink").symlink_to(mig["tmp"] / "etc")
+    r, _ = mig["run"]("chown-data")
+    assert r.returncode == 0, r.stderr
+    assert oct(outside.stat().st_mode & 0o777) == "0o604"            # target untouched
+    assert oct((mig["tmp"] / "etc").stat().st_mode & 0o777) != "0o750"
+    src = MIGRATE.read_text()
+    assert "O_NOFOLLOW" in src and src.index("os.fchmod(fd") < src.index("os.fchown(fd")
+    assert "chmod 0" not in src and "-exec chown" not in src
+
+
+def test_boot_flag_with_quotes_is_renamed_and_ignored(mig):
+    # Sage: xargs choked on a stray quote BEFORE the rename, so the unit failed on every boot.
+    mig["run"]("save-pack")
+    (mig["boot"] / "memoryframe-rollback.txt").write_text("rollback'\n")
+    r, log = mig["run"]("boot-flag")
+    assert r.returncode == 0, r.stderr
+    assert not (mig["boot"] / "memoryframe-rollback.txt").exists() and "nothing done" in r.stdout
+    assert "chown" not in log
+
+
+def test_rollback_unit_verifies():
+    u = ROOT / "deploy" / "units" / "memoryframe-rollback.service"
+    directives = [l for l in u.read_text().splitlines() if l and not l.startswith("#")]
+    for l in directives:                                            # no quoting in any directive
+        assert '"' not in l and "'" not in l, l
+    sa = shutil.which("systemd-analyze")
+    if not sa:
+        pytest.skip("systemd-analyze not installed (quoting check done)")
+    r = subprocess.run([sa, "verify", "--man=no", str(u)], capture_output=True, text=True)
+    # the ExecStart binary and memoryframe.service aren't installed here; any other complaint is a unit error
+    bad = [l for l in (r.stdout + r.stderr).splitlines()
+           if l.strip() and "memoryframe-migrate" not in l and "memoryframe.service" not in l]
+    assert not bad, bad
 
 
 # ---------------- app side ----------------

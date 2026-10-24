@@ -65,10 +65,37 @@ ensure_user() {
 
 chown_data() {
     install -d -m 0750 "$DATA"
-    # Only what isn't mfapp's yet, so a second run changes nothing. -h: never follow a symlink out.
-    find "$DATA" \( ! -user "$APP_USER" -o ! -group "$APP_USER" \) -exec chown -h "$APP_USER:$APP_USER" {} +
-    find "$DATA" -type d ! -perm 0750 -exec chmod 0750 {} +
-    find "$DATA" -type f ! -perm 0640 -exec chmod 0640 {} +
+    # Per entry, through a file descriptor opened with O_NOFOLLOW (a path swapped for a symlink is skipped,
+    # never followed): fchmod to 0750/0640 FIRST, then fchown to mfapp, so nothing is ever briefly more open
+    # than its final mode. Only regular files and dirs that aren't mfapp's yet or have another mode, so a
+    # second run changes nothing. Never deletes anything (the -wal/-shm files stay).
+    python3 - "$DATA" "$(id -u "$APP_USER")" "$(getent group "$APP_USER" | cut -d: -f3)" <<'PY'
+import os, stat, sys
+root, uid, gid = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
+def fix(path, is_dir):
+    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | (os.O_DIRECTORY if is_dir else 0)
+    try:
+        fd = os.open(path, flags)
+    except OSError:
+        return                                   # vanished or became a symlink: skip
+    try:
+        st = os.fstat(fd)
+        if not (stat.S_ISDIR(st.st_mode) if is_dir else stat.S_ISREG(st.st_mode)):
+            return
+        mode = 0o750 if is_dir else 0o640
+        if stat.S_IMODE(st.st_mode) != mode:
+            os.fchmod(fd, mode)
+        if (st.st_uid, st.st_gid) != (uid, gid):
+            os.fchown(fd, uid, gid)
+    finally:
+        os.close(fd)
+fix(root, True)
+for d, dirs, files in os.walk(root):            # never descends into symlinked dirs
+    for n in dirs:
+        fix(os.path.join(d, n), True)
+    for n in files:
+        fix(os.path.join(d, n), False)
+PY
 }
 
 rollback() {
@@ -91,9 +118,11 @@ rollback() {
 
 boot_flag() {
     [ -f "$FLAG" ] || return 0
-    local want; want="$(head -n1 "$FLAG" | tr -d '\r' | tr '[:upper:]' '[:lower:]' | xargs)"
-    # Rename first, so a failure below can never turn into a boot loop.
-    mv -f "$FLAG" "${FLAG%.txt}.done-$(date +%Y%m%d-%H%M%S).txt"
+    # Rename first, so nothing below (e.g. odd content) can make it run again on every boot.
+    local done; done="${FLAG%.txt}.done-$(date +%Y%m%d-%H%M%S).txt"
+    mv -f "$FLAG" "$done"
+    # First line, lower case, CR/space/tab stripped. Pure text handling: no xargs, which failed on quotes.
+    local want; want="$(head -n1 "$done" | tr -d ' \t\r' | tr '[:upper:]' '[:lower:]')" || want=""
     case "$want" in
         rollback) rollback && systemctl restart --no-block memoryframe.service ;;
         dry-run)  rollback --dry-run ;;

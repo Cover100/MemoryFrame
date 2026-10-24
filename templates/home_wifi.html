@@ -1,0 +1,37 @@
+{% extends "_phone.html" %}
+{% block title %}Developer Wi-Fi{% endblock %}
+{% block heading %}Developer <span class="nw">Wi-Fi</span>{% endblock %}
+{% block content %}
+<h1>Developer <span class="nw">Wi-Fi</span></h1>
+{% if saved %}<p class="muted">Saved: <b class="strong"><bdi id="savedName">{{ saved }}</bdi></b></p>{% endif %}
+<form id="homeForm" novalidate>
+  <div id="formStep">
+    <label class="f" for="hwSsid">Name</label>
+    <input class="field" id="hwSsid" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <label class="f" for="hwPassword">Password</label>
+    <div class="pw">
+      <input class="field" id="hwPassword" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+      <button type="button" id="hwShow" class="secondary small">Show</button>
+    </div>
+    <p class="err" id="hwError" role="alert" hidden></p>
+    <button type="submit" id="hwSave" class="block big mt">Test and save</button>
+  </div>
+  <div id="hwConfirm" class="scrim" hidden>
+    <div class="sheet" role="alertdialog" aria-modal="true" aria-labelledby="hwConfirmTitle">
+      <h2 id="hwConfirmTitle">Change home <span class="nw">Wi-Fi</span>?</h2>
+      <p>Your phone will disconnect from the frame for up to 90 seconds.</p>
+      <p class="flush">Network: <b><bdi id="hwConfirmName"></bdi></b></p>
+      <div class="rowb">
+        <button type="button" id="hwCancel" class="secondary big btn-default">Cancel</button>
+        <button type="button" id="hwGo" class="big">Test and save</button>
+      </div>
+    </div>
+  </div>
+</form>
+<div id="hwProgress" hidden>
+  <p><b>Testing <bdi id="hwTestName"></bdi>...</b></p>
+  <p class="small muted">Your phone may disconnect. Wait, or rejoin the frame's <span class="nw">Wi-Fi</span> at http://10.42.0.1/.</p>
+</div>
+<p id="hwResult" role="status" hidden></p>
+{% endblock %}
+{% block scripts %}<script src="{{ static('homewifi.js') }}"></script>{% endblock %}

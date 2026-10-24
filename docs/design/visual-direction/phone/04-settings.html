@@ -1,0 +1,17 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Settings</title>
+<!-- Memory Frame visual direction mock (Settings). 412x915. Mocks only, not app code. -->
+<link rel="stylesheet" href="phone.css"><style>
+section.card h2 { display:flex; justify-content:space-between; align-items:baseline; }
+.row { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+</style></head><body>
+<header class="bar"><a class="back" href="#">‹</a><div class="name"><span class="dot"></span>Settings</div></header>
+<main>
+  <section class="card"><h2>Slide time <span class="saved">✓ Saved</span></h2>
+    <div class="seg" role="radiogroup"><button aria-checked="false">5 s</button><button aria-checked="true">10 s</button><button aria-checked="false">30 s</button><button aria-checked="false">1 min</button><button aria-checked="false">5 min</button></div>
+    <p class="small muted" style="margin:10px 0 0">How long each photo stays on the frame.</p></section>
+  <section class="card"><h2>Transition</h2>
+    <div class="seg" role="radiogroup"><button aria-checked="true">Fade</button><button aria-checked="false">None</button></div></section>
+  <section class="card"><div class="row"><div><h2 style="margin:0 0 2px">Shuffle</h2><div class="small muted">Show photos in a random order</div></div><span class="switch" role="switch" aria-checked="true"></span></div></section>
+</main>
+</body></html>

@@ -1,0 +1,45 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Double-tap menu option B: info left, buttons right</title>
+<!-- Memory Frame visual direction mock (Double-tap menu option B: info left, buttons right). 800x480. Mocks only, not app code. -->
+<link rel="stylesheet" href="frame.css"><style>
+.menu2 { position:absolute; inset:20px; padding:28px; display:grid; grid-template-columns: 1fr 304px; gap:0 24px; }
+.menu2 .info { display:flex; flex-direction:column; min-width:0; }
+.menu2 .title { display:flex; align-items:center; gap:12px; margin:0 0 22px; }
+.menu2 .title .mark { width:14px; height:14px; border-radius:50%; background:var(--mf-brass); flex:none; }
+.store { margin-top:auto; }
+.store .lab { font-size:var(--mf-f-small); color:var(--mf-oat); margin:0 0 4px; }
+.store .val { font-size:var(--mf-f-body); font-weight:700; margin:0 0 10px; font-variant-numeric:tabular-nums; }
+.store .val span { font-weight:400; color:var(--mf-oat); }
+.store .track { height:8px; border-radius:4px; background:var(--mf-forest-700); overflow:hidden; }
+.store .used { height:100%; width:100%; background:var(--mf-leaf); transform-origin:left; } /* scaleX(used fraction) */
+.note { margin:0; background:var(--mf-walnut-900); border:1px solid var(--mf-walnut); border-radius:var(--mf-r-lg);
+        padding:14px 16px 16px; }
+.note .q { display:block; color:var(--mf-brass); font-size:44px; line-height:.6; height:22px; font-weight:700; }
+.note p { margin:0; font-size:var(--mf-f-label); line-height:1.35; color:var(--mf-linen);
+          display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:5; overflow:hidden; overflow-wrap:anywhere; } /* 140 chars of mixed case = 4 lines; 5 is the safety cap (all caps) */
+.note.empty { background:transparent; border:1px dashed var(--mf-walnut); padding:16px; }
+.note.empty b { display:block; font-size:var(--mf-f-label); color:var(--mf-oat); margin:0 0 4px; }
+.note.empty p { color:var(--mf-oat); font-size:var(--mf-f-small); display:block; }
+.stack { display:flex; flex-direction:column; justify-content:flex-end; gap:12px; }
+.stack .btn { width:100%; min-height:64px; padding:0 16px; white-space:nowrap; }
+.stack .btn-danger { margin-bottom:16px; } /* 12 + 16 = 28 px between Shut down and the rest */
+</style></head>
+<body><div id="frame">
+<img class="media" src="../assets/photo-landscape.jpg" alt="">
+<div class="scrim"><div class="card menu2" role="dialog" aria-label="Menu">
+  <div class="info">
+    <h1 class="title"><span class="mark"></span>Memory Frame</h1>
+    <figure class="note"><span class="q" aria-hidden="true">“</span><p>Happy 80th, Nana! Every photo on here was sent by one of us, from wherever we are. We miss you and we love you. Sam, Priya and the kids xx</p></figure>
+    <div class="store">
+      <div class="lab">Free storage</div>
+      <div class="val">21.4 GB free <span>of 28.8 GB</span></div>
+      <div class="track" role="img" aria-label="26% used"><div class="used" style="transform:scaleX(.26)"></div></div>
+    </div>
+  </div>
+  <div class="stack">
+    <button class="btn btn-danger">Shut down</button>
+    <button class="btn btn-primary">Pair new device</button>
+    <button class="btn btn-neutral">Sign out of all phones</button>
+    <button class="btn btn-neutral btn-default" autofocus>Close</button>
+  </div>
+</div></div>
+</div></body></html>

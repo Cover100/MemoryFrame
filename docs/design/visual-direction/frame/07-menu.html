@@ -1,0 +1,37 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Double-tap menu (#66)</title>
+<!-- Memory Frame visual direction mock (Double-tap menu (#66)). 800x480. Mocks only, not app code. -->
+<link rel="stylesheet" href="frame.css"><style>
+.menu { width:720px; padding:22px 24px; display:grid; grid-template-columns: 1fr 260px; grid-template-rows:auto 1fr auto; gap:0 24px; }
+.menu .title { grid-column:1 / -1; display:flex; align-items:center; gap:12px; }
+.menu .title .mark { width:14px; height:14px; border-radius:50%; background:var(--mf-brass); }
+table { border-collapse:collapse; font-size:var(--mf-f-label); align-self:start; width:100%; }
+th { text-align:left; color:var(--mf-oat); font-weight:400; padding:5px 0; white-space:nowrap; padding-right:16px; }
+td { text-align:right; white-space:nowrap; padding:5px 0; font-weight:700; }
+tr + tr th, tr + tr td { border-top:1px solid var(--mf-forest-700); }
+.side { display:flex; flex-direction:column; gap:12px; }
+.side .btn { width:100%; }
+.bottom { grid-column:1 / -1; display:flex; justify-content:space-between; margin-top:18px; padding-top:18px; border-top:1px solid var(--mf-forest-700); }
+.bottom .btn { width:200px; }
+</style></head>
+<body><div id="frame">
+<img class="media" src="../assets/photo-landscape.jpg" alt="">
+<div class="scrim"><div class="card menu" role="dialog" aria-label="Menu">
+  <div class="title"><span class="mark"></span>Memory Frame</div>
+  <table>
+    <tr><th>IP</th><td>10.42.0.1</td></tr>
+    <tr><th>Wi-Fi</th><td>MemoryFrame-4F2A (hotspot)</td></tr>
+    <tr><th>Site</th><td>10.42.0.1</td></tr>
+    <tr><th>Free storage</th><td>21.4 GB of 28.6 GB</td></tr>
+    <tr><th>Phones paired</th><td>2</td></tr>
+    <tr><th>Version</th><td>0.9.3</td></tr>
+  </table>
+  <div class="side">
+    <button class="btn btn-primary">Pair new device</button>
+    <button class="btn btn-neutral">Sign out all phones</button>
+  </div>
+  <div class="bottom">
+    <button class="btn btn-neutral">Close</button>
+    <button class="btn btn-danger">Shut down</button>
+  </div>
+</div></div>
+</div></body></html>

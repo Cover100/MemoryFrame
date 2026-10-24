@@ -1,0 +1,17 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Switch to dev mode? v2 (buttons pinned to the bottom)</title>
+<!-- Memory Frame visual direction mock (Switch to dev mode? v2 (buttons pinned to the bottom)). 800x480. Mocks only, not app code. -->
+<link rel="stylesheet" href="frame.css"><style>
+.dialog2 { width:600px; min-height:272px; padding:28px; display:flex; flex-direction:column; }
+.dialog2 .title { margin:0 0 12px; }
+.dialog2 .body { margin:0 0 32px; }
+.dialog2 .row { margin-top:auto; display:flex; gap:var(--mf-s-4); }
+.dialog2 .row .btn { flex:1; min-height:64px; }
+</style></head>
+<body><div id="frame">
+<img class="media" src="../assets/photo-landscape.jpg" alt="">
+<div class="scrim"><div class="card dialog2" role="alertdialog">
+  <h1 class="title">Switch to dev mode?</h1>
+  <p class="body">Phones on the frame's Wi-Fi will disconnect until you restart the frame.</p>
+  <div class="row"><button class="btn btn-neutral btn-default" autofocus>Cancel</button><button class="btn btn-accent">Switch</button></div>
+</div></div>
+</div></body></html>

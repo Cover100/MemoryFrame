@@ -1,0 +1,37 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Hotspot error screen</title>
+<!-- Memory Frame visual direction mock (Hotspot error screen). 800x480. Mocks only, not app code. -->
+<link rel="stylesheet" href="frame.css"><style>
+.err { position:absolute; inset:0; background:var(--mf-ink); padding:22px 28px; display:grid; grid-template-columns: 270px 1fr; gap:22px; padding:20px 22px 20px 26px; }
+.err .left { display:flex; flex-direction:column; }
+.err .icon { width:56px; height:56px; border-radius:50%; background:var(--mf-brick); color:#fff; display:grid; place-items:center; font-size:34px; font-weight:700; margin-bottom:16px; }
+.err h1 { font-size:28px; margin:0 0 12px; line-height:1.15; }
+.err p { color:var(--mf-oat); margin:0 0 12px; font-size:20px; }
+.err .left .btn { margin-top:auto; align-self:flex-start; }
+.err ol { margin:0; padding:0; list-style:none; counter-reset:s; display:flex; flex-direction:column; gap:6px; }
+.err li { counter-increment:s; display:flex; gap:10px; align-items:center; background:var(--mf-forest-900); border:1px solid var(--mf-forest-700); border-radius:var(--mf-r-md); padding:6px 10px; font-size:18px; line-height:1.2; }
+.err li::before { content:counter(s); flex:none; width:28px; height:28px; border-radius:50%; background:var(--mf-walnut-900); border:2px solid var(--mf-brass); color:var(--mf-brass); font-weight:700; font-size:16px; display:grid; place-items:center; }
+.err code { font-family:inherit; font-weight:700; color:var(--mf-brass); }
+.err .foot { font-size:18px; color:var(--mf-oat); margin-top:8px; line-height:1.2; }
+.err h2 { font-size:var(--mf-f-label); margin:0 0 10px; color:var(--mf-linen); }
+</style></head>
+<body><div id="frame">
+<div class="err" role="alert">
+  <div class="left">
+    <div class="icon">!</div>
+    <h1>Memory Frame Wi‑Fi didn't start</h1>
+    <p>Phones can't connect right now. Photos already on the frame will keep showing.</p>
+    <button class="btn btn-neutral">Close</button>
+  </div>
+  <div>
+    <h2>To fix it</h2>
+    <ol>
+      <li><span>Turn the frame off and take out the SD card.</span></li>
+      <li><span>Put the card in a computer and open the drive called <code>bootfs</code>.</span></li>
+      <li><span>Create an empty file named <code>memoryframe-reset</code> (no extension).</span></li>
+      <li><span>If there's a file named <code>memoryframe-mode.txt</code>, make sure it only says: <code>product</code></span></li>
+      <li><span>Put the card back and turn the frame on. Wait 1 minute.</span></li>
+    </ol>
+    <div class="foot">Still not working? Restart the frame once. If this screen comes back, ask for help.</div>
+  </div>
+</div>
+</div></body></html>

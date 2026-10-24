@@ -1,0 +1,42 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Settings v2: message saved</title>
+<!-- Memory Frame visual direction mock (Settings v2: message saved). 412x915. Mocks only, not app code. -->
+<link rel="stylesheet" href="phone.css"><style>
+section.card h2 { display:flex; justify-content:space-between; align-items:baseline; }
+.row { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+main.s2 { padding:12px 16px 12px; }
+main.s2 .card { margin-bottom:10px; padding:14px 16px; }
+.msg { width:100%; height:122px; resize:none; border:1.5px solid var(--mf-line); border-radius:var(--mf-r-sm); background:var(--mf-card);
+       padding:10px 14px; font:inherit; color:var(--mf-text); line-height:1.4; display:block; }
+.msg.focus { outline:3px solid var(--mf-green); outline-offset:1px; border-color:var(--mf-green); }
+.meta { display:flex; justify-content:space-between; gap:12px; margin:6px 0 10px; font-size:var(--mf-p-small); color:var(--mf-text-2); }
+.meta .count { font-variant-numeric:tabular-nums; white-space:nowrap; }
+.acts { display:flex; align-items:center; gap:12px; }
+.acts .btn { min-width:120px; }
+.acts .btn[disabled] { background:var(--mf-green-50); color:var(--mf-green); }
+.prev { margin-top:12px; padding-top:12px; border-top:1px solid var(--mf-line); font-size:var(--mf-p-small); color:var(--mf-text-2); }
+/* Mini frame note: the frame's note card at 75 % (252 px wide = 336 px at 20 px on the frame), so the
+   line breaks and the 5-line cap match what the frame will show. Frame font if installed, else system. */
+.prev .mini { margin-top:6px; width:286px; background:var(--mf-walnut-900); border:1px solid var(--mf-walnut); border-radius:12px;
+              padding:10px 16px 12px; color:var(--mf-linen); font-family:var(--mf-font-frame); font-size:15px; line-height:1.35; }
+.prev .mini::before { content:"“"; display:block; color:var(--mf-brass); font-size:32px; line-height:.6; height:14px; font-weight:700; }
+.prev .mini span { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:5; overflow:hidden; overflow-wrap:anywhere; }
+.seg button { min-height:40px; }
+</style></head><body>
+<header class="bar"><a class="back" href="#">‹</a><div class="name"><span class="dot"></span>Settings</div></header>
+<main class="s2">
+  <section class="card"><h2>Message on the frame <span class="saved" role="status">✓ Saved</span></h2>
+    <label class="sr" for="frameMsg" style="position:absolute;left:-9999px">Message on the frame</label>
+    <textarea class="msg" id="frameMsg" maxlength="140" aria-describedby="msgHelp msgCount">Happy 80th, Nana! Every photo on here was sent by one of us, from wherever we are. We miss you and we love you. Sam, Priya and the kids xx</textarea>
+    <div class="meta"><span id="msgHelp">Shown in the frame's menu</span><span class="count" id="msgCount" aria-live="polite">138 / 140</span></div>
+    <div class="acts"><button class="btn" disabled>Saved</button><button class="btn btn-text-danger">Remove message</button></div>
+    <div class="prev">On the frame now<div class="mini"><span>Happy 80th, Nana! Every photo on here was sent by one of us, from wherever we are. We miss you and we love you. Sam, Priya and the kids xx</span></div></div>
+  </section>
+  <section class="card"><h2>Slide time</h2>
+    <div class="seg" role="radiogroup"><button aria-checked="false">5 s</button><button aria-checked="true">10 s</button><button aria-checked="false">30 s</button><button aria-checked="false">1 min</button><button aria-checked="false">5 min</button></div></section>
+  <section class="card"><div class="row"><h2 style="margin:0">Transition</h2>
+    <div class="seg" role="radiogroup" style="width:180px"><button aria-checked="true">Fade</button><button aria-checked="false">None</button></div></div></section>
+  <section class="card"><div class="row"><div><h2 style="margin:0 0 2px">Shuffle</h2><div class="small muted">Show photos in a random order</div></div><span class="switch" role="switch" aria-checked="true"></span></div></section>
+  <ul class="rows"><li><span class="ico">i</span><span class="t">About this frame<small>Wi-Fi, address, phones paired, version</small></span><span class="chev">›</span></li></ul>
+</main>
+</body></html>

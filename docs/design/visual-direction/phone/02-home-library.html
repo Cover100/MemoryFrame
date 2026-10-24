@@ -1,0 +1,23 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Home / library</title>
+<!-- Memory Frame visual direction mock (Home / library). 412x915. Mocks only, not app code. -->
+<link rel="stylesheet" href="phone.css"><style>
+.grid { list-style:none; margin:0 0 12px; padding:0; display:grid; grid-template-columns:repeat(3,1fr); gap:4px; }
+.grid li { aspect-ratio:1; border-radius:6px; overflow:hidden; background:var(--mf-line); position:relative; }
+.grid img { width:100%; height:100%; object-fit:cover; display:block; }
+.grid li.hid img { opacity:.35; } .grid li.hid::after { content:"Hidden"; position:absolute; left:6px; bottom:6px; background:var(--mf-forest-900); color:var(--mf-linen); font-size:13px; padding:2px 8px; border-radius:999px; }
+.sec { display:flex; justify-content:space-between; align-items:baseline; margin:22px 0 10px; }
+.sec a { color:var(--mf-green); font-weight:600; text-decoration:none; font-size:var(--mf-p-small); }
+</style></head><body>
+<header class="bar"><div class="name"><span class="dot"></span>Memory Frame</div><a class="icon" href="#" aria-label="Settings">⚙</a></header><div class="status"><span class="ok"></span>Connected to the frame · 21.4 GB free</div>
+<main>
+  <a class="btn btn-primary btn-big block" href="#">＋&nbsp; Upload photos</a>
+  <div class="sec"><h2 style="margin:0">Library</h2><a href="#">See all 128 photos ›</a></div>
+  <ul class="grid"><li><img src="../assets/thumb-1.jpg" alt=""></li><li><img src="../assets/thumb-2.jpg" alt=""></li><li><img src="../assets/thumb-3.jpg" alt=""></li><li><img src="../assets/thumb-4.jpg" alt=""></li><li class="hid"><img src="../assets/thumb-5.jpg" alt=""></li><li><img src="../assets/thumb-6.jpg" alt=""></li><li><img src="../assets/thumb-1.jpg" alt=""></li><li><img src="../assets/thumb-2.jpg" alt=""></li><li><img src="../assets/thumb-3.jpg" alt=""></li></ul>
+  <ul class="rows" style="margin-top:20px">
+    <li><span class="ico">⌁</span><span class="t">Frame Wi-Fi<small>MemoryFrame-4F2A</small></span><span class="chev">›</span></li>
+    <li><span class="ico">⚙</span><span class="t">Settings<small>10 s · Fade · Shuffle on</small></span><span class="chev">›</span></li>
+    <li><span class="t" style="color:var(--mf-red);font-weight:600">Sign out all phones</span></li>
+  </ul>
+</main>
+</body></html>

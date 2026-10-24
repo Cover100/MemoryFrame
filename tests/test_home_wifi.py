@@ -238,3 +238,48 @@ def test_force_dev_fallback_hook_dev_only(env):
     (env["boot"] / "memoryframe-mode.txt").write_text("product\n")      # product: hook ignored
     assert run(env, "boot").returncode == 0
     assert state(env)["dev_fallback"] is False and state(env)["requested"] == "product"
+
+
+# ---------------- Wren 12a-12f / 17a-17c UI (spec phone/12-HOME-WIFI.md @ 0d28875) ----------------
+
+from pathlib import Path  # noqa: E402
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_page_matches_spec_markup(paired, hw):
+    html = paired.get("/admin/home-wifi", environ_base=PHONE).get_data(as_text=True)
+    assert "Network name" in html and "The frame tests it, then goes back to its own" in html
+    for i in ("hwSsid", "hwPassword"):
+        tag = html[html.index(f'id="{i}"') - 60: html.index(f'id="{i}"') + 200]
+        for a in ('autocomplete="off"', 'autocapitalize="off"', 'autocorrect="off"', 'spellcheck="false"'):
+            assert a in tag
+    assert 'type="password"' in html and 'aria-label="Show password" aria-pressed="false"' in html
+    assert 'aria-modal="true"' in html and 'id="hwCancel" class="secondary big btn-default"' in html
+    assert "disconnect from the frame for up to 90 seconds" in html
+    assert 'role="alert"' in html and "http://10.42.0.1/" in html
+    assert "Your saved network did not change." in html and "next time it starts in developer mode" in html
+    assert "value=" not in html.split('id="hwPassword"')[1].split(">")[0]     # never pre-filled
+
+
+def test_js_clears_password_and_toggles_aria():
+    js = (ROOT / "static/homewifi.js").read_text()
+    assert '"Hide password"' in js and 'setAttribute("aria-pressed"' in js
+    assert js.count('pw.value = ""') >= 3                  # submit, cancel, error
+    assert "countdown" not in js.lower().replace("no countdown", "")
+    assert "a[0] === 429" in js and "$(\"hwRetry\").hidden = rateLimited" in js
+
+
+def test_frame_state_carries_home_wifi_without_ssid(client, hw, tmp_path):
+    (tmp_path / "home-wifi.json").write_text(json.dumps({"state": "testing", "ts": 7, "ssid_hex": "Home Net".encode().hex()}))
+    s = client.get("/pairing/state", environ_base={"REMOTE_ADDR": "127.0.0.1"}).get_json()
+    assert s["home_wifi"] == {"state": "testing", "ts": 7}
+    assert "Home Net" not in json.dumps(s)
+
+
+def test_frame_overlay_and_toast_markup():
+    html = (ROOT / "templates/index.html").read_text()
+    js = (ROOT / "static/pairing.js").read_text()
+    assert 'id="homeWifiTesting"' in html and "Phones may disconnect for up to 90 seconds." in html
+    assert "HW_TOAST_MS = 10 * 1000" in js and "Home Wi-Fi test failed" in js and "Home Wi-Fi saved" in js
+    assert "Used next time the frame starts in developer mode." in js

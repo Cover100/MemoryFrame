@@ -341,3 +341,4 @@ body.mf-phone.sheet-open { overflow: hidden; }   /* polish (Wren N5): the page b
     padding: 12px 14px 12px 34px; margin: 8px 0 16px; color: var(--mf-text); }
 .mf-phone .hw-steps li { margin: 4px 0; }
 .mf-phone .hw-accent { color: var(--mf-accent-text); font-weight: 700; overflow-wrap: anywhere; }
+.mf-phone .hw-ic .hw-svg { width: 36px; height: 36px; }

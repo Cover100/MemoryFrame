@@ -68,6 +68,10 @@ def _state():
     out["netmode"] = {"dev": nm["mode"] == "dev", "lan_ip": lan_ip if isinstance(lan_ip, str) and lan_ip else None,
                       "dev_fallback": nm["dev_fallback"], "hotspot_error": nm["hotspot_error"],
                       "boot_id": nm["boot_id"], "temp": nm.get("temp", False)}
+    # #68: home Wi-Fi test state for the frame overlay (17a) and 10 s result (17b/17c); no SSID or password.
+    from . import homewifi
+    hw = homewifi.read_status()
+    out["home_wifi"] = {"state": hw["state"], "ts": hw["ts"]}
     # MF-55 G3: in temporary Developer Wi-Fi phones can't reach the frame's site; pairing shows
     # "Restart the frame to pair a phone" and the state carries no address, QR or code.
     if nm.get("temp"):

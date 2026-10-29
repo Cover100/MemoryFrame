@@ -1,4 +1,5 @@
 """Adding files to the media library (used by the legacy import; MF-14 uploads reuse it)."""
+import errno
 import logging
 import hashlib
 import os
@@ -18,7 +19,13 @@ log = logging.getLogger(__name__)
 
 
 def sha256_file(path):
+    """Hash a file by path, or an open binary file object (read from its start)."""
     h = hashlib.sha256()
+    if hasattr(path, "read"):
+        path.seek(0)
+        for chunk in iter(lambda: path.read(1024 * 1024), b""):
+            h.update(chunk)
+        return h.hexdigest()
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(1024 * 1024), b""):
             h.update(chunk)
@@ -47,17 +54,62 @@ def _read_sidecar(data_dir, stored):
     return v if re.fullmatch(r"[0-9a-f]{64}", v) else None
 
 
-def _complete(path):
-    """#100 F3: Pillow's verify() does not notice a cut-off JPEG (and reports a cut PNG only as an OSError). A JPEG must end with EOI (FFD9),
-    allowing up to 30 bytes of trailing padding; a PNG must end with its IEND chunk."""
-    with open(path, "rb") as f:
-        f.seek(max(0, os.path.getsize(path) - 32))
-        tail = f.read()
-    ext = os.path.splitext(path)[1].lower()
+_RST_OR_STANDALONE = set(range(0xD0, 0xD8)) | {0x01}
+
+
+def jpeg_ends_cleanly(data):
+    """#100 L1 (Hale): True if the JPEG's main image reaches its EOI (FFD9). Parses the markers instead of
+    looking at the last bytes, so a valid file with a trailer after FFD9 (Samsung SEF data, padding) passes
+    while a cut file fails even if an embedded EXIF thumbnail contains an FFD9 (it is inside APP1 and skipped
+    by its length). Entropy-coded data never contains FF followed by anything but 00 or RSTn."""
+    n = len(data)
+    if n < 4 or data[:2] != b"\xff\xd8":
+        return False
+    i = 2
+    while i < n:
+        if data[i] != 0xFF:
+            return False                                  # lost sync: not a well-formed JPEG
+        while i < n and data[i] == 0xFF:                  # fill bytes
+            i += 1
+        if i >= n:
+            return False
+        m = data[i]
+        i += 1
+        if m == 0xD9:
+            return True
+        if m in _RST_OR_STANDALONE:
+            continue
+        if i + 2 > n:
+            return False
+        seglen = (data[i] << 8) | data[i + 1]
+        if seglen < 2 or i + seglen > n:
+            return False                                  # segment cut off
+        i += seglen
+        if m == 0xDA:                                     # SOS: skip entropy-coded data to the next marker
+            while True:
+                j = data.find(b"\xff", i)
+                if j < 0 or j + 1 >= n:
+                    return False                          # ran out mid-scan: truncated
+                nxt = data[j + 1]
+                if nxt == 0x00 or nxt in _RST_OR_STANDALONE or nxt == 0xFF:
+                    i = j + (2 if nxt != 0xFF else 1)
+                    continue
+                i = j
+                break
+    return False
+
+
+def _complete(f, ext):
+    """#100 F3: Pillow's verify() does not notice a cut-off JPEG (and reports a cut PNG only as an OSError).
+    A JPEG's markers must reach EOI (trailing bytes after it are fine: L1); a PNG must end with its IEND
+    chunk (up to 32 bytes of padding). `f` is the open file (the caller checked size <= ORPHAN_MAX_BYTES)."""
     if ext in (".jpg", ".jpeg"):
-        return b"\xff\xd9" in tail
+        f.seek(0)
+        return jpeg_ends_cleanly(f.read())
     if ext == ".png":
-        return b"IEND\xaeB`\x82" in tail
+        size = f.seek(0, os.SEEK_END)
+        f.seek(max(0, size - 32))
+        return b"IEND\xaeB`\x82" in f.read()
     return True
 
 
@@ -173,53 +225,78 @@ def reconcile_orphans(conn, data_dir):
         if name in known or name.startswith("."):
             continue                                   # a photo with a row, or a hidden file
         try:
-            st = os.lstat(path)                        # Juniper on #100: never follow a symlink
-        except OSError:
-            continue                                   # vanished since the listdir
-        if stat.S_ISDIR(st.st_mode):
+            # #100 follow-up: open once with O_NOFOLLOW and check the open file (fstat), so the file that is
+            # checked is the file that is read (no lstat-then-open race). O_NONBLOCK: a FIFO never hangs start-up.
+            fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | getattr(os, "O_CLOEXEC", 0))
+        except OSError as e:
+            if e.errno == errno.ENOENT:
+                continue                               # vanished since the listdir
+            if e.errno == errno.ELOOP:
+                reported += 1
+                log.warning("orphan file left in place: %s (not a regular file (symlink or special), not followed)", name)
+            elif e.errno != errno.EISDIR:
+                reported += 1
+                log.warning("orphan file left in place: %s (unreadable: %s)", name, errno.errorcode.get(e.errno, "OSError"))
             continue
-        reason = None
         try:
-            kind = storage.media_kind(name) if _SERVER_NAME.fullmatch(name) else None
-            if not stat.S_ISREG(st.st_mode):
-                reason = "not a regular file (symlink or special), not followed"
-            elif st.st_size > ORPHAN_MAX_BYTES:
-                reason = "too large"                   # not hashed, so a stray big file costs nothing each start
-            elif kind is None:
-                reason = "not a server-made photo name"
-            elif kind == "video":
-                reason = "video, cannot be verified"
-            elif not storage.settled(path):            # checked first: no work on a file that may be live
-                reason = "changed in the last minute, may be a live upload; retried next start"
-            else:
-                file_digest = sha256_file(path)
-                digest = _read_sidecar(data_dir, name) or file_digest      # F2: the upload's hash if noted
-                if conn.execute("SELECT 1 FROM media WHERE sha256 IN (?, ?)", (digest, file_digest)).fetchone():
-                    reason = "same content as a photo already in the library"
-                else:
-                    if not _complete(path):                       # before Pillow, so a cut file says so
-                        reason = "truncated"
-                    else:
-                        from PIL import Image
-                        with Image.open(path) as im:
-                            im.verify()
-                if reason is None:
-                    cur = conn.execute(
-                        "INSERT OR IGNORE INTO media (stored_name, original_name, kind, sha256, size_bytes,"
-                        " source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                        (name, name, kind, digest, os.path.getsize(path), "upload", os.path.getmtime(path)))
-                    conn.commit()
-                    if cur.rowcount:
-                        adopted += 1
-                        log.warning("orphan file adopted into the library: %s", name)
-                        _drop_sidecar(sha_sidecar(data_dir, name))
-        except Exception as e:  # noqa: BLE001 - unreadable/corrupt/too big: report it, never fail start-up
-            try:
-                conn.rollback()
-            except Exception:  # noqa: BLE001
-                pass
-            reason = f"unreadable: {type(e).__name__}"      # type only: never put file contents in a log
+            st = os.fstat(fd)
+        except OSError:
+            os.close(fd)
+            continue
+        if stat.S_ISDIR(st.st_mode):
+            os.close(fd)
+            continue
+        with os.fdopen(fd, "rb") as f:
+            reason = _check_orphan(conn, data_dir, name, path, f, st)
         if reason:
             reported += 1
             log.warning("orphan file left in place: %s (%s)", name, reason)
+        else:
+            adopted += 1
     return adopted, reported
+
+
+def _check_orphan(conn, data_dir, name, path, f, st):
+    """Adopt one orphan read through its open file `f` (fstat `st`). Returns None if adopted, else the reason."""
+    reason = None
+    try:
+        kind = storage.media_kind(name) if _SERVER_NAME.fullmatch(name) else None
+        if not stat.S_ISREG(st.st_mode):
+            reason = "not a regular file (symlink or special), not followed"
+        elif st.st_size > ORPHAN_MAX_BYTES:
+            reason = "too large"                   # not hashed, so a stray big file costs nothing each start
+        elif kind is None:
+            reason = "not a server-made photo name"
+        elif kind == "video":
+            reason = "video, cannot be verified"
+        elif not storage.settled(path):            # checked first: no work on a file that may be live
+            reason = "changed in the last minute, may be a live upload; retried next start"
+        else:
+            file_digest = sha256_file(f)
+            digest = _read_sidecar(data_dir, name) or file_digest      # F2: the upload's hash if noted
+            if conn.execute("SELECT 1 FROM media WHERE sha256 IN (?, ?)", (digest, file_digest)).fetchone():
+                reason = "same content as a photo already in the library"
+            elif not _complete(f, os.path.splitext(name)[1].lower()):  # before Pillow, so a cut file says so
+                reason = "truncated"
+            else:
+                from PIL import Image
+                f.seek(0)
+                with Image.open(f) as im:
+                    im.verify()
+            if reason is None:
+                cur = conn.execute(
+                    "INSERT OR IGNORE INTO media (stored_name, original_name, kind, sha256, size_bytes,"
+                    " source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (name, name, kind, digest, st.st_size, "upload", st.st_mtime))
+                conn.commit()
+                if not cur.rowcount:
+                    return "already has a row"  # unreachable in practice (UNIQUE race); not counted as adopted
+                log.warning("orphan file adopted into the library: %s", name)
+                _drop_sidecar(sha_sidecar(data_dir, name))
+    except Exception as e:  # noqa: BLE001 - unreadable/corrupt/too big: report it, never fail start-up
+        try:
+            conn.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+        reason = f"unreadable: {type(e).__name__}"      # type only: never put file contents in a log
+    return reason

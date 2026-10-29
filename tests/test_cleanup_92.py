@@ -48,7 +48,7 @@ def test_phone_wifi_looks_up_once_when_the_request_has_not(mf_app, product_mode,
     assert calls == [1]
 
 
-@pytest.mark.parametrize("err", [MemoryError(), OSError(errno.ENOSPC, "No space left on device")])
+@pytest.mark.parametrize("err", [MemoryError(), OSError(errno.ENOMEM, "Cannot allocate memory")])
 def test_transient_retries_are_capped_then_permanent(mf_app, lib, monkeypatch, err):
     conn, stored, dst = _add(lib, mf_app)
     d = mf_app.config["DATA_DIR"]
@@ -114,7 +114,7 @@ def test_short_write_is_caught_and_keeps_the_old_copy(mf_app, lib, monkeypatch):
     monkeypatch.undo()
     assert open(dst, "rb").read() == before and imaging.copy_is_current(dst, T)      # old copy kept
     assert not os.path.exists(dst + ".tmp")
-    assert imaging._load_failures(d)[stored]["tries"] == 1                          # transient: repaired later
+    assert imaging._load_failures(d)[stored]["tries"] == 0          # transient (ENOSPC, uses up no tries): repaired later
     assert imaging.backfill(conn, d, T, force=True) == (1, 0)
     conn.close()
 
@@ -189,7 +189,8 @@ def test_transient_failure_is_not_recorded_and_is_retried(mf_app, lib, monkeypat
 
     monkeypatch.setattr(imaging, "make_display_copy", failing)
     assert imaging.backfill(conn, d, T) == (0, 1)           # counted as failed ...
-    assert imaging._load_failures(d)[stored]["tries"] == 1  # ... and remembered as transient, not permanent
+    full = isinstance(err, OSError) and err.errno == errno.ENOSPC   # follow-up: a full disk uses up no tries
+    assert imaging._load_failures(d)[stored]["tries"] == (0 if full else 1)  # ... remembered as transient
     monkeypatch.setattr(imaging, "make_display_copy", real)
     assert imaging.backfill(conn, d, T) == (1, 0)           # the next run (start-up) just makes it
     conn.close()

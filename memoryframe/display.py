@@ -25,9 +25,9 @@ def get_media():
     rows = get_db().execute(
         "SELECT stored_name, kind, duration_ms FROM media WHERE hidden = 0 AND state = 'ready' "
         "ORDER BY lower(original_name), id").fetchall()
-    return [{"type": r["kind"], "filename": r["stored_name"]} if r["kind"] == "image"
+    return [{"type": r["kind"], "filename": r["stored_name"]} if r["duration_ms"] is None
             else {"type": r["kind"], "filename": r["stored_name"], "duration_ms": r["duration_ms"]}
-            for r in rows]     # #102: photo entries are unchanged (byte-identical JSON)
+            for r in rows]     # #102: only converted clips gain duration_ms; every other entry is unchanged
 
 
 @bp.route("/")

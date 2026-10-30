@@ -157,8 +157,9 @@
     const behind = ()=> [$("selbar"), grid, $("toolbar")];
     function openSheet(){
         const n = selected.size;
-        const one = n === 1 && grid.querySelector('li[data-id="' + Number([...selected][0]) + '"][data-kind="video"]');
-        $("confirmTitle").textContent = one ? "Delete this video?" : n === 1 ? "Delete this photo?" : "Delete " + n + " items?";
+        const nv = [...selected].filter((id)=> grid.querySelector('li[data-id="' + Number(id) + '"][data-kind="video"]')).length;
+        const what = nv === 0 ? "photo" : nv === n ? "video" : "item";            // #102
+        $("confirmTitle").textContent = n === 1 ? "Delete this " + what + "?" : "Delete " + n + " " + what + "s?";
         $("confirmBody").textContent = n === 1 ? "It'll be removed from the frame. This can't be undone."
                                                : "They'll be removed from the frame. This can't be undone.";
         history.pushState({mfSheet: 1}, "");

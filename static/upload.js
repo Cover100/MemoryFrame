@@ -143,6 +143,12 @@
                 }
                 mfSetText(ui.msg, ok ? (queued ? "Added. The frame is preparing it." : xhr.status === 201 ? "Added" : "Already on the frame")
                                         : (body.error || ("Failed (" + xhr.status + ")")));
+                if(queued && Number.isInteger(body.prep_minutes)){        // #102: over 4K, slow on the Pi
+                    const n = body.prep_minutes, note = document.createElement("span");
+                    note.className = "slow";
+                    note.textContent = "This video is very high resolution and may take about " + n + " minute" + (n === 1 ? "" : "s") + " to prepare.";
+                    ui.msg.after(note);
+                }
                 if(xhr.status === 401){ location.href = "/pair"; }
                 resolve(ok);
             };

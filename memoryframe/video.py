@@ -18,6 +18,7 @@ Rows: state queued -> processing -> ready | failed. Only ready rows reach the sl
 show-now and the backfill. A power cut at any step is recovered by recover() at start-up.
 """
 import json
+import math
 import logging
 import os
 import shutil
@@ -33,7 +34,11 @@ log = logging.getLogger(__name__)
 MAX_UPLOAD_BYTES = 350 * 1024 * 1024      # Sage on #101
 MAX_SECONDS = 30                         # clips play for up to 30 s (longer ones are cut)
 MAX_INPUT_SECONDS = 600                  # refuse anything longer than 10 min outright
-MAX_LONG, MAX_SHORT = 3840, 2160         # 4K UHD in either orientation; 8K is refused (Reed/Hale on #115)
+MAX_LONG, MAX_SHORT = 3840, 2160         # 4K UHD in either orientation; above it is allowed but slow ("high_res")
+LIMIT_LONG, LIMIT_SHORT = 8192, 4320     # HEVC's own ceiling (level 6.2); anything bigger is not a phone clip
+HIRES_RATE = 23                          # Pi software decode, over-4K HEVC: ~23x realtime (Hale, #115). Rough.
+PRESCALE = 1920                          # over-4K clips are scaled to this long side before anything else
+HIRES_TIMEOUT_RATE = 30                  # timeout for over-4K: 30x the clip (30 s -> 15 min; 23x = 11.5 min)
 MAX_FPS = 120
 OUT_W, OUT_H = 800, 480
 OUT_FPS = 30
@@ -52,8 +57,6 @@ TASKSET = ["taskset", "-c", "2,3"]
 
 NOT_A_VIDEO = "This video can't be played on the frame. Please send an MP4 or MOV from your phone's camera."
 TOO_LONG = "This video is longer than 10 minutes. Please send a shorter clip."
-OVER_4K = ("This video is too large for the frame (over 4K). Record at 4K or lower, "
-           "or share a smaller copy, and try again.")
 TOO_LARGE = "This video is too large for the frame (the limit is 350 MB). Please send a shorter clip."
 FAILED = "The frame couldn't prepare this video."
 QUEUE_FULL = ("The frame is still holding {n} videos it hasn't added yet. Wait for them to finish, "
@@ -146,8 +149,9 @@ def probe(path, runner=None):
     w, h = int(v.get("width") or 0), int(v.get("height") or 0)
     if w <= 0 or h <= 0:
         raise VideoError(NOT_A_VIDEO)
-    if max(w, h) > MAX_LONG or min(w, h) > MAX_SHORT:     # orientation-free, so rotated clips are judged the same
-        raise VideoError(OVER_4K)
+    if max(w, h) > LIMIT_LONG or min(w, h) > LIMIT_SHORT:
+        raise VideoError(NOT_A_VIDEO)
+    hires = max(w, h) > MAX_LONG or min(w, h) > MAX_SHORT    # orientation-free, so rotated clips are judged the same
     fps = _fps(v.get("avg_frame_rate")) or _fps(v.get("r_frame_rate"))
     if fps > MAX_FPS:
         raise VideoError(NOT_A_VIDEO)
@@ -163,7 +167,14 @@ def probe(path, runner=None):
     if rot in (90, 270):
         w, h = h, w
     return {"codec": v["codec_name"], "width": w, "height": h, "rotation": rot,
-            "duration": duration, "fps": fps}
+            "duration": duration, "fps": fps, "high_res": hires}
+
+
+def prep_minutes(info):
+    """Rough minutes the Pi needs for an over-4K clip (only what is kept: at most 30 s); None otherwise."""
+    if not info.get("high_res"):
+        return None
+    return max(1, math.ceil(min(info["duration"], MAX_SECONDS) * HIRES_RATE / 60))
 
 
 # ---------------- filter graph (rotation, then cover or B2 blur-fill) ----------------
@@ -178,6 +189,9 @@ def filter_graph(info, target=(OUT_W, OUT_H)):
     cw, ch = target
     rot = ""
     a = info["width"] / info["height"]
+    if info.get("high_res"):     # over 4K: shrink once, first, so split/blur never hold 8K frames (fits 1.5 GiB)
+        f = PRESCALE / max(info["width"], info["height"])
+        rot = f"scale={round(info['width'] * f) // 2 * 2}:{round(info['height'] * f) // 2 * 2}:flags=bilinear,"
     tail = f"fps=fps='min(source_fps,{OUT_FPS})',format=yuv420p,setsar=1[v]"
     if a >= COVER_AT:
         return (f"[0:v:0]{rot}scale={cw}:{ch}:force_original_aspect_ratio=increase,"
@@ -207,8 +221,11 @@ def filter_graph(info, target=(OUT_W, OUT_H)):
 
 def convert_cmd(src, dst, info):
     """The ffmpeg argv (without the nice/ionice/taskset/timeout prefix)."""
-    hw = ["-hwaccel", "drm"] if info["codec"] == "hevc" else []     # HEVC: Pi 4 hardware decode (~55 % faster)
-    return (["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-threads", "2", *hw,
+    hires = bool(info.get("high_res"))
+    # HEVC: Pi 4 hardware decode (~55 % faster), but only up to 4K: over 4K it is refused anyway (Hale), so go
+    # straight to software, with one decoder thread so the frame buffers fit the 1.5 GiB address-space cap.
+    hw = ["-hwaccel", "drm"] if info["codec"] == "hevc" and not hires else []
+    return (["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-threads", "1" if hires else "2", *hw,
              "-format_whitelist", FORMAT_WHITELIST, "-protocol_whitelist", "file",
              "-codec_whitelist", CODEC_WHITELIST, "-probesize", "5M", "-analyzeduration", "5M", "-t", str(MAX_SECONDS), "-i", "file:" + src,
              "-filter_complex", filter_graph(info), "-map", "[v]", "-an", "-sn", "-dn",
@@ -224,7 +241,8 @@ def poster_cmd(src, dst):
 
 
 def timeout_for(info):
-    return int(max(60, 10 * min(info["duration"], MAX_SECONDS)))
+    rate = HIRES_TIMEOUT_RATE if info.get("high_res") else 10
+    return int(max(60, rate * min(info["duration"], MAX_SECONDS)))
 
 
 def _prefix(timeout_s):
@@ -260,7 +278,7 @@ def convert(data_dir, stored_name, runner=None):
         _run(convert_cmd(src, part, info), timeout_for(info), runner)
         if not os.path.exists(part) or os.path.getsize(part) == 0:
             raise VideoError("ffmpeg made no output")
-        out_s = check_output(part, runner)
+        out_s = check_output(part, runner, min(info["duration"], MAX_SECONDS))
         imaging.fsync_path(part)
         os.replace(part, final)
         imaging.fsync_dir(os.path.dirname(final))
@@ -280,7 +298,7 @@ def convert(data_dir, stored_name, runner=None):
     return int(round(min(out_s, MAX_SECONDS) * 1000))
 
 
-def check_output(path, runner=None):
+def check_output(path, runner=None, expect=None):
     """ffprobe the converted file before it is marked ready: exactly one H.264 stream, 800x480,
     0 < duration <= 30.5 s. Returns the duration; raises VideoError otherwise (the row goes 'failed')."""
     runner = runner or subprocess.run
@@ -295,7 +313,8 @@ def check_output(path, runner=None):
     except (OSError, subprocess.TimeoutExpired, ValueError, TypeError, AttributeError):
         v, dur = {}, 0.0
     if (v.get("codec_type") != "video" or v.get("codec_name") != "h264"
-            or (v.get("width"), v.get("height")) != (OUT_W, OUT_H) or not 0 < dur <= OUT_MAX_SECONDS):
+            or (v.get("width"), v.get("height")) != (OUT_W, OUT_H) or not 0 < dur <= OUT_MAX_SECONDS
+            or (expect is not None and dur < expect - 1.0)):      # cut short (e.g. ffmpeg hit the memory cap)
         raise VideoError("converted output failed its check")
     return dur
 

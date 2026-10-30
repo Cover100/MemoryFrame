@@ -93,13 +93,15 @@ def upload_media():
     f = request.files.get("file")
     if f is None or not f.filename:
         return jsonify({"error": "No file in the request (field 'file')."}), 400
+    meta = {}
     try:
         stored, name = upload.save_upload(get_db(), current_app.config["DATA_DIR"], f, min_free,
                                           current_app.config["DISPLAY_TARGET"],
                                           current_app.config.get("MAX_IMAGE_PIXELS", upload.MAX_PIXELS),
                                           current_app.config.get("MAX_NONJPEG_PIXELS", upload.MAX_NONJPEG_PIXELS),
                                           videos=videos,
-                                          max_photo_bytes=current_app.config["MAX_CONTENT_LENGTH"] if videos else None)
+                                          max_photo_bytes=current_app.config["MAX_CONTENT_LENGTH"] if videos else None,
+                                          meta=meta)
     except upload.UploadError as e:
         return jsonify({"error": e.message}), e.status
     is_video = name.endswith(".mp4")              # photo labels never end in .mp4
@@ -111,7 +113,7 @@ def upload_media():
     if row is not None and row["kind"] == "video":
         # 202: accepted, converted in the background; the Library tile shows Waiting / Preparing.
         return jsonify({"status": "queued", "name": name, "id": stored, "media_id": row["id"],
-                        "kind": "video", "state": row["state"]}), 202
+                        "kind": "video", "state": row["state"], **meta}), 202
     bump_media_rev(current_app)
     # "id" stays the stored name (existing contract); media_id lets the phone show the new thumbnail.
     return jsonify({"status": "added", "name": name, "id": stored,

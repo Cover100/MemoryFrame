@@ -30,3 +30,4 @@
 @media (max-width: 340px) {
   .mf-phone .lib li[data-state="failed"] { grid-column: span 2; aspect-ratio: auto; height: calc((100vw - 6px) / 3); }
 }
+.mf-phone #list .slow { display: block; font-size: var(--mf-p-small); color: var(--mf-text-2); margin-top: 2px; line-height: 1.35; }

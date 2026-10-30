@@ -155,7 +155,7 @@ def test_prefix_is_low_priority(monkeypatch):
     [stream(), stream()],                                            # two video streams
     [stream(), {"codec_type": "subtitle", "codec_name": "mov_text"}],
     [stream(), {"codec_type": "data", "codec_name": "bin_data"}],
-    [stream(5000, 3000)],                                            # over 4K
+    [stream(9000, 5000)],                                            # beyond 8K (HEVC level 6.2)
     [stream(fps="240/1")],
     [stream(codec="prores")],
     [stream(duration="0")],
@@ -452,35 +452,66 @@ def test_pending_cap_refuses_new_videos(vapp, paired, ff):
     assert post(paired, MP4 + b"extra", "x.mp4").status_code == 202
 
 
-# ---------------- Reed (#115, Hale's Pi run): nothing over 4K ----------------
+# ---------------- Reed (#115): over 4K is allowed, flagged slow ----------------
 
 @pytest.mark.parametrize("w,h,rot", [(7680, 4320, None), (4320, 7680, None), (7680, 4320, -90), (3840, 2176, None),
                                      (4096, 2160, None), (2304, 4096, -90)])
-def test_probe_refuses_over_4k(tmp_path, w, h, rot):
-    with pytest.raises(video.VideoError) as e:
-        video.probe(str(tmp_path / "x"), runner=FakeFF([stream(w, h, "hevc", rotation=rot)]))
-    assert str(e.value) == video.OVER_4K
-
-
-@pytest.mark.parametrize("w,h,rot,shown", [(3840, 2160, None, (3840, 2160)), (2160, 3840, None, (2160, 3840)),
-                                           (3840, 2160, -90, (2160, 3840))])
-def test_probe_allows_4k_either_way(tmp_path, w, h, rot, shown):
+def test_probe_flags_over_4k(tmp_path, w, h, rot):
     info = video.probe(str(tmp_path / "x"), runner=FakeFF([stream(w, h, "hevc", rotation=rot)]))
-    assert (info["width"], info["height"]) == shown
+    assert info["high_res"] is True
 
 
-def test_8k_upload_refused_with_message_and_temp_removed(vapp, paired, ff):
-    ff.info["streams"] = [stream(7680, 4320, "hevc")]
+@pytest.mark.parametrize("w,h,rot", [(3840, 2160, None), (2160, 3840, None), (3840, 2160, -90), (1920, 1080, None)])
+def test_probe_4k_not_flagged(tmp_path, w, h, rot):
+    info = video.probe(str(tmp_path / "x"), runner=FakeFF([stream(w, h, "hevc", rotation=rot)]))
+    assert info["high_res"] is False and video.prep_minutes(info) is None
+
+
+def test_probe_refuses_beyond_8k(tmp_path):
+    with pytest.raises(video.VideoError):
+        video.probe(str(tmp_path / "x"), runner=FakeFF([stream(8200, 4320, "hevc")]))
+
+
+@pytest.mark.parametrize("dur,n", [(1, 1), (2.6, 1), (2.7, 2), (12.5, 5), (30, 12), (300, 12)])
+def test_prep_minutes(dur, n):
+    assert video.prep_minutes({"high_res": True, "duration": dur}) == n      # ceil(min(d, 30) * 23 / 60), >= 1
+
+
+def test_hires_command_and_timeout():
+    hi = {"codec": "hevc", "width": 7680, "height": 4320, "rotation": 0, "duration": 30, "fps": 30, "high_res": True}
+    lo = dict(hi, width=3840, height=2160, high_res=False)
+    c = video.convert_cmd("a", "b", hi)
+    assert "-hwaccel" not in c and c[c.index("-threads") + 1] == "1"
+    assert "scale=1920:1080:flags=bilinear," in c[c.index("-filter_complex") + 1]
+    assert "-hwaccel" in video.convert_cmd("a", "b", lo)
+    assert video.timeout_for(hi) == 900 >= 23 * 30 * 1.25 and video.timeout_for(lo) == 300
+
+
+def test_8k_upload_accepted_and_flagged(vapp, paired, ff):
+    ff.info["streams"] = [stream(7680, 4320, "hevc", duration="12.5")]
     r = post(paired)
-    assert r.status_code == 415 and r.get_json()["error"] == video.OVER_4K
-    assert rows(vapp) == []
-    tmp = os.path.join(vapp.config["DATA_DIR"], "tmp")
-    assert [f for _, _, fs in os.walk(tmp) for f in fs] == []
+    assert r.status_code == 202
+    j = r.get_json()
+    assert j["high_res"] is True and j["prep_minutes"] == 5
 
 
-def test_portrait_4k_upload_accepted(vapp, paired, ff):
+def test_rotated_8k_upload_flagged(vapp, paired, ff):
+    ff.info["streams"] = [stream(4320, 7680, "hevc", rotation=-90, duration="30")]
+    j = post(paired).get_json()
+    assert j["high_res"] is True and j["prep_minutes"] == 12
+
+
+def test_4k_upload_not_flagged(vapp, paired, ff):
     ff.info["streams"] = [stream(2160, 3840, "hevc")]
-    assert post(paired).status_code == 202
+    r = post(paired)
+    assert r.status_code == 202 and "high_res" not in r.get_json() and "prep_minutes" not in r.get_json()
+
+
+def test_short_output_marks_failed(vapp, paired, ff):
+    ff.out = {"streams": [{"codec_type": "video", "codec_name": "h264", "width": 800, "height": 480, "duration": "8.7"}]}
+    post(paired)                                   # input is 12.5 s: an 8.7 s output was cut short
+    work(vapp)
+    assert rows(vapp)[-1]["state"] == "failed"
 
 
 def test_rlimit_as_is_1_5_gib():

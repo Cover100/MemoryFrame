@@ -280,9 +280,10 @@ def test_rollback_unit_verifies():
     if not sa:
         pytest.skip("systemd-analyze not installed (quoting check done)")
     r = subprocess.run([sa, "verify", "--man=no", str(u)], capture_output=True, text=True)
-    # the ExecStart binary and memoryframe.service aren't installed here; any other complaint is a unit error
+    # only complaints about our unit count (the runner host's own units may warn, e.g. CPUAccounting=);
+    # the ExecStart binary and memoryframe.service aren't installed here
     bad = [l for l in (r.stdout + r.stderr).splitlines()
-           if l.strip() and "memoryframe-migrate" not in l and "memoryframe.service" not in l]
+           if (str(u) in l or u.name in l) and "memoryframe-migrate" not in l and "memoryframe.service" not in l]
     assert not bad, bad
 
 

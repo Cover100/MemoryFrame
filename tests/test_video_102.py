@@ -516,3 +516,27 @@ def test_short_output_marks_failed(vapp, paired, ff):
 
 def test_rlimit_as_is_1_5_gib():
     assert video.RLIMIT_AS == 1536 * 1024 * 1024
+
+
+@pytest.mark.parametrize("rot,scale,turn", [(0, "scale=1920:1080", ""), (90, "scale=1920:1080", "transpose=clock,"),
+                                            (270, "scale=1920:1080", "transpose=cclock,"), (180, "scale=1920:1080", "hflip,vflip,")])
+def test_hires_turns_after_shrinking(rot, scale, turn):
+    # info width/height are upright; a 90/270 clip is decoded sideways (7680x4320 coded -> 4320x7680 upright)
+    up = (4320, 7680) if rot in (90, 270) else (7680, 4320)
+    info = {"codec": "hevc", "width": up[0], "height": up[1], "rotation": rot, "duration": 10, "fps": 30, "high_res": True}
+    c = video.convert_cmd("a", "b", info)
+    assert c[c.index("-noautorotate"):c.index("-noautorotate") + 3] == ["-noautorotate", "-display_rotation", "0"]
+    assert c.index("-noautorotate") < c.index("-i")
+    g = c[c.index("-filter_complex") + 1]
+    assert g.startswith("[0:v:0]" + scale + ":flags=bilinear," + turn)
+
+
+def test_4k_keeps_autorotate():
+    info = {"codec": "hevc", "width": 2160, "height": 3840, "rotation": 90, "duration": 10, "fps": 30, "high_res": False}
+    c = video.convert_cmd("a", "b", info)
+    assert "-noautorotate" not in c and "transpose" not in c[c.index("-filter_complex") + 1]
+
+
+def test_malloc_arena_cap_in_prefix(monkeypatch):
+    monkeypatch.setattr(video.shutil, "which", lambda n: "/usr/bin/" + n)
+    assert video._limit()[-2:] == ["env", "MALLOC_ARENA_MAX=2"]

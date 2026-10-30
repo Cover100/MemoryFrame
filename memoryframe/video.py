@@ -191,7 +191,13 @@ def filter_graph(info, target=(OUT_W, OUT_H)):
     a = info["width"] / info["height"]
     if info.get("high_res"):     # over 4K: shrink once, first, so split/blur never hold 8K frames (fits 1.5 GiB)
         f = PRESCALE / max(info["width"], info["height"])
-        rot = f"scale={round(info['width'] * f) // 2 * 2}:{round(info['height'] * f) // 2 * 2}:flags=bilinear,"
+        sw, sh = round(info["width"] * f) // 2 * 2, round(info["height"] * f) // 2 * 2
+        turn = info.get("rotation", 0)
+        if turn in (90, 270):        # the decoder's frames are still sideways: scale them as coded
+            sw, sh = sh, sw
+        # -noautorotate (convert_cmd): turn AFTER shrinking, so no full-size 8K transpose (Hale: 98 % of the cap)
+        rot = f"scale={sw}:{sh}:flags=bilinear," + {90: "transpose=clock,", 270: "transpose=cclock,",
+                                                    180: "hflip,vflip,"}.get(turn, "")
     tail = f"fps=fps='min(source_fps,{OUT_FPS})',format=yuv420p,setsar=1[v]"
     if a >= COVER_AT:
         return (f"[0:v:0]{rot}scale={cw}:{ch}:force_original_aspect_ratio=increase,"
@@ -226,6 +232,7 @@ def convert_cmd(src, dst, info):
     # straight to software, with one decoder thread so the frame buffers fit the 1.5 GiB address-space cap.
     hw = ["-hwaccel", "drm"] if info["codec"] == "hevc" and not hires else []
     return (["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-threads", "1" if hires else "2", *hw,
+             *(["-noautorotate", "-display_rotation", "0"] if hires else []),   # turned in filter_graph instead
              "-format_whitelist", FORMAT_WHITELIST, "-protocol_whitelist", "file",
              "-codec_whitelist", CODEC_WHITELIST, "-probesize", "5M", "-analyzeduration", "5M", "-t", str(MAX_SECONDS), "-i", "file:" + src,
              "-filter_complex", filter_graph(info), "-map", "[v]", "-an", "-sn", "-dn",
@@ -257,7 +264,10 @@ def _prefix(timeout_s):
 def _limit():
     """Address-space cap as a `prlimit` prefix (not preexec_fn, which can deadlock in threaded waitress),
     so a hostile file cannot eat the Pi's RAM."""
-    return ["prlimit", "--as=%d" % RLIMIT_AS, "--"] if shutil.which("prlimit") else []
+    # MALLOC_ARENA_MAX=2: glibc otherwise reserves a 64 MB arena per thread, which counts against --as but is
+    # never used (8K rotated: VmPeak 1307 -> ~1080 MB, same RSS).
+    env = ["env", "MALLOC_ARENA_MAX=2"]
+    return (["prlimit", "--as=%d" % RLIMIT_AS, "--"] + env) if shutil.which("prlimit") else env
 
 
 def _run(cmd, timeout_s, runner):

@@ -5,7 +5,8 @@ polkit.addRule(function(action, subject) {
     if (action.id === "org.freedesktop.systemd1.manage-units" && action.lookup("verb") === "start") {
         var allowed = ["memoryframe-devtemp.service", "memoryframe-wifi-apply.service",
                        "memoryframe-wifi-commit.service", "memoryframe-wifi-rollback.service",
-                       "memoryframe-home-wifi.service"];
+                       "memoryframe-home-wifi.service",
+                       "memoryframe-factory-reset.service"];   // #99: Erase everything
         if (allowed.indexOf(action.lookup("unit")) >= 0) { return polkit.Result.YES; }
     }
     if (action.id === "org.freedesktop.login1.power-off" ||

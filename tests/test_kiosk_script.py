@@ -262,3 +262,61 @@ def test_kills_file_never_in_tmp():
     s = SCRIPT.read_text()
     assert 'KILLS_FILE="${XDG_RUNTIME_DIR:-$STATE_DIR}/memoryframe-kiosk.kills"' in s
     assert "/tmp" not in [l for l in s.splitlines() if l.startswith("KILLS_FILE=")][0]
+
+
+# ---------------- #113: factory-reset guard ----------------
+
+def test_no_launch_or_app_poll_while_factory_reset_marker_exists(env):
+    tmp_path, _, _, e = env
+    data = tmp_path / "data"
+    data.mkdir()
+    (data / ".factory-reset").write_text("erase 1\n")
+    polls = tmp_path / "polls"
+    (tmp_path / "bin" / "curl").write_text(f'#!/bin/bash\necho "$*" >> "{polls}"\necho \'{{"status":"ok"}}\'\n')
+    e["MEMORYFRAME_DATA_DIR"] = str(data)
+    run_until(e, lambda: "factory reset in progress" in log_text(tmp_path))
+    time.sleep(1.5)
+    assert not launches(tmp_path) and not polls.exists()
+    (data / ".factory-reset").unlink()                         # reset done: the normal launch resumes
+    run_until(e, lambda: len(launches(tmp_path)) >= 1)
+
+
+def test_liveness_never_kills_during_factory_reset(env):
+    tmp_path, e = _liveness_env(env, '{"kiosk_age_s": 200.5, "shutting_down": false}')
+    data = tmp_path / "data"
+    data.mkdir()
+    e["MEMORYFRAME_DATA_DIR"] = str(data)
+    p = subprocess.Popen([BASH, str(SCRIPT)], env=e)
+    try:
+        deadline = time.monotonic() + 15
+        while not launches(tmp_path):
+            assert time.monotonic() < deadline
+            time.sleep(0.02)
+        (data / ".factory-reset").write_text("erase 1\n")      # reset starts while Chromium runs
+        time.sleep(1.5)
+        assert "killing" not in log_text(tmp_path)
+    finally:
+        p.terminate()
+        p.wait(timeout=5)
+
+
+def test_lock_file_never_in_tmp():
+    s = SCRIPT.read_text()
+    assert 'LOCK="${XDG_RUNTIME_DIR:-$STATE_DIR}/memoryframe-kiosk.lock"' in s
+    assert not [l for l in s.splitlines() if "/tmp" in l and not l.lstrip().startswith("#")]
+
+
+def test_service_never_starts_during_factory_reset():
+    """#113: ExecCondition gates every start (Restart=, watchdog restart, manual); marker path must match."""
+    import re
+    unit = (ROOT / "deploy" / "memoryframe.service").read_text()
+    reset = (ROOT / "deploy" / "factory-reset.sh").read_text()
+    assert "ExecCondition=/usr/bin/test ! -e /var/lib/memoryframe/.factory-reset" in unit
+    assert re.search(r'^DATA="\$\{MEMORYFRAME_DATA_DIR:-/var/lib/memoryframe\}"', reset, re.M)
+    assert 'MARKER="$DATA/.factory-reset"' in reset
+    for code, cond in ((0, False), (1, True)):                 # the condition command itself
+        m = Path(subprocess.run(["mktemp", "-d"], capture_output=True, text=True).stdout.strip())
+        if cond:
+            (m / ".factory-reset").write_text("x")
+        assert subprocess.run(["test", "!", "-e", str(m / ".factory-reset")]).returncode == code
+        shutil.rmtree(m)

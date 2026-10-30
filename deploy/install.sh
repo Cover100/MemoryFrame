@@ -116,6 +116,8 @@ sed -e "s#@USER@#$APP_USER#g" -e "s#@APP_DIR@#$APP_DIR#g" \
 sudo install -o root -g root -m 0755 "$APP_DIR/deploy/netmode.sh" /usr/local/sbin/memoryframe-netmode
 # Root-owned hotspot.sh + config for the memoryframe-reset boot path (root never runs checkout files).
 sudo install -o root -g root -m 0755 "$APP_DIR/deploy/hotspot.sh" /usr/local/sbin/memoryframe-hotspot
+# #99: root-owned copy of the Erase everything helper (also finishes an interrupted reset at boot).
+sudo install -o root -g root -m 0755 "$APP_DIR/deploy/factory-reset.sh" /usr/local/sbin/memoryframe-factory-reset
 if [ -f "$APP_DIR/deploy/hotspot.conf" ]; then
     sudo install -d -o root -g root -m 0755 /etc/memoryframe
     sudo install -o root -g root -m 0600 "$APP_DIR/deploy/hotspot.conf" /etc/memoryframe/hotspot.conf
@@ -127,6 +129,7 @@ sed -e "s#@APP_DIR@#$APP_DIR#g" \
 for u in devtemp wifi-apply wifi-commit wifi-rollback home-wifi; do
     sudo install -o root -g root -m 0644 "$APP_DIR/deploy/units/memoryframe-$u.service" "/etc/systemd/system/memoryframe-$u.service"
 done
+sudo install -o root -g root -m 0644 "$APP_DIR/deploy/units/memoryframe-factory-reset.service" /etc/systemd/system/memoryframe-factory-reset.service
 POLKIT_TMP="$(mktemp)"
 sed -e "s#@USER@#$APP_USER#g" "$APP_DIR/deploy/memoryframe-polkit.rules" > "$POLKIT_TMP"
 [ -d /etc/polkit-1/rules.d ] || sudo install -d -o root -g root -m 0755 /etc/polkit-1/rules.d   # never re-perm the distro's dir
@@ -152,6 +155,8 @@ if [ ! -e "$MODE_FILE" ] && [ -n "$CUR_WIFI" ] && [ "$CUR_WIFI" != "MemoryFrame-
 fi
 # MF-36: applied at the NEXT boot (enabling does not switch the network now).
 sudo systemctl enable memoryframe-netmode.service
+# #99: runs before the app at every boot; does nothing unless a reset was cut short.
+sudo systemctl enable memoryframe-factory-reset.service
 sudo systemctl enable memoryframe.service
 sudo systemctl restart memoryframe.service
 # Restarted normally: disarm the #90 exit trap and give the signals their default behaviour back.

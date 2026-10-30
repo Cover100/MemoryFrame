@@ -37,6 +37,7 @@ NOT_A_PHOTO = "This file is not a photo the frame can show (JPEG, PNG, WebP, GIF
 NOT_JPEG = ("JPEG", "MPO")
 FORMAT_NAME = {"HEIF": "HEIC", "AVIF": "HEIC", "PNG": "PNG", "WEBP": "WebP", "GIF": "GIF"}
 SAVE_FAILED = "The frame couldn't save this photo. Please try again; if it keeps happening, restart the frame."
+COPIES = 3          # #96: original + display copy + thumb, worst case each the size of the upload
 FULL = "The frame is almost full. Delete some photos and try again."
 VIDEO_EXT = {".mp4", ".mov", ".webm", ".mkv", ".avi", ".3gp", ".m4v"}
 VIDEO_MAGIC = (b"ftypmp4", b"ftypisom", b"ftypqt", b"ftyp3gp", b"ftypM4V", b"ftypmp42", b"ftypavc1")
@@ -114,9 +115,13 @@ def _is_enospc(e):
 
 
 def save_upload(conn, data_dir, filestorage, min_free, display_target, max_pixels=MAX_PIXELS,
-                max_nonjpeg_pixels=MAX_NONJPEG_PIXELS):
-    """Validate and add one uploaded file. Returns (stored_name or None if duplicate, label)."""
-    if free_bytes(data_dir) < min_free:
+                max_nonjpeg_pixels=MAX_NONJPEG_PIXELS, incoming=0):
+    """Validate and add one uploaded file. Returns (stored_name or None if duplicate, label).
+
+    #96: refused (507, FULL) unless the reserve stays free after this file: free - min_free must cover
+    COPIES x the incoming size (original + display copy + thumb). Before saving that is the request's
+    Content-Length; after saving, the tmp copy already holds its share, so COPIES - 1 x its real size."""
+    if free_bytes(data_dir) - min_free < COPIES * max(0, incoming) or free_bytes(data_dir) < min_free:
         raise UploadError(507, FULL)
     tmp = os.path.join(data_dir, "tmp", "upload-" + uuid.uuid4().hex)
     try:
@@ -128,7 +133,7 @@ def save_upload(conn, data_dir, filestorage, min_free, display_target, max_pixel
         ext = sniff_image(tmp, max_pixels, max_nonjpeg_pixels)
         if ext is None:
             raise UploadError(415, NOT_A_PHOTO)
-        if free_bytes(data_dir) < min_free:
+        if free_bytes(data_dir) - min_free < (COPIES - 1) * os.path.getsize(tmp) or free_bytes(data_dir) < min_free:
             raise UploadError(507, FULL)
         if display_target and ext != ".gif":
             ext = ".jpg"                     # #82: stored as one shrunk JPEG, whatever was sent

@@ -6,6 +6,17 @@
     const summary = document.getElementById("summary");
     const storageEl = document.getElementById("storage");
 
+    // #96: same text as the server's 507 (upload.FULL); at 0 photos left the picker is disabled.
+    const FULL = "The frame is almost full. Delete some photos and try again.";
+    let full = input.disabled;
+    function setFull(on){
+        full = on;
+        input.disabled = on;
+        const d = document.getElementById("drop");
+        d.classList.toggle("busy", on);
+        if(on){ d.setAttribute("aria-disabled", "true"); }else{ d.removeAttribute("aria-disabled"); }
+    }
+
     function mb(n){ return (n / 1048576).toFixed(1) + " MB"; }
 
     function gb(n){ return (n / 1073741824).toFixed(1) + " GB"; }
@@ -28,7 +39,9 @@
             meter.setAttribute("aria-valuetext", gb(s.free) + " free of " + gb(s.total));
             const room = document.getElementById("storeRoom");
             if(room && Number.isInteger(s.photos_remaining_estimate)){
-                room.textContent = "Room for about " + s.photos_remaining_estimate.toLocaleString() + " more photos.";
+                room.textContent = s.photos_remaining_estimate === 0 ? FULL
+                    : "Room for about " + s.photos_remaining_estimate.toLocaleString() + " more photos.";
+                setFull(s.photos_remaining_estimate === 0);
             }
         }catch(e){ /* keep the last numbers */ }
     }
@@ -143,6 +156,7 @@
                 mfSetText(ui.msg, ok ? (xhr.status === 201 ? "Added" : "Already on the frame")
                                         : (body.error || ("Failed (" + xhr.status + ")")));
                 if(xhr.status === 401){ location.href = "/pair"; }
+                if(xhr.status === 507){ resolve("full"); return; }
                 resolve(ok);
             };
             xhr.onerror = ()=>{
@@ -167,7 +181,7 @@
 
     async function run(files){
         files = files.filter((f)=> f && f.size >= 0);
-        if(busy || !files.length){ return; }
+        if(busy || full || !files.length){ return; }
         busy = true;
         input.disabled = true;
         drop.classList.add("busy");
@@ -175,14 +189,21 @@
         pickLabel.textContent = "Uploading...";
         list.textContent = "";
         const rows = files.map(row);
-        let done = 0, good = 0;
+        let done = 0, good = 0, added = 0, stopped = false;
         summary.textContent = "Sending " + files.length + " photo" + (files.length === 1 ? "" : "s") + "...";
         for(let i = 0; i < files.length; i++){
-            if(await send(files[i], rows[i])){ good++; }
+            const r = await send(files[i], rows[i]);
+            if(r === "full"){                        // #96: stop the batch at the first refusal
+                for(let j = i + 1; j < files.length; j++){ rows[j].li.className = "bad"; mfSetText(rows[j].msg, "Not sent"); }
+                summary.textContent = added + " photo" + (added === 1 ? " was" : "s were") + " added; the frame is almost full.";
+                stopped = true;
+                break;
+            }
+            if(r){ good++; if(rows[i].li.className === "ok"){ added++; } }
             done++;
             summary.textContent = done + " of " + files.length + " done (" + good + " added or already there).";
         }
-        summary.textContent += " They appear on the frame within a few seconds.";
+        if(!stopped){ summary.textContent += " They appear on the frame within a few seconds."; }
         input.value = "";
         input.disabled = false;
         drop.classList.remove("busy");

@@ -56,6 +56,8 @@ ExecStart=@APP_DIR@/.venv/bin/python @APP_DIR@/app.py
 Environment=MALLOC_ARENA_MAX=1
 MemoryHigh=2G
 MemoryMax=2500M
+# #96: no core dumps (a watchdog abort of a large process must not fill the card)
+LimitCORE=0
 Restart=always
 RestartSec=2
 # #95: crash loops back off 2 s -> 60 s and never give up (systemd 254+).

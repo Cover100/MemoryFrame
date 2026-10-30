@@ -27,10 +27,15 @@ resetting() { [ -e "$RESET_MARKER" ] || [ -L "$RESET_MARKER" ]; }
 
 mkdir -p "$STATE_DIR" "$PROFILE_DIR" "$(dirname "$LOG")"
 
-# Keep the log small: rotate once it passes 1 MB.
-if [ -f "$LOG" ] && [ "$(stat -c %s "$LOG" 2>/dev/null || echo 0)" -gt 1048576 ]; then
-    mv -f "$LOG" "$LOG.1"
-fi
+# Keep the log small: rotate once it passes 1 MB (one .1 kept). #96: also checked before every
+# browser launch, so a Chromium crash loop can't grow it past about 2 x 1 MB.
+rotate_log() {
+    if [ -f "$LOG" ] && [ "$(stat -c %s "$LOG" 2>/dev/null || echo 0)" -gt 1048576 ]; then
+        mv -f "$LOG" "$LOG.1"
+        exec >>"$LOG" 2>&1
+    fi
+}
+rotate_log
 # Everything below (including Chromium's stderr) goes to the log.
 exec >>"$LOG" 2>&1
 
@@ -147,6 +152,7 @@ watch_liveness() {  # $1 = browser pid
 
 delay="$BACKOFF_BASE"
 while true; do
+    rotate_log
     wait_healthy
     resetting && continue
     mark_clean_exit

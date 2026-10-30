@@ -23,6 +23,7 @@ def test_mismatch_shows_name_without_qr(page, server, mf_app, net, tmp_path, mon
     assert evaluate(page, f"{vis}('wifiJoin')") and not evaluate(page, f"{vis}('wifiQr')")
     assert evaluate(page, "document.getElementById('wifiQr').innerHTML") == ""
     assert " ".join(text(page, "wifiJoin").split()) == "Join Hand Edited with its password"
+    assert evaluate(page, "getComputedStyle(document.getElementById('wifiJoinName')).display") == "inline"   # Wren: one line
     assert "conf-pw-123456" not in evaluate(page, "document.body.innerText")
     # password known again (name matches hotspot.conf): QR back, join line gone
     _state(tmp_path, monkeypatch, "ConfName")

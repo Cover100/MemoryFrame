@@ -8,7 +8,12 @@ After=network.target
 StartLimitIntervalSec=0
 
 [Service]
-Type=simple
+# #95: the app sends READY=1 and WATCHDOG=1 (memoryframe/watchdog.py); a hang is killed after 90 s.
+Type=notify
+NotifyAccess=main
+WatchdogSec=90
+TimeoutAbortSec=10
+LimitCORE=0
 User=@USER@
 Group=@USER@
 SupplementaryGroups=video
@@ -57,6 +62,9 @@ MemoryHigh=2G
 MemoryMax=2500M
 Restart=always
 RestartSec=2
+# #95: crash loops back off 2 s -> 60 s and never give up (systemd 254+).
+RestartSteps=5
+RestartMaxDelaySec=60
 
 [Install]
 WantedBy=multi-user.target

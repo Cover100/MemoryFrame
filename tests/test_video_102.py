@@ -155,7 +155,7 @@ def test_prefix_is_low_priority(monkeypatch):
     [stream(), stream()],                                            # two video streams
     [stream(), {"codec_type": "subtitle", "codec_name": "mov_text"}],
     [stream(), {"codec_type": "data", "codec_name": "bin_data"}],
-    [stream(5000, 3000)],                                            # larger than 4096x2304
+    [stream(5000, 3000)],                                            # over 4K
     [stream(fps="240/1")],
     [stream(codec="prores")],
     [stream(duration="0")],
@@ -450,3 +450,38 @@ def test_pending_cap_refuses_new_videos(vapp, paired, ff):
                                                                          ["video-out", "video-in"])
     work(vapp)                                      # one becomes ready -> room again
     assert post(paired, MP4 + b"extra", "x.mp4").status_code == 202
+
+
+# ---------------- Reed (#115, Hale's Pi run): nothing over 4K ----------------
+
+@pytest.mark.parametrize("w,h,rot", [(7680, 4320, None), (4320, 7680, None), (7680, 4320, -90), (3840, 2176, None),
+                                     (4096, 2160, None), (2304, 4096, -90)])
+def test_probe_refuses_over_4k(tmp_path, w, h, rot):
+    with pytest.raises(video.VideoError) as e:
+        video.probe(str(tmp_path / "x"), runner=FakeFF([stream(w, h, "hevc", rotation=rot)]))
+    assert str(e.value) == video.OVER_4K
+
+
+@pytest.mark.parametrize("w,h,rot,shown", [(3840, 2160, None, (3840, 2160)), (2160, 3840, None, (2160, 3840)),
+                                           (3840, 2160, -90, (2160, 3840))])
+def test_probe_allows_4k_either_way(tmp_path, w, h, rot, shown):
+    info = video.probe(str(tmp_path / "x"), runner=FakeFF([stream(w, h, "hevc", rotation=rot)]))
+    assert (info["width"], info["height"]) == shown
+
+
+def test_8k_upload_refused_with_message_and_temp_removed(vapp, paired, ff):
+    ff.info["streams"] = [stream(7680, 4320, "hevc")]
+    r = post(paired)
+    assert r.status_code == 415 and r.get_json()["error"] == video.OVER_4K
+    assert rows(vapp) == []
+    tmp = os.path.join(vapp.config["DATA_DIR"], "tmp")
+    assert [f for _, _, fs in os.walk(tmp) for f in fs] == []
+
+
+def test_portrait_4k_upload_accepted(vapp, paired, ff):
+    ff.info["streams"] = [stream(2160, 3840, "hevc")]
+    assert post(paired).status_code == 202
+
+
+def test_rlimit_as_is_1_5_gib():
+    assert video.RLIMIT_AS == 1536 * 1024 * 1024

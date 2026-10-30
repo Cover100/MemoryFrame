@@ -33,13 +33,13 @@ log = logging.getLogger(__name__)
 MAX_UPLOAD_BYTES = 350 * 1024 * 1024      # Sage on #101
 MAX_SECONDS = 30                         # clips play for up to 30 s (longer ones are cut)
 MAX_INPUT_SECONDS = 600                  # refuse anything longer than 10 min outright
-MAX_W, MAX_H = 4096, 2304                # larger than 4K UHD-ish: refused
+MAX_LONG, MAX_SHORT = 3840, 2160         # 4K UHD in either orientation; 8K is refused (Reed/Hale on #115)
 MAX_FPS = 120
 OUT_W, OUT_H = 800, 480
 OUT_FPS = 30
 OUT_MAX_BYTES = "60M"
 COVER_AT = imaging.BLURFILL_BELOW        # 1.30: same rule as photos
-RLIMIT_AS = 2560 * 1024 * 1024           # ~2.5 GB address space for ffmpeg
+RLIMIT_AS = 1536 * 1024 * 1024           # 1.5 GiB address space: 4K HEVC software path peaks ~1.16 GiB (PR #115)
 COPIES = 3                               # #96: free space must cover 3x the incoming file above the reserve
 STATES = ("queued", "processing", "ready", "failed")
 FORMAT_WHITELIST = "mov,mp4,m4a,3gp,3g2,mj2,matroska,webm"
@@ -52,6 +52,8 @@ TASKSET = ["taskset", "-c", "2,3"]
 
 NOT_A_VIDEO = "This video can't be played on the frame. Please send an MP4 or MOV from your phone's camera."
 TOO_LONG = "This video is longer than 10 minutes. Please send a shorter clip."
+OVER_4K = ("This video is too large for the frame (over 4K). Record at 4K or lower, "
+           "or share a smaller copy, and try again.")
 TOO_LARGE = "This video is too large for the frame (the limit is 350 MB). Please send a shorter clip."
 FAILED = "The frame couldn't prepare this video."
 QUEUE_FULL = ("The frame is still holding {n} videos it hasn't added yet. Wait for them to finish, "
@@ -142,8 +144,10 @@ def probe(path, runner=None):
     if v.get("codec_name") not in CODECS:
         raise VideoError(NOT_A_VIDEO)
     w, h = int(v.get("width") or 0), int(v.get("height") or 0)
-    if not (0 < w <= MAX_W and 0 < h <= MAX_H) and not (0 < h <= MAX_W and 0 < w <= MAX_H):
+    if w <= 0 or h <= 0:
         raise VideoError(NOT_A_VIDEO)
+    if max(w, h) > MAX_LONG or min(w, h) > MAX_SHORT:     # orientation-free, so rotated clips are judged the same
+        raise VideoError(OVER_4K)
     fps = _fps(v.get("avg_frame_rate")) or _fps(v.get("r_frame_rate"))
     if fps > MAX_FPS:
         raise VideoError(NOT_A_VIDEO)

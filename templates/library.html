@@ -8,18 +8,25 @@
 {% block icon %}<a class="icon" href="/admin/settings" aria-label="Settings">⚙</a>{% endblock %}
 {% block strip %}<div class="strip{% if st %} has-store{% endif %}"><p class="conn"><span class="ok" aria-hidden="true"></span>Connected to the frame</p>{% if st %}{{ storage_meter(st, "on-dark") }}{% endif %}</div>
 <header class="bar selbar" id="selbar"><p class="name" id="selCount" aria-live="polite">0 selected</p><button type="button" class="btn-onbar" id="selAll">Select all</button></header>{% endblock %}
+{% block styles %}{% if videos %}<link rel="stylesheet" href="{{ static('video.css') }}">{% endif %}{% endblock %}
 {% block content %}
 <div class="normal-only">
-  <a class="btn big block primary" id="upBtn" href="/admin/upload">＋&nbsp; Upload photos</a>
+  {% if videos %}{# #102 (phone/11-VIDEO.md) #}
+  <a class="btn big block primary" id="upBtn" href="/admin/upload">＋&nbsp; Upload</a>
+  <p class="upnote">Photos and videos. Videos play silently, up to 30 seconds. The frame keeps its own copy, not your original.</p>
+  {% else %}<a class="btn big block primary" id="upBtn" href="/admin/upload">＋&nbsp; Upload photos</a>{% endif %}
   <div class="libhead">
-    <h1>Library<small id="count">{{ n }} photo{{ "s" if n != 1 }} on the frame</small></h1>
+    {% if videos %}<h1>Library<small id="count" data-photos="{{ np }}" data-videos="{{ nv }}">{{ np }} photo{{ "s" if np != 1 }} · {{ nv }} video{{ "s" if nv != 1 }}</small></h1>
+    {% else %}<h1>Library<small id="count">{{ n }} photo{{ "s" if n != 1 }} on the frame</small></h1>{% endif %}
     {% if n %}<button type="button" class="btn-neutral" id="selectBtn">Select</button>{% endif %}
   </div>
+  {% if videos and n %}<div class="chips" role="group" aria-label="Show"><button type="button" class="chip" id="chipPhotos" aria-pressed="true">Photos</button><button type="button" class="chip" id="chipVideos" aria-pressed="true">Videos</button></div>
+  <p class="chiphint" id="chipHint" role="status"></p>{% endif %}
 </div>
 <p class="muted small sel-only selhint">Tap photos to select or unselect them.</p>
 {% if n %}
 <ul id="grid" class="lib" aria-label="Photos on the frame">
-{% for m in items %}<li data-id="{{ m.id }}"><button type="button" class="tile{% if m.kind != 'image' %} plain{% endif %}" aria-label="Photo {{ loop.index }} of {{ n }}">{% if m.kind == 'image' %}<img src="/api/v1/media/{{ m.id }}/thumb" alt="" width="240" height="240" loading="lazy" decoding="async">{% else %}<span class="ph" aria-hidden="true"></span>{% endif %}</button></li>
+{% for m in items %}{% if m.kind == 'video' %}{# #102: a video tile. Ready: a selectable tile with the poster and a "▶ m:ss" badge. Waiting / Preparing / Couldn't add:   not selectable (a plain div, so the Retry / Remove buttons are not nested in a button). #}{%- set secs = ((m.duration_ms or 0) + 500) // 1000 -%}<li data-id="{{ m.id }}" data-kind="video" data-state="{{ m.state }}">{% if m.state == 'ready' -%}<button type="button" class="tile" aria-label="Video {{ loop.index }} of {{ n }}, {{ secs // 60 }}:{{ '%02d' % (secs % 60) }}"><img src="/api/v1/media/{{ m.id }}/thumb" alt="" width="240" height="240" loading="lazy" decoding="async"><span class="badge" aria-hidden="true">▶ {{ secs // 60 }}:{{ '%02d' % (secs % 60) }}</span></button>{%- elif m.state == 'failed' -%}<div class="tile vtile"><div class="state fail"><span>Couldn't add</span><div class="acts"><button type="button" class="vretry" data-id="{{ m.id }}" aria-label="Retry video"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M19 12a7 7 0 1 1-2.05-4.95M19 4v4h-4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button type="button" class="vremove" data-id="{{ m.id }}" aria-label="Remove video"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg></button></div></div></div>{%- else -%}<div class="tile vtile" role="img" aria-label="Video {{ 'preparing' if m.state == 'processing' else 'waiting' }}"><div class="state">{% if m.state == 'processing' %}<span class="spin" aria-hidden="true"></span>Preparing{% else %}Waiting{% endif %}</div></div>{%- endif %}</li>{% else %}<li data-id="{{ m.id }}"><button type="button" class="tile{% if m.kind != 'image' %} plain{% endif %}" aria-label="Photo {{ loop.index }} of {{ n }}">{% if m.kind == 'image' %}<img src="/api/v1/media/{{ m.id }}/thumb" alt="" width="240" height="240" loading="lazy" decoding="async">{% else %}<span class="ph" aria-hidden="true"></span>{% endif %}</button></li>{% endif %}
 {% endfor %}</ul>
 <div class="card empty-lib" id="emptyLib" hidden><p class="muted flush">No photos yet. Tap <b>Upload photos</b> to send some to the frame.</p></div>
 {% else %}

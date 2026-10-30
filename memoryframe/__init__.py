@@ -24,6 +24,9 @@ def create_app(config=None):
     app.config.update(storage.default_config())
     if config:
         app.config.update(config)
+    if app.config.get("TESTING"):
+        app.config.setdefault("VIDEOS", False)       # #102: tests opt in (the box may have ffmpeg)
+    app.request_class = _card_spooled_request(app)
 
     from . import imaging
     app.config["DISPLAY_TARGET"] = imaging.target_or_default(app.config.get("DISPLAY_SIZE", imaging.DEFAULT_TARGET))
@@ -53,7 +56,30 @@ def create_app(config=None):
     app.register_blueprint(api_bp, url_prefix="/api/v1")
     app.register_blueprint(pairing_bp)
 
+    _start_video_worker(app)
     return app
+
+
+def _card_spooled_request(app):
+    """#102 (Sage on #101): upload bodies (videos up to 350 MB) are spooled to DATA_DIR/tmp on the SD card,
+    never to /tmp, /run or the #97 tmpfs, so RAM is never the limit."""
+    import tempfile
+    from flask import Request
+
+    class MFRequest(Request):
+        def _get_file_stream(self, total_content_length, content_type, filename=None, content_length=None):
+            return tempfile.TemporaryFile("rb+", dir=os.path.join(app.config["DATA_DIR"], "tmp"),
+                                          prefix="spool-")
+    return MFRequest
+
+
+def _start_video_worker(app):
+    """#102: one background conversion at a time (ffmpeg at nice 19 / idle I/O; see video.py)."""
+    from . import video
+    if app.config.get("TESTING") and not app.config.get("VIDEO_WORKER"):
+        return
+    from .display import bump_media_rev
+    video.start_worker(app, on_ready=lambda: bump_media_rev(app))
 
 
 def _refresh_copies_in_background(app):
@@ -91,6 +117,11 @@ def _sweep(app):
     """MF-16: clean up after an interrupted delete (tmp/trash, orphan derivatives); #91: adopt orphan photos."""
     from . import imaging, library
     conn = db.connect(app.config["DB_PATH"])
+    try:                        # #102: interrupted conversions (power cut) before anything else
+        from . import video
+        video.recover(conn, app.config["DATA_DIR"])
+    except Exception as e:  # noqa: BLE001 - never block start-up
+        log.warning("start-up video recovery failed: %s", e)
     try:                        # #91: before the sweep, so an adopted photo keeps its copies; before serving
         library.reconcile_orphans(conn, app.config["DATA_DIR"])
     except Exception as e:  # noqa: BLE001 - never block start-up

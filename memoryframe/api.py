@@ -1,10 +1,10 @@
 """API blueprint (/api/v1). Every route requires a paired session (MF-12): 401 otherwise."""
 import threading
 
-from flask import Blueprint, abort, current_app, jsonify, request, send_file
+from flask import Blueprint, abort, current_app, g, jsonify, request, send_file
 from werkzeug.exceptions import RequestEntityTooLarge
 
-from . import auth, imaging, upload
+from . import auth, imaging, upload, video
 from .display import bump_media_rev, clear_show_now
 from .db import get_db
 
@@ -80,31 +80,58 @@ def storage():
 @bp.route("/media", methods=["POST"])
 def upload_media():
     """Multipart upload, one file per request (field "file"), so the phone shows per-file progress."""
+    videos = _videos_enabled()
+    min_free, _ = _limits()
+    if videos:
+        # #102: videos up to 350 MB. The body is spooled to DATA_DIR/tmp (the SD card, never /run or a
+        # tmpfs; see MFRequest). #96: refuse before reading it unless the reserve survives 3x its size.
+        request.max_content_length = video.MAX_UPLOAD_BYTES + 1024 * 1024    # + multipart overhead
+        g.mf_video_limit = True
+        if request.content_length and not video.space_ok(current_app.config["DATA_DIR"], min_free,
+                                                          request.content_length):
+            return jsonify({"error": upload.FULL}), 507
     f = request.files.get("file")
     if f is None or not f.filename:
         return jsonify({"error": "No file in the request (field 'file')."}), 400
-    min_free, _ = _limits()
+    meta = {}
     try:
         stored, name = upload.save_upload(get_db(), current_app.config["DATA_DIR"], f, min_free,
                                           current_app.config["DISPLAY_TARGET"],
                                           current_app.config.get("MAX_IMAGE_PIXELS", upload.MAX_PIXELS),
-                                          current_app.config.get("MAX_NONJPEG_PIXELS", upload.MAX_NONJPEG_PIXELS))
+                                          current_app.config.get("MAX_NONJPEG_PIXELS", upload.MAX_NONJPEG_PIXELS),
+                                          videos=videos,
+                                          max_photo_bytes=current_app.config["MAX_CONTENT_LENGTH"] if videos else None,
+                                          meta=meta)
     except upload.UploadError as e:
         return jsonify({"error": e.message}), e.status
+    is_video = name.endswith(".mp4")              # photo labels never end in .mp4
     if stored is None:
+        what = "video" if is_video else "photo"
         return jsonify({"status": "duplicate", "name": name,
-                        "message": "This photo is already on the frame."}), 200
+                        "message": f"This {what} is already on the frame."}), 200
+    row = get_db().execute("SELECT id, kind, state FROM media WHERE stored_name = ?", (stored,)).fetchone()
+    if row is not None and row["kind"] == "video":
+        # 202: accepted, converted in the background; the Library tile shows Waiting / Preparing.
+        return jsonify({"status": "queued", "name": name, "id": stored, "media_id": row["id"],
+                        "kind": "video", "state": row["state"], **meta}), 202
     bump_media_rev(current_app)
-    row = get_db().execute("SELECT id FROM media WHERE stored_name = ?", (stored,)).fetchone()
     # "id" stays the stored name (existing contract); media_id lets the phone show the new thumbnail.
     return jsonify({"status": "added", "name": name, "id": stored,
                     "media_id": row["id"] if row else None}), 201
 
 
+def _videos_enabled():
+    """#102: videos need ffmpeg on the frame; without it the old "videos coming later" answer stays."""
+    v = current_app.config.get("VIDEOS")
+    return video.available() if v is None else bool(v)
+
+
 @bp.app_errorhandler(RequestEntityTooLarge)
 def too_large(_e):
+    if g.get("mf_video_limit"):
+        return jsonify({"error": video.TOO_LARGE}), 413        # #102: only a video can be this big
     mb = current_app.config["MAX_CONTENT_LENGTH"] // (1024 * 1024)
-    return jsonify({"error": f"This file is too large. The limit is {mb} MB per photo. Please try a smaller photo (a lower-resolution copy)."}), 413
+    return jsonify({"error": upload.PHOTO_TOO_LARGE.format(mb=mb)}), 413
 
 
 
@@ -126,23 +153,45 @@ def _item(media_id):
 @bp.route("/media")
 def list_media():
     rows = get_db().execute(
-        "SELECT id, original_name, kind, size_bytes, created_at FROM media "
+        "SELECT id, original_name, kind, size_bytes, created_at, state, duration_ms FROM media "
         "ORDER BY created_at DESC, id DESC").fetchall()
     return jsonify([{"id": r["id"], "name": r["original_name"], "kind": r["kind"],
                      "size": r["size_bytes"], "created_at": r["created_at"],
+                     "state": r["state"], "duration_ms": r["duration_ms"],      # #102
                      "thumb": f"/api/v1/media/{r['id']}/thumb"} for r in rows])
 
 
 @bp.route("/media/<int:media_id>/thumb")
 def thumb(media_id):
     row = _item(media_id)
-    path = imaging.ensure_thumb(current_app.config["DATA_DIR"], row["stored_name"]) \
-        if row["kind"] == "image" else None
+    data_dir = current_app.config["DATA_DIR"]
+    if row["kind"] == "image":
+        path = imaging.ensure_thumb(data_dir, row["stored_name"])
+    elif row["state"] == "ready":                   # #102: made from the poster (first frame)
+        path = video.make_video_thumb(data_dir, row["stored_name"])
+    else:
+        path = None
     if path is None:
         abort(404)
     resp = send_file(path, mimetype="image/jpeg", max_age=86400)
     resp.headers["Cache-Control"] = "private, max-age=86400"
     return resp
+
+
+@bp.route("/media/<int:media_id>/retry", methods=["POST"])
+def retry(media_id):
+    """#102: a failed video goes back in the queue (its upload is kept until it is ready)."""
+    row = _item(media_id)
+    data_dir = current_app.config["DATA_DIR"]
+    if row["kind"] != "video" or row["state"] != "failed":
+        return jsonify({"error": "Only a video that couldn't be added can be retried."}), 409
+    import os
+    if not os.path.exists(video.input_path(data_dir, row["stored_name"])):
+        return jsonify({"error": "The frame no longer has this video. Please remove it and upload it again."}), 410
+    get_db().execute("UPDATE media SET state = 'queued' WHERE id = ? AND state = 'failed'", (media_id,))
+    get_db().commit()
+    video.wake()
+    return jsonify({"id": media_id, "state": "queued"})
 
 
 # #80: the Hide feature is gone (PUT /media/<id>/hidden removed); db.init_db clears old flags.
@@ -234,12 +283,15 @@ def _delete_one(media_id):
         if gone == 0:
             return False, removed
         clear_show_now(current_app, stored)
+        video.remove_files(data_dir, stored)     # #102: the queued input / partial output, if any
         return True, removed
 
 
 @bp.route("/media/<int:media_id>/show-now", methods=["POST"])
 def show_now(media_id):
     row = _item(media_id)
+    if row["state"] != "ready":                     # #102: a clip still converting cannot be shown
+        return jsonify({"error": "This video isn't ready yet."}), 409
     import time
     state = current_app.extensions.setdefault("mf_show_now", {"seq": 0, "filename": None, "at": 0})
     state.update(seq=state["seq"] + 1, filename=row["stored_name"], at=time.time())

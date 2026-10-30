@@ -81,6 +81,9 @@ let playlistUpdatePending = false;
 // Watchdog: skips an item that never finishes loading/playing.
 let loadWatchdog = null;
 
+const VIDEO_MIN_MS = 5000;      // #102: shorter clips loop to about this long
+const VIDEO_STALL_MS = 5000;    // #102: a clip still playing this long after its end is stuck
+
 // Incremented every time a new item is shown, so late callbacks
 // from a previous (e.g. broken) item are ignored.
 let showToken = 0;
@@ -425,6 +428,21 @@ function showVideo(item){
     videoElement.className =
         "media";
 
+    // #102: clips are silent (converted with -an), play once, at most 30 s. A clip under 5 s loops to
+    // about 5 s (whole loops). A stall watchdog (play time + 5 s) moves on if playback freezes.
+    videoElement.muted = true;
+
+    const clipMs =
+        Number(item.duration_ms) > 0 ? Math.min(Number(item.duration_ms), 30000) : 0;
+
+    const playMs =
+        clipMs > 0 && clipMs < VIDEO_MIN_MS
+            ? Math.ceil(VIDEO_MIN_MS / clipMs) * clipMs
+            : clipMs;
+
+    videoElement.loop =
+        clipMs > 0 && clipMs < VIDEO_MIN_MS;
+
 
 
     const token = showToken;
@@ -474,6 +492,8 @@ function showVideo(item){
 
                             clearTimeout(loadWatchdog);
 
+                            armVideoTimers(token, playMs);
+
                         }
 
                     })
@@ -489,6 +509,8 @@ function showVideo(item){
             else{
 
                 clearTimeout(loadWatchdog);
+
+                armVideoTimers(token, playMs);
 
             }
 
@@ -533,6 +555,27 @@ function hideImage(){
 
 
 
+function armVideoTimers(token, playMs){
+
+    clearTimeout(slideTimer);
+
+    if(!(playMs > 0)) return;            // no duration known: onended (or the error path) moves on
+
+    // a looping short clip ends here; a normal clip ends on "ended", and this is its stall watchdog
+    slideTimer =
+        setTimeout(()=>{
+
+            if(token !== showToken) return;
+
+            nextMedia();
+
+        },
+        videoElement.loop ? playMs : playMs + VIDEO_STALL_MS);
+
+}
+
+
+
 function hideVideo(){
 
 
@@ -542,6 +585,23 @@ function hideVideo(){
 
 
     videoElement.pause();
+
+    // #102: let go of the clip (and the decoder) once it is off screen
+    if(videoElement.getAttribute("src")){
+
+        videoElement.onerror = null;
+
+        videoElement.onloadeddata = null;
+
+        videoElement.onended = null;
+
+        videoElement.loop = false;
+
+        videoElement.removeAttribute("src");
+
+        videoElement.load();
+
+    }
 
 }
 

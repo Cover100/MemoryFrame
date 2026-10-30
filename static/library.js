@@ -10,7 +10,8 @@
     if(!grid){ return; }                                  // empty library: nothing to select
     const CSRF = document.querySelector('meta[name="csrf-token"]').content;
     const body = document.body;
-    const tiles = ()=> grid.querySelectorAll(".tile");
+    // #102: only ready, shown (not filtered out) items are selectable; waiting/preparing/failed videos are div.vtile
+    const tiles = ()=> grid.querySelectorAll("li:not(.filtered) > button.tile");
     const selected = new Set();                            // media ids (strings, from data-id)
     const sheet = $("confirm"), delBtn = $("delBtn"), err = $("delErr");
     const BULK = 1000;                                     // = api.MAX_BULK
@@ -59,6 +60,7 @@
         selecting = true;
         history.pushState({mfSelect: 1}, "");
         body.classList.add("selecting");
+        lockActs();
         tiles().forEach((t)=> setPressed(t, t === first));
         update();
         if(!first){ $("selAll").focus(); }                 // the Select button just disappeared
@@ -69,17 +71,57 @@
         selecting = false;
         selected.clear();
         body.classList.remove("selecting");
+        lockActs();
         tiles().forEach((t)=> t.removeAttribute("aria-pressed"));    // no aria-pressed outside the mode
         err.hidden = true;
         const sel = $("selectBtn"), a = document.activeElement;   // focus was on a control that is now hidden
         if(sel && (!a || a === body || a.closest("#toolbar, #selbar"))){ sel.focus(); }
     }
-    function countText(n){ return n + " photo" + (n === 1 ? "" : "s") + " on the frame"; }
+    function countText(n){
+        const c = $("count");
+        if(c.dataset.videos === undefined){ return n + " photo" + (n === 1 ? "" : "s") + " on the frame"; }
+        const np = grid.querySelectorAll("li:not([data-kind])").length, nv = grid.querySelectorAll('li[data-kind="video"]').length;
+        c.dataset.photos = np; c.dataset.videos = nv;
+        return videoCount();
+    }
+    // ----- #102 Photos / Videos filter (session only: nothing stored) -----
+    const chipP = $("chipPhotos"), chipV = $("chipVideos"), hint = $("chipHint");
+    const plural = (n, w)=> n + " " + w + (n === 1 ? "" : "s");
+    function videoCount(){
+        const c = $("count"), np = Number(c.dataset.photos), nv = Number(c.dataset.videos);
+        if(!chipP || (on(chipP) && on(chipV))){ return plural(np, "photo") + " · " + plural(nv, "video"); }
+        return on(chipP) ? "Showing " + plural(np, "photo") : "Showing " + plural(nv, "video");
+    }
+    function on(chip){ return chip.getAttribute("aria-pressed") === "true"; }
+    function applyFilter(){
+        const p = on(chipP), v = on(chipV);
+        grid.querySelectorAll("li").forEach((li)=>{
+            li.classList.toggle("filtered", li.dataset.kind === "video" ? !v : !p);
+        });
+        [chipP, chipV].forEach((c)=>{
+            if(on(c) && !on(c === chipP ? chipV : chipP)){ c.setAttribute("aria-disabled", "true"); }
+            else { c.removeAttribute("aria-disabled"); }
+        });
+        grid.querySelectorAll("li.filtered > button.tile").forEach((t)=>{ if(t.getAttribute("aria-pressed") === "true"){ setPressed(t, false); } });
+        $("count").textContent = videoCount();
+        if(selecting){ update(); }
+    }
+    if(chipP){
+        [chipP, chipV].forEach((c)=> c.addEventListener("click", ()=>{
+            if(c.getAttribute("aria-disabled") === "true"){ hint.textContent = "At least one stays on."; return; }
+            hint.textContent = "";
+            c.setAttribute("aria-pressed", on(c) ? "false" : "true");
+            applyFilter();
+        }));
+        applyFilter();
+    }
 
     // Tap: start selecting with this photo, or toggle it. Long press does the same sooner (with a buzz).
     let press = null, longFired = false;
     grid.addEventListener("click", (e)=>{
-        const t = e.target.closest(".tile");
+        const act = e.target.closest(".vretry, .vremove");
+        if(act){ videoAction(act); return; }
+        const t = e.target.closest("button.tile");
         if(!t || busy){ return; }
         if(longFired){ longFired = false; return; }       // the long press already handled this touch
         if(!selecting){ enterSelect(t); return; }
@@ -87,7 +129,7 @@
         update();
     });
     grid.addEventListener("pointerdown", (e)=>{
-        const t = e.target.closest(".tile");
+        const t = e.target.closest("button.tile");
         if(!t || e.button > 0){ return; }
         longFired = false;
         press = {x: e.clientX, y: e.clientY, timer: setTimeout(()=>{
@@ -117,7 +159,9 @@
     const behind = ()=> [$("selbar"), grid, $("toolbar")];
     function openSheet(){
         const n = selected.size;
-        $("confirmTitle").textContent = n === 1 ? "Delete this photo?" : "Delete " + n + " photos?";
+        const nv = [...selected].filter((id)=> grid.querySelector('li[data-id="' + Number(id) + '"][data-kind="video"]')).length;
+        const what = nv === 0 ? "photo" : nv === n ? "video" : "item";            // #102
+        $("confirmTitle").textContent = n === 1 ? "Delete this " + what + "?" : "Delete " + n + " " + what + "s?";
         $("confirmBody").textContent = n === 1 ? "It'll be removed from the frame. This can't be undone."
                                                : "They'll be removed from the frame. This can't be undone.";
         history.pushState({mfSheet: 1}, "");
@@ -132,6 +176,7 @@
         sheet.hidden = true;
         body.classList.remove("sheet-open");
         behind().forEach((el)=>{ el.inert = false; });
+        if(removing && !busy){ removing = false; selected.clear(); }    // #102: Remove was cancelled
         delBtn.focus();
     }
     delBtn.addEventListener("click", ()=>{ if(selected.size && !busy){ openSheet(); } });
@@ -182,8 +227,11 @@
             fading.forEach((li)=> li.remove());
             const left = tiles().length;
             $("count").textContent = countText(left);
-            tiles().forEach((t, i)=> t.setAttribute("aria-label", "Photo " + (i + 1) + " of " + left));   // no stale numbers
-            if(!left){ $("selectBtn").hidden = true; grid.hidden = true; $("emptyLib").hidden = false; }   // nothing left
+            if(removing){ removing = false; selected.clear(); }
+            tiles().forEach((t, i)=> t.setAttribute("aria-label", t.closest('li[data-kind="video"]')
+                ? t.getAttribute("aria-label").replace(/^Video \d+ of \d+/, "Video " + (i + 1) + " of " + left)
+                : "Photo " + (i + 1) + " of " + left));   // no stale numbers
+            if(!left && !grid.querySelector("li")){ $("selectBtn").hidden = true; grid.hidden = true; $("emptyLib").hidden = false; }   // nothing left
             busy = false; $("selCancel").disabled = false;
             if(ok){
                 exitSelect(false);
@@ -197,4 +245,87 @@
             }
         }, fading.length ? 160 : 0);
     });
+
+    // ----- #102: videos converting on the frame -----
+    // Retry re-queues a failed video; Remove asks on the same sheet as Delete (09c rules) for that one video.
+    let removing = false;
+    async function videoAction(btn){
+        const id = btn.dataset.id;
+        if(busy){ return; }
+        if(btn.classList.contains("vremove")){
+            selected.clear(); selected.add(String(id)); removing = true;
+            openSheet();
+            return;
+        }
+        try{
+            const r = await fetch("/api/v1/media/" + Number(id) + "/retry", {method: "POST", credentials: "same-origin",
+                headers: {"X-CSRF-Token": CSRF}});
+            if(r.status === 401){ location.href = "/pair"; return; }
+            if(r.ok){ setVideo(btn.closest("li"), {id: Number(id), state: "queued"}); poll(); }
+        }catch(e){ if(e instanceof TypeError && window.memoryFramePhone){ window.memoryFramePhone.offline(); } }
+    }
+    function mmss(ms){ const s = Math.round((ms || 0) / 1000); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); }
+    function el(tag, cls, text){ const e = document.createElement(tag); if(cls){ e.className = cls; } if(text){ e.textContent = text; } return e; }
+    function icon(d, w){                    // inline SVG (the font has no glyphs for these)
+        const ns = "http://www.w3.org/2000/svg", s = document.createElementNS(ns, "svg"), p = document.createElementNS(ns, "path");
+        s.setAttribute("viewBox", "0 0 24 24"); s.setAttribute("width", "22"); s.setAttribute("height", "22"); s.setAttribute("aria-hidden", "true");
+        [["d", d], ["fill", "none"], ["stroke", "currentColor"], ["stroke-width", w], ["stroke-linecap", "round"], ["stroke-linejoin", "round"]]
+            .forEach(([k, v])=> p.setAttribute(k, v));
+        s.append(p); return s;
+    }
+    function lockActs(){ grid.querySelectorAll(".acts button").forEach((b)=>{ b.disabled = selecting; }); }   // Wren N3
+    function setVideo(li, m){               // rebuild one video tile for its new state (DOM only, no innerHTML)
+        li.dataset.state = m.state;
+        let t;
+        if(m.state === "ready"){
+            t = el("button", "tile"); t.type = "button";
+            const all = [...grid.children].filter((x)=> !x.classList.contains("gone"));   // same form as on load
+            t.setAttribute("aria-label", "Video " + (all.indexOf(li) + 1) + " of " + all.length + ", " + mmss(m.duration_ms));
+            const img = new Image(240, 240); img.alt = ""; img.decoding = "async"; img.src = "/api/v1/media/" + m.id + "/thumb";
+            img.addEventListener("error", ()=> plain(img), {once: true});
+            const b = el("span", "badge", "▶ " + mmss(m.duration_ms)); b.setAttribute("aria-hidden", "true");
+            t.append(img, b);
+            if(selecting){ t.setAttribute("aria-pressed", "false"); }
+        } else if(m.state === "failed"){
+            t = el("div", "tile vtile");
+            const st = el("div", "state fail"); st.append(el("span", "", "Couldn't add"));
+            const acts = el("div", "acts");
+            const r = el("button", "vretry"), x = el("button", "vremove");
+            r.type = x.type = "button"; r.dataset.id = x.dataset.id = m.id; r.disabled = x.disabled = selecting;
+            r.setAttribute("aria-label", "Retry video"); x.setAttribute("aria-label", "Remove video");
+            r.append(icon("M19 12a7 7 0 1 1-2.05-4.95M19 4v4h-4", "2.4")); x.append(icon("M6 6l12 12M18 6L6 18", "2.6"));
+            acts.append(r, x); st.append(acts); t.append(st);
+        } else {
+            t = el("div", "tile vtile"); t.setAttribute("role", "img");
+            t.setAttribute("aria-label", m.state === "processing" ? "Video preparing" : "Video waiting");
+            const st = el("div", "state");
+            if(m.state === "processing"){ const sp = el("span", "spin"); sp.setAttribute("aria-hidden", "true"); st.append(sp); }
+            st.append(document.createTextNode(m.state === "processing" ? "Preparing" : "Waiting"));
+            t.append(st);
+        }
+        li.replaceChildren(t);
+    }
+    // While any video is waiting or preparing, ask the frame every 5 s; a ready video appears without a reload.
+    let pollTimer = null;
+    function pending(){ return grid.querySelector('li[data-state="queued"], li[data-state="processing"]'); }
+    function poll(){
+        if(pollTimer || !pending()){ return; }
+        pollTimer = setTimeout(async ()=>{
+            pollTimer = null;
+            try{
+                const r = await fetch("/api/v1/media", {credentials: "same-origin"});
+                if(r.ok){
+                    const list = await r.json();
+                    list.forEach((m)=>{
+                        if(m.kind !== "video"){ return; }
+                        const li = grid.querySelector('li[data-id="' + Number(m.id) + '"]');
+                        if(li && li.dataset.state !== m.state){ setVideo(li, m); }
+                    });
+                    if(selecting){ update(); }
+                }
+            }catch(e){ /* offline: try again on the next tick */ }
+            poll();
+        }, 5000);
+    }
+    poll();
 })();

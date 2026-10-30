@@ -15,7 +15,7 @@ import uuid
 
 from werkzeug.utils import secure_filename
 
-from . import imaging, library
+from . import imaging, library, video
 
 log = logging.getLogger(__name__)
 
@@ -39,7 +39,11 @@ FORMAT_NAME = {"HEIF": "HEIC", "AVIF": "HEIC", "PNG": "PNG", "WEBP": "WebP", "GI
 SAVE_FAILED = "The frame couldn't save this photo. Please try again; if it keeps happening, restart the frame."
 FULL = "The frame is almost full. Delete some photos and try again."
 VIDEO_EXT = {".mp4", ".mov", ".webm", ".mkv", ".avi", ".3gp", ".m4v"}
-VIDEO_MAGIC = (b"ftypmp4", b"ftypisom", b"ftypqt", b"ftyp3gp", b"ftypM4V", b"ftypmp42", b"ftypavc1")
+VIDEO_MAGIC = (b"ftypmp4", b"ftypisom", b"ftypqt", b"ftyp3gp", b"ftypM4V", b"ftypmp42", b"ftypavc1",
+               b"ftypiso", b"ftyp3g2", b"ftypMSNV", b"ftypdash")
+VIDEO_LATER = "Videos are coming later. For now, please upload photos only."
+PHOTO_TOO_LARGE = ("This file is too large. The limit is {mb} MB per photo. "
+                   "Please try a smaller photo (a lower-resolution copy).")
 
 
 class UploadError(Exception):
@@ -60,10 +64,15 @@ def storage_info(data_dir, min_free, avg_photo):
             "photos_remaining_estimate": int(usable // avg_photo) if avg_photo else None}
 
 
+def _video_magic(head):
+    """#102: a video container by content (ISO-BMFF ftyp brand or EBML/Matroska/WebM), never by name."""
+    return any(m in head[:16] for m in VIDEO_MAGIC) or head[:4] == b"\x1aE\xdf\xa3"
+
+
 def _looks_like_video(head, name):
     if os.path.splitext(name or "")[1].lower() in VIDEO_EXT:
         return True
-    return any(m in head[:16] for m in VIDEO_MAGIC) or head[:4] == b"\x1aE\xdf\xa3"
+    return _video_magic(head)
 
 
 def pixel_cap(fmt, max_pixels=MAX_PIXELS, max_nonjpeg_pixels=MAX_NONJPEG_PIXELS):
@@ -114,8 +123,12 @@ def _is_enospc(e):
 
 
 def save_upload(conn, data_dir, filestorage, min_free, display_target, max_pixels=MAX_PIXELS,
-                max_nonjpeg_pixels=MAX_NONJPEG_PIXELS):
-    """Validate and add one uploaded file. Returns (stored_name or None if duplicate, label)."""
+                max_nonjpeg_pixels=MAX_NONJPEG_PIXELS, videos=False, max_photo_bytes=None, meta=None):
+    """Validate and add one uploaded file. Returns (stored_name or None if duplicate, label).
+
+    #102: with videos=True (ffmpeg is installed) a video container (by content) is queued for conversion
+    (video.accept) instead of refused; the stored name ends in .mp4. max_photo_bytes keeps the photo limit
+    when the request limit was raised for videos (350 MB)."""
     if free_bytes(data_dir) < min_free:
         raise UploadError(507, FULL)
     tmp = os.path.join(data_dir, "tmp", "upload-" + uuid.uuid4().hex)
@@ -123,8 +136,12 @@ def save_upload(conn, data_dir, filestorage, min_free, display_target, max_pixel
         filestorage.save(tmp)
         with open(tmp, "rb") as f:
             head = f.read(32)
+        if videos and _video_magic(head):
+            return _save_video(conn, data_dir, tmp, filestorage.filename, min_free, meta)
         if _looks_like_video(head, filestorage.filename):
-            raise UploadError(415, "Videos are coming later. For now, please upload photos only.")
+            raise UploadError(415, VIDEO_LATER if not videos else video.NOT_A_VIDEO)
+        if max_photo_bytes and os.path.getsize(tmp) > max_photo_bytes:
+            raise UploadError(413, PHOTO_TOO_LARGE.format(mb=max_photo_bytes // (1024 * 1024)))
         ext = sniff_image(tmp, max_pixels, max_nonjpeg_pixels)
         if ext is None:
             raise UploadError(415, NOT_A_PHOTO)
@@ -154,6 +171,27 @@ def save_upload(conn, data_dir, filestorage, min_free, display_target, max_pixel
             os.remove(tmp)
         except FileNotFoundError:
             pass
+
+
+def _save_video(conn, data_dir, tmp, client_name, min_free, meta=None):
+    """#102: tmp is the upload on the card. Space (#96 reserve) is checked against its real size, then it
+    is hashed (duplicates), ffprobed (refused here, not later, if the frame cannot use it) and queued."""
+    size = os.path.getsize(tmp)
+    if size > video.MAX_UPLOAD_BYTES:
+        raise UploadError(413, video.TOO_LARGE)
+    if video.pending(conn) >= video.MAX_PENDING:          # Sage: cap what can sit on the card unconverted
+        raise UploadError(429, video.QUEUE_FULL)
+    if not video.space_ok(data_dir, min_free, size):     # the converted clip + poster + thumb fit
+        raise UploadError(507, FULL)
+    try:
+        info = video.probe(tmp)
+    except video.VideoError as e:
+        raise UploadError(415, str(e)) from e
+    name = label(client_name, ".mp4")
+    stored = video.accept(conn, data_dir, tmp, name, library.sha256_file(tmp))
+    if meta is not None and info.get("high_res"):       # over 4K: allowed, but slow on the Pi
+        meta.update(high_res=True, prep_minutes=video.prep_minutes(info))
+    return stored, name
 
 
 __all__ = ["UploadError", "save_upload", "storage_info", "imaging"]

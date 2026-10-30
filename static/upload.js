@@ -109,7 +109,7 @@
     }
 
     async function send(file, ui){
-        if(file.size >= SHRINK_MIN_BYTES){
+        if(file.size >= SHRINK_MIN_BYTES && !/^video\//i.test(file.type)){      // #102: videos go as they are
             ui.li.className = "sending";
             ui.msg.textContent = "Making it smaller...";
             const small = await shrink(file);
@@ -131,16 +131,17 @@
             xhr.onload = ()=>{
                 let body = {};
                 try{ body = JSON.parse(xhr.responseText); }catch(e){ /* not JSON */ }
-                const ok = xhr.status === 201 || xhr.status === 200;
+                const queued = xhr.status === 202;                // #102: a video, prepared on the frame
+                const ok = xhr.status === 201 || xhr.status === 200 || queued;
                 ui.bar.value = 100;
-                ui.li.className = ok ? (xhr.status === 201 ? "ok" : "ok dup") : "bad";
+                ui.li.className = ok ? (xhr.status === 200 ? "ok dup" : "ok") : "bad";
                 if(xhr.status === 201 && Number.isInteger(body.media_id)){
                     const img = document.createElement("img");
                     img.className = "th"; img.alt = ""; img.width = 52; img.height = 52; img.decoding = "async";
                     img.src = "/api/v1/media/" + body.media_id + "/thumb";
                     ui.th.replaceWith(img);
                 }
-                mfSetText(ui.msg, ok ? (xhr.status === 201 ? "Added" : "Already on the frame")
+                mfSetText(ui.msg, ok ? (queued ? "Added. The frame is preparing it." : xhr.status === 201 ? "Added" : "Already on the frame")
                                         : (body.error || ("Failed (" + xhr.status + ")")));
                 if(xhr.status === 401){ location.href = "/pair"; }
                 resolve(ok);
@@ -176,7 +177,8 @@
         list.textContent = "";
         const rows = files.map(row);
         let done = 0, good = 0;
-        summary.textContent = "Sending " + files.length + " photo" + (files.length === 1 ? "" : "s") + "...";
+        const word = input.dataset.videos ? " file" : " photo";
+        summary.textContent = "Sending " + files.length + word + (files.length === 1 ? "" : "s") + "...";
         for(let i = 0; i < files.length; i++){
             if(await send(files[i], rows[i])){ good++; }
             done++;
@@ -188,7 +190,7 @@
         drop.classList.remove("busy");
         drop.removeAttribute("aria-disabled");
         drop.classList.add("again");
-        pickLabel.textContent = "Choose more photos";
+        pickLabel.textContent = input.dataset.videos ? "Choose more" : "Choose more photos";
         busy = false;
         loadStorage();
     }

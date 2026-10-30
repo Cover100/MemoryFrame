@@ -340,3 +340,40 @@ def test_upload_body_is_spooled_on_the_card(mf_app):
         finally:
             f.close()
     assert tempfile is not None
+
+
+# ---------------- phone pages and frame script ----------------
+
+def test_library_page_with_videos(vapp, paired, ff):
+    post(paired)
+    from PIL import Image
+    b = io.BytesIO()
+    Image.new("RGB", (64, 64)).save(b, "JPEG")
+    post(paired, b.getvalue(), "p.jpg")
+    h = paired.get("/admin/library", environ_base=PHONE).get_data(as_text=True)
+    assert "＋&nbsp; Upload</a>" in h and "Videos play silently, up to 30 seconds" in h
+    assert 'id="chipPhotos" aria-pressed="true"' in h and 'id="chipVideos" aria-pressed="true"' in h
+    assert "1 photo · 1 video" in h and 'role="status"' in h
+    assert 'data-state="queued"' in h and "Waiting" in h
+    work(vapp)
+    h = paired.get("/admin/library", environ_base=PHONE).get_data(as_text=True)
+    assert "▶ 0:13" in h and 'data-state="ready"' in h
+
+
+def test_failed_tile_has_retry_and_remove(vapp, paired, ff):
+    ff.fail_convert = True
+    post(paired)
+    work(vapp)
+    h = paired.get("/admin/library", environ_base=PHONE).get_data(as_text=True)
+    assert "Couldn't add" in h and 'class="vretry"' in h and 'class="vremove"' in h
+
+
+def test_upload_page_copy(vapp, paired):
+    h = paired.get("/admin/upload", environ_base=PHONE).get_data(as_text=True)
+    assert "<title>Upload - Memory Frame" in h and "video/*" in h and "Videos play silently" in h
+
+
+def test_frame_script_plays_once_loops_short_and_releases():
+    src = open(os.path.join(os.path.dirname(__file__), "..", "static", "script.js")).read()
+    assert "VIDEO_MIN_MS = 5000" in src and "VIDEO_STALL_MS = 5000" in src
+    assert 'videoElement.removeAttribute("src")' in src and "armVideoTimers(token, playMs)" in src

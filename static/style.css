@@ -426,6 +426,7 @@ video {
 .stepTitle{align-self:flex-start;display:flex;gap:10px;align-items:center;font-size:var(--mf-f-body);font-weight:700}
 .stepText{font-size:var(--mf-f-small);color:var(--mf-oat);overflow-wrap:anywhere}
 .stepText b{display:block;color:var(--mf-linen)}
+.stepText--inline b{display:inline}   /* #89 Wren: "Join {name} with its password" stays one line; the name is bold inline */
 .codeWrap .stepText{text-wrap:balance}   /* polish: 'code' never wraps alone (mock 04: '...on your phone / if it asks for a code') */
 /* MF-23: the SVG carries its own 4-module white quiet zone; scale the whole thing, never crop */
 .qr{flex:none;line-height:0;overflow:visible}

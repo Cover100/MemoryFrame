@@ -9,7 +9,7 @@ import pytest
 from memoryframe import privileged
 
 ROOT = Path(__file__).resolve().parents[1]
-UNITS = ["devtemp", "wifi-apply", "wifi-commit", "wifi-rollback"]
+UNITS = ["devtemp", "wifi-apply", "wifi-commit", "wifi-rollback", "home-wifi"]
 VERB = {"devtemp": "dev-temp"}
 
 
@@ -40,11 +40,14 @@ def test_oneshot_units(u):
     text = (ROOT / "deploy" / "units" / f"memoryframe-{u}.service").read_text()
     d = directives(text)
     verb = VERB.get(u, u)
-    extra = " --request" if u == "wifi-apply" else ""
+    extra = " --request" if u in ("wifi-apply", "home-wifi") else ""
     assert "Type=oneshot" in d and f"ExecStart=/usr/local/sbin/memoryframe-netmode {verb}{extra}" in d
     assert "[Install]" not in d and not any(l.startswith(("User=", "Environment=")) for l in d)
     assert f"StandardOutput=truncate:/run/memoryframe/{verb}.out" in d
     assert privileged.UNITS[verb] == f"memoryframe-{u}.service"
+    if u == "home-wifi":
+        assert "ExecStopPost=/bin/rm -f /run/memoryframe-app/home-wifi" in d
+        assert "ExecStopPost=-/usr/local/sbin/memoryframe-netmode home-wifi-restore" in d
     if u == "wifi-apply":
         assert not any(l.startswith("StandardInput=") for l in d)   # helper reads it itself (nofollow)
         assert "ExecStopPost=/bin/rm -f /run/memoryframe-app/wifi-apply" in d

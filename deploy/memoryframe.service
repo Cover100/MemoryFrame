@@ -39,6 +39,10 @@ RuntimeDirectoryMode=0700
 EnvironmentFile=-/etc/default/memoryframe
 # Environment=MEMORYFRAME_EXTRA_HOSTS=192.168.50.124
 # Environment=MEMORYFRAME_SITE_URL=http://memoryframe.local
+# #113: never (re)start the app while a factory reset is running, whatever asks: Restart=, the
+# WatchdogSec= restart, or a manual start. A failed condition skips the start without a restart loop;
+# deploy/factory-reset.sh removes the marker last, then starts the app.
+ExecCondition=/usr/bin/test ! -e /var/lib/memoryframe/.factory-reset
 ExecStart=@APP_DIR@/.venv/bin/python @APP_DIR@/app.py
 # #82: memory. The Pi 4B has 4 GB shared with the kiosk Chromium; one huge photo decode (HEIC/PNG/WebP up to
 # ~0.8 GB at the 50 MP cap) must not starve it. The protections that actually work on the Pi are in the app:

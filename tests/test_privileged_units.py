@@ -23,8 +23,11 @@ def test_app_service_hardening_restored_and_extended():
                  "AmbientCapabilities=CAP_NET_BIND_SERVICE", "RestrictSUIDSGID=true", "PrivateTmp=true",
                  "ProtectSystem=strict", "RuntimeDirectory=memoryframe-app", "RuntimeDirectoryMode=0700"):
         assert want in d, want
-    rw = [l for l in d if l.startswith("ReadWritePaths=")]
-    assert len(rw) == 1 and "/var/lib/memoryframe" in rw[0] and "@APP_DIR@/uploads" in rw[0]
+    # #69: mfapp, the data dir via StateDirectory, no home, no writable code
+    for want in ("User=@USER@", "Group=@USER@", "SupplementaryGroups=video", "UMask=0027", "ProtectHome=true",
+                 "StateDirectory=memoryframe", "StateDirectoryMode=0750"):
+        assert want in d, want
+    assert not [l for l in d if l.startswith("ReadWritePaths=")]
 
 
 def test_app_service_memory_settings_are_present():

@@ -51,8 +51,8 @@ def test_netmode_root_block_is_first_and_fixed():
 
 def test_root_owned_hotspot_copy_and_conf_installed_and_unit_has_no_hook():
     inst = (ROOT / "deploy" / "install.sh").read_text()
-    assert "install -o root -g root -m 0755 \"$APP_DIR/deploy/hotspot.sh\" /usr/local/sbin/memoryframe-hotspot" in inst
-    assert "-m 0600 \"$APP_DIR/deploy/hotspot.conf\" /etc/memoryframe/hotspot.conf" in inst
+    assert 'put_file "$SRC_DIR/deploy/hotspot.sh" /usr/local/sbin/memoryframe-hotspot 0755' in inst
+    assert 'put_file "$SRC_DIR/deploy/hotspot.conf" /etc/memoryframe/hotspot.conf 0640 "$APP_USER"' in inst
     assert "MEMORYFRAME_HOTSPOT_SH" not in (ROOT / "deploy" / "memoryframe-netmode.service").read_text()
     assert "/usr/local/sbin/memoryframe-hotspot" in (ROOT / "deploy" / "uninstall.sh").read_text()
 

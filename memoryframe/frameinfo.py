@@ -12,13 +12,15 @@ log = logging.getLogger(__name__)
 
 
 def hotspot_conf():
-    """SSID/PASSWORD from deploy/hotspot.conf (git-ignored), overridable by env. The env override is
+    """SSID/PASSWORD from the hotspot config, overridable by env. #69: the file is $MEMORYFRAME_HOTSPOT_CONF
+    (the unit sets /etc/memoryframe/hotspot.conf, root:mfapp 0640), else that path if it exists, else the
+    checkout's deploy/hotspot.conf (git-ignored; dev runs). The env override is
     per key: MEMORYFRAME_SSID and MEMORYFRAME_WIFI_PASSWORD are each used on their own when set and
     non-empty, otherwise that key comes from the file. This is only the seed value for the hotspot:
     the NetworkManager profile MemoryFrame-hotspot holds what is broadcast."""
     out = {}
     try:
-        with open(os.path.join(storage.REPO_DIR, "deploy", "hotspot.conf")) as f:
+        with open(_hotspot_conf_path()) as f:
             for line in f:
                 line = line.strip()
                 if "=" in line and not line.startswith("#"):
@@ -29,6 +31,18 @@ def hotspot_conf():
     ssid = os.environ.get("MEMORYFRAME_SSID") or out.get("SSID")
     password = os.environ.get("MEMORYFRAME_WIFI_PASSWORD") or out.get("PASSWORD")
     return ssid, password
+
+
+ETC_HOTSPOT_CONF = "/etc/memoryframe/hotspot.conf"
+
+
+def _hotspot_conf_path():
+    env = os.environ.get("MEMORYFRAME_HOTSPOT_CONF")
+    if env:
+        return env
+    if os.path.exists(ETC_HOTSPOT_CONF):
+        return ETC_HOTSPOT_CONF
+    return os.path.join(storage.REPO_DIR, "deploy", "hotspot.conf")
 
 
 def _wifi_escape(s):
@@ -82,7 +96,15 @@ def ip_addresses():
 
 
 def version():
+    """#69: /opt/memoryframe has no .git; install.sh writes the short sha to VERSION. Dev checkouts use git."""
     sha = None
+    try:
+        with open(os.path.join(storage.REPO_DIR, "VERSION")) as f:
+            sha = f.read(64).strip() or None
+    except OSError:
+        pass
+    if sha:
+        return f"{VERSION} ({sha})"
     try:
         sha = subprocess.run(["git", "-C", storage.REPO_DIR, "rev-parse", "--short", "HEAD"],
                              capture_output=True, text=True, timeout=2).stdout.strip() or None

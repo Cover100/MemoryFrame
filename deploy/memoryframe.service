@@ -1,5 +1,6 @@
-# Memory Frame web app (waitress). Installed by deploy/install.sh, which
-# replaces @USER@ and @APP_DIR@.
+# Memory Frame web app (waitress). Installed by deploy/install.sh, which replaces @USER@ (mfapp) and
+# @APP_DIR@ (/opt/memoryframe, root-owned: the app can't rewrite its own code). #69: runs as the system
+# user mfapp with only the video group (backlight); no sudo, no login, no home.
 [Unit]
 Description=Memory Frame web app
 After=network.target
@@ -14,10 +15,14 @@ WatchdogSec=90
 TimeoutAbortSec=10
 LimitCORE=0
 User=@USER@
+Group=@USER@
+SupplementaryGroups=video
+UMask=0027
 WorkingDirectory=@APP_DIR@
 Environment=PYTHONUNBUFFERED=1
 Environment=MEMORYFRAME_DATA_DIR=/var/lib/memoryframe
 Environment=MEMORYFRAME_LEGACY_UPLOADS=@APP_DIR@/uploads
+Environment=MEMORYFRAME_HOTSPOT_CONF=/etc/memoryframe/hotspot.conf
 # MF-10: port 80 (http://10.42.0.1/, the NFC tag URL) plus 5000 for existing tools.
 Environment=MEMORYFRAME_PORTS=80,5000
 # Allow binding port 80 without running as root; nothing else is granted.
@@ -29,7 +34,10 @@ NoNewPrivileges=true
 RestrictSUIDSGID=true
 PrivateTmp=true
 ProtectSystem=strict
-ReadWritePaths=/var/lib/memoryframe -@APP_DIR@/uploads
+ProtectHome=true
+# Data dir (created mfapp:mfapp 0750 if missing); the only writable path apart from the runtime dir.
+StateDirectory=memoryframe
+StateDirectoryMode=0750
 # Wi-Fi apply input (ssid/password) is handed to the root unit through this 0700 directory.
 RuntimeDirectory=memoryframe-app
 RuntimeDirectoryMode=0700

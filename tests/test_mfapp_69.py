@@ -323,3 +323,15 @@ def test_version_from_file_and_hotspot_conf_env(tmp_path, monkeypatch):
     monkeypatch.delenv("MEMORYFRAME_SSID", raising=False)
     monkeypatch.delenv("MEMORYFRAME_WIFI_PASSWORD", raising=False)
     assert frameinfo.hotspot_conf() == ("Frame", "pw-12345678")
+
+
+def test_watchdog_and_log_caps_work_under_mfapp():
+    """#69 + #95/#96: as User=mfapp the app is still the main PID (NotifyAccess=main, AF_UNIX allowed) and
+    the journal/coredump caps are root drop-ins written by install.sh, not by the app."""
+    u = (ROOT / "deploy" / "memoryframe.service").read_text()
+    for d in ("User=@USER@", "Type=notify", "NotifyAccess=main", "WatchdogSec=90", "Restart=always",
+              "WorkingDirectory=@APP_DIR@", "ExecStart=@APP_DIR@/.venv/bin/python @APP_DIR@/app.py"):
+        assert d in u.splitlines(), d
+    assert "RestrictAddressFamilies" not in u or "AF_UNIX" in u
+    i = (ROOT / "deploy" / "install.sh").read_text()
+    assert 'put_file "$SRC_DIR/deploy/$d-memoryframe.conf" "/etc/systemd/$d.conf.d/memoryframe.conf" 0644' in i

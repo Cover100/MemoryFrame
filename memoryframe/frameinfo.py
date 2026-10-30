@@ -113,9 +113,12 @@ def version():
     return f"{VERSION} ({sha})" if sha else VERSION
 
 
-def free_storage(data_dir):
+def free_storage(data_dir, min_free=None):
     du = shutil.disk_usage(data_dir)
-    return {"free": du.free, "total": du.total}
+    out = {"free": du.free, "total": du.total}
+    if min_free is not None:
+        out["almost_full"] = du.free < min_free          # #96: frame menu "Almost full"
+    return out
 
 
 # ---------------- network-aware addresses (Tester bug at cb270ce) ----------------

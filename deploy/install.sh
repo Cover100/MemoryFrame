@@ -208,6 +208,13 @@ for u in devtemp wifi-apply wifi-commit wifi-rollback rollback; do
 done
 [ -d /etc/polkit-1/rules.d ] || sudo install -d -o root -g root -m 0755 /etc/polkit-1/rules.d   # never re-perm the distro's dir
 render "$SRC_DIR/deploy/memoryframe-polkit.rules" /etc/polkit-1/rules.d/50-memoryframe.rules 0644
+# #96: cap the journal and disable core dumps so logs can't fill the SD card (root 0644 drop-ins, applied
+# by root here; nothing for mfapp to write).
+for d in journald coredump; do
+    sudo install -d -o root -g root -m 0755 "/etc/systemd/$d.conf.d"
+    put_file "$SRC_DIR/deploy/$d-memoryframe.conf" "/etc/systemd/$d.conf.d/memoryframe.conf" 0644
+done
+sudo systemctl restart systemd-journald 2>/dev/null || true
 # Old sudoers rules from before #62 (unused now).
 sudo rm -f /etc/sudoers.d/memoryframe /etc/sudoers.d/memoryframe-poweroff
 sudo systemctl daemon-reload

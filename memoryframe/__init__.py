@@ -92,7 +92,7 @@ def _sweep(app):
     from . import imaging, library
     conn = db.connect(app.config["DB_PATH"])
     try:                        # #91: before the sweep, so an adopted photo keeps its copies; before serving
-        library.reconcile_orphans(conn, app.config["DATA_DIR"])
+        _, app.config["ORPHANS_REPORTED"] = library.reconcile_orphans(conn, app.config["DATA_DIR"])
     except Exception as e:  # noqa: BLE001 - never block start-up
         log.warning("start-up orphan reconcile failed: %s", e)
     try:

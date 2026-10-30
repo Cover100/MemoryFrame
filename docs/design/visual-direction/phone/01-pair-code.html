@@ -1,0 +1,28 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Pair this phone (code entry)</title>
+<!-- Memory Frame visual direction mock (Pair this phone (code entry)). 412x915. Mocks only, not app code. -->
+<link rel="stylesheet" href="phone.css"><style>
+.code { display:flex; gap:8px; margin:18px 0 8px; }
+.code span { flex:1; height:60px; border:1.5px solid var(--mf-line); border-radius:var(--mf-r-sm); background:#fff; display:grid; place-items:center; font-size:28px; font-weight:700; font-variant-numeric:tabular-nums; }
+.code span.gap { flex:0 0 6px; border:0; background:none; }
+.code span.cur { outline:3px solid var(--mf-green); outline-offset:1px; border-color:var(--mf-green); }
+.code span.cur::after { content:""; width:2px; height:30px; background:var(--mf-green); }
+.hero { display:flex; justify-content:center; margin:8px 0 22px; }
+.hero div { width:120px; height:76px; border-radius:12px; background:var(--mf-walnut); position:relative; }
+.hero div::before { content:""; position:absolute; left:10px; top:14px; width:46px; height:46px; border-radius:50%; background:var(--mf-ink); border:3px solid #2a2a2a; }
+.hero div::after { content:"482 913"; position:absolute; right:8px; top:10px; width:50px; height:56px; border-radius:5px; background:var(--mf-forest-900); color:var(--mf-linen); font-size:10px; font-weight:700; display:grid; place-items:center; text-align:center; line-height:1.1; padding:4px; }
+</style></head><body>
+<header class="bar"><div class="name"><span class="dot"></span>Memory Frame</div></header>
+<main>
+  <div class="hero" aria-hidden="true"><div></div></div>
+  <h1>Pair this phone</h1>
+  <p class="muted">Enter the 6-digit code shown on the frame.</p>
+  <div class="code" aria-label="Pairing code"><span>4</span><span>8</span><span>2</span><span class="gap"></span><span>9</span><span class="cur"></span><span></span></div>
+  <p class="small muted">The code is on the frame's screen, under "Enter code".</p>
+  <button class="btn btn-primary btn-big block" style="margin-top:22px">Pair</button>
+  <div class="card" style="margin-top:28px">
+    <h2 style="font-size:17px">Can't see a code?</h2>
+    <p class="small muted" style="margin:0">Double-tap the frame's screen and choose <b>Pair new device</b>.</p>
+  </div>
+</main>
+</body></html>

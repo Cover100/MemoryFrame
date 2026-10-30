@@ -1,0 +1,41 @@
+/* 09 Library (issue #80). Builds on phone.css + PR #77/#78 classes. Flat colours, transform/opacity only. */
+:root { --mf-scrim-phone: rgba(31, 42, 36, 0.55); --mf-lib-gap: 3px; --mf-tick: 26px; --mf-toolbar-h: 72px; }
+.bar .back { background: transparent; border: 0; cursor: pointer; font: inherit; }
+.libhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 20px 0 12px; flex-wrap: wrap; }
+.libhead h1 { margin: 0; font-size: var(--mf-p-h2); }
+.libhead h1 small { display: block; font-size: var(--mf-p-small); color: var(--mf-text-2); font-weight: 400; }
+.btn-select { min-height: 48px; padding: 0 18px; }
+.btn:focus-visible, .tile:focus-visible, .focus { outline: 3px solid var(--mf-green); outline-offset: 2px; }
+.bar .btn:focus-visible, .bar .focus { outline-color: var(--mf-brass); }
+/* full-bleed grid like Samsung Gallery: page padding removed for the grid only */
+.lib { list-style: none; margin: 0 -16px; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--mf-lib-gap); }
+.lib li { aspect-ratio: 1; position: relative; }
+.tile { all: unset; box-sizing: border-box; display: block; width: 100%; height: 100%; position: relative; cursor: pointer;
+  background: var(--mf-paper); border: 1px solid var(--mf-line); overflow: hidden; -webkit-touch-callout: none; user-select: none; }
+.tile img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform var(--mf-t-fast) var(--mf-ease); }
+.tile.plain::before { content: ""; position: absolute; left: 50%; top: 50%; width: 28px; height: 22px; margin: -11px 0 0 -14px;
+  border: 2px solid var(--mf-line); border-radius: 4px; }                /* plain tile: no thumbnail yet */
+.tile:has(img) { border: 0; }
+.month { margin: 18px 0 8px; font-size: var(--mf-p-small); font-weight: 700; color: var(--mf-text-2); }
+/* selection mode */
+.selecting .tile { background: var(--mf-green-50); }
+.selecting .tile::after { content: ""; position: absolute; top: 6px; left: 6px; width: var(--mf-tick); height: var(--mf-tick);
+  border-radius: 50%; border: 2px solid #fff; box-sizing: border-box; background: rgba(31,42,36,.35); }   /* empty ring */
+.selecting .tile[aria-pressed="true"] { border: 3px solid var(--mf-green); }
+.selecting .tile[aria-pressed="true"] img { transform: scale(.88); border-radius: 6px; }
+.selecting .tile[aria-pressed="true"]::after { background: var(--mf-green) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 12.5l4 4 8-9' fill='none' stroke='%23fff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/18px no-repeat; border-color: #fff; }
+.selbar .name { font-size: 20px; }
+.btn-onbar { background: transparent; color: var(--mf-linen); border: 1.5px solid var(--mf-forest-700); min-height: 48px; padding: 0 14px; }
+.has-toolbar main { padding-bottom: calc(var(--mf-toolbar-h) + 24px + env(safe-area-inset-bottom)); }
+.toolbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; background: var(--mf-card); border-top: 1px solid var(--mf-line);
+  display: flex; gap: 12px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); }
+.toolbar .btn { flex: 1; min-width: 0; }
+.btn-danger:disabled, .btn-danger[aria-disabled="true"] { background: var(--mf-line); color: var(--mf-text-2); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* confirm sheet = PR #77 06 sheet */
+.scrim { position: fixed; inset: 0; background: var(--mf-scrim-phone); display: flex; align-items: flex-end; z-index: 10; }
+.sheet { background: var(--mf-card); width: 100%; border-radius: 20px 20px 0 0; padding: 24px 20px calc(28px + env(safe-area-inset-bottom)); }
+.sheet h2 { font-size: 24px; margin-bottom: 8px; }
+.rowb { display: flex; gap: 12px; margin-top: 20px; flex-wrap: wrap; }
+.rowb .btn { flex: 1 1 8rem; min-width: 0; }
+.grab { width: 40px; height: 4px; border-radius: 2px; background: var(--mf-line); margin: -12px auto 16px; }

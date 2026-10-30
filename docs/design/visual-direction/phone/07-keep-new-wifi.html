@@ -1,0 +1,18 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Keep new Wi-Fi?</title>
+<!-- Memory Frame visual direction mock (Keep new Wi-Fi?). 412x915. Mocks only, not app code. -->
+<link rel="stylesheet" href="phone.css"><style>
+.ring { width:120px; height:120px; border-radius:50%; border:8px solid var(--mf-line); display:grid; place-items:center; margin:24px auto 8px; position:relative; }
+.ring b { font-size:30px; font-variant-numeric:tabular-nums; color:var(--mf-warn-text); }
+.ring::before { content:""; position:absolute; inset:-8px; border-radius:50%; border:8px solid transparent; border-top-color:var(--mf-brass); border-right-color:var(--mf-brass); transform:rotate(20deg); }
+</style></head><body>
+<header class="bar"><div class="name"><span class="dot"></span>Memory Frame</div></header>
+<main>
+  <h1>Keep new Wi-Fi?</h1>
+  <p>You're connected to <b>"Garden Frame"</b>. Tap to keep it. Other phones will need to join it too.</p>
+  <button class="btn btn-primary btn-big block" style="margin-top:12px">Keep new Wi-Fi</button>
+  <div class="ring" aria-hidden="true"><b>3:42</b></div>
+  <p class="muted" style="text-align:center">Old Wi-Fi returns in <b>3:42</b></p>
+  <div class="card" style="margin-top:20px"><p class="small muted" style="margin:0">Not ready? Do nothing, and the frame goes back to <b>MemoryFrame-4F2A</b> with the old password.</p></div>
+</main>
+</body></html>

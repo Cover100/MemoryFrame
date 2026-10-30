@@ -1,0 +1,32 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Pairing: phone already on the frame's Wi-Fi (site QR + code)</title>
+<!-- Memory Frame visual direction mock (Pairing: phone already on the frame's Wi-Fi (site QR + code)). 800x480. Mocks only, not app code. -->
+<link rel="stylesheet" href="frame.css"><style>
+.pair { position:absolute; inset:0; background:var(--mf-ink); padding:22px 28px; display:flex; flex-direction:column; }
+.pair h1 { font-size:var(--mf-f-title); margin:0 0 16px; display:flex; justify-content:space-between; align-items:center; }
+.cols { display:flex; gap:20px; flex:1; }
+.col { flex:1; background:var(--mf-forest-900); border:1px solid var(--mf-forest-700); border-radius:var(--mf-r-lg);
+       padding:16px; display:flex; flex-direction:column; align-items:center; gap:10px; min-width:0; }
+.col h2 { margin:0; font-size:var(--mf-f-body); display:flex; gap:10px; align-items:center; align-self:flex-start; }
+.col .qr { width:184px; }
+.cap { font-size:var(--mf-f-small); color:var(--mf-oat); text-align:center; }
+.cap b { color:var(--mf-linen); font-weight:700; }
+.code { font-size:56px; white-space:nowrap; font-weight:700; letter-spacing:2px; font-variant-numeric:tabular-nums; color:var(--mf-linen); line-height:1; }
+.close { min-height:56px; }
+.col.codecol { justify-content:center; }
+.col.codecol { flex:1.25; } .wide .col.site { flex:1.1; } .wide .col.codecol { flex:1; } .wide .code { font-size:var(--mf-f-code); }
+.wide .col.site .qr { width:236px; }
+</style></head>
+<body><div id="frame">
+<div class="pair wide">
+  <h1>Pair your phone <button class="btn btn-neutral close">Close</button></h1>
+  <div class="cols">
+    <div class="col site"><h2><span class="step-badge">1</span>Scan with your phone</h2>
+      <div class="qr"><img src="../assets/qr-site.svg" alt=""></div>
+      <div class="cap">or open <b>http://10.42.0.1/</b></div></div>
+    <div class="col codecol"><h2><span class="step-badge">2</span>Enter code</h2>
+      <div style="flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:14px">
+        <div class="code">482 913</div>
+        <div class="cap">Type this on your phone<br>if it asks for a code</div></div></div>
+  </div>
+</div>
+</div></body></html>

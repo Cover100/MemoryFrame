@@ -1,0 +1,2 @@
+/* Variant A/B: Atkinson Hyperlegible on the phone. Built app: link /frame-fonts.css (self-hosted woff2, font-display:block) on every phone page. */
+:root { --mf-font-phone: var(--mf-font-frame); }

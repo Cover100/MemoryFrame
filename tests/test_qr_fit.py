@@ -136,7 +136,7 @@ def test_onboarding_both_qrs_fit_and_decode(page, server, mf_app, net):
     assert d["wifiQr"].startswith("WIFI:T:WPA;S:Frame-WiFi;")
     # Primary check: the URL the QR encodes, as rendered next to it (same server value). The
     # screenshot decode is secondary: OpenCV occasionally can't read ~5 px modules on CI.
-    assert text(page, "pairUrl") == "http://10.42.0.1/pair"
+    assert text(page, "pairUrl") == "http://10.42.0.1"   # #98 W0 shows the site
     assert d["pairQr"] == "" or d["pairQr"].startswith("http://10.42.0.1/pair"), d
 
 
@@ -189,8 +189,8 @@ def test_onboarding_fits_at_1000x600(page, server, mf_app, net):
 # ---------- MF-24 (#31): the frame JS never shows null/undefined as an address ----------
 
 @pytest.mark.no_media
-@pytest.mark.parametrize("network,expected", [("hotspot", "http://10.42.0.1/pair"),
-                                              ("lan", "http://memoryframe.local/pair")])
+@pytest.mark.parametrize("network,expected", [("hotspot", "http://10.42.0.1"),
+                                              ("lan", "http://memoryframe.local")])
 def test_js_guards_null_url_fields(page, server, mf_app, net, monkeypatch, network, expected):
     from memoryframe import pairing
     real = pairing._state

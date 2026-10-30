@@ -60,6 +60,7 @@
         selecting = true;
         history.pushState({mfSelect: 1}, "");
         body.classList.add("selecting");
+        lockActs();
         tiles().forEach((t)=> setPressed(t, t === first));
         update();
         if(!first){ $("selAll").focus(); }                 // the Select button just disappeared
@@ -70,6 +71,7 @@
         selecting = false;
         selected.clear();
         body.classList.remove("selecting");
+        lockActs();
         tiles().forEach((t)=> t.removeAttribute("aria-pressed"));    // no aria-pressed outside the mode
         err.hidden = true;
         const sel = $("selectBtn"), a = document.activeElement;   // focus was on a control that is now hidden
@@ -264,12 +266,21 @@
     }
     function mmss(ms){ const s = Math.round((ms || 0) / 1000); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); }
     function el(tag, cls, text){ const e = document.createElement(tag); if(cls){ e.className = cls; } if(text){ e.textContent = text; } return e; }
+    function icon(d, w){                    // inline SVG (the font has no glyphs for these)
+        const ns = "http://www.w3.org/2000/svg", s = document.createElementNS(ns, "svg"), p = document.createElementNS(ns, "path");
+        s.setAttribute("viewBox", "0 0 24 24"); s.setAttribute("width", "22"); s.setAttribute("height", "22"); s.setAttribute("aria-hidden", "true");
+        [["d", d], ["fill", "none"], ["stroke", "currentColor"], ["stroke-width", w], ["stroke-linecap", "round"], ["stroke-linejoin", "round"]]
+            .forEach(([k, v])=> p.setAttribute(k, v));
+        s.append(p); return s;
+    }
+    function lockActs(){ grid.querySelectorAll(".acts button").forEach((b)=>{ b.disabled = selecting; }); }   // Wren N3
     function setVideo(li, m){               // rebuild one video tile for its new state (DOM only, no innerHTML)
         li.dataset.state = m.state;
         let t;
         if(m.state === "ready"){
             t = el("button", "tile"); t.type = "button";
-            t.setAttribute("aria-label", "Video, " + mmss(m.duration_ms));
+            const all = [...grid.children].filter((x)=> !x.classList.contains("gone"));   // same form as on load
+            t.setAttribute("aria-label", "Video " + (all.indexOf(li) + 1) + " of " + all.length + ", " + mmss(m.duration_ms));
             const img = new Image(240, 240); img.alt = ""; img.decoding = "async"; img.src = "/api/v1/media/" + m.id + "/thumb";
             img.addEventListener("error", ()=> plain(img), {once: true});
             const b = el("span", "badge", "▶ " + mmss(m.duration_ms)); b.setAttribute("aria-hidden", "true");
@@ -279,8 +290,10 @@
             t = el("div", "tile vtile");
             const st = el("div", "state fail"); st.append(el("span", "", "Couldn't add"));
             const acts = el("div", "acts");
-            const r = el("button", "vretry", "Retry"), x = el("button", "vremove", "Remove");
-            r.type = x.type = "button"; r.dataset.id = x.dataset.id = m.id;
+            const r = el("button", "vretry"), x = el("button", "vremove");
+            r.type = x.type = "button"; r.dataset.id = x.dataset.id = m.id; r.disabled = x.disabled = selecting;
+            r.setAttribute("aria-label", "Retry video"); x.setAttribute("aria-label", "Remove video");
+            r.append(icon("M19 12a7 7 0 1 1-2.05-4.95M19 4v4h-4", "2.4")); x.append(icon("M6 6l12 12M18 6L6 18", "2.6"));
             acts.append(r, x); st.append(acts); t.append(st);
         } else {
             t = el("div", "tile vtile"); t.setAttribute("role", "img");

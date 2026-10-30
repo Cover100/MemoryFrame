@@ -44,6 +44,9 @@ COPIES = 3                               # #96: free space must cover 3x the inc
 STATES = ("queued", "processing", "ready", "failed")
 FORMAT_WHITELIST = "mov,mp4,m4a,3gp,3g2,mj2,matroska,webm"
 CODECS = {"h264", "hevc", "vp8", "vp9", "av1", "mpeg4"}
+CODEC_WHITELIST = "h264,hevc,vp8,vp9,av1,libdav1d,mpeg4"   # decoders ffmpeg may open (Sage: enforced, not just probed)
+MAX_PENDING = 5                          # queued + preparing + failed clips (each keeps up to 350 MB on the card)
+OUT_MAX_SECONDS = MAX_SECONDS + 0.5
 NICE = ["nice", "-n", "19", "ionice", "-c", "3"]
 TASKSET = ["taskset", "-c", "2,3"]
 
@@ -51,6 +54,8 @@ NOT_A_VIDEO = "This video can't be played on the frame. Please send an MP4 or MO
 TOO_LONG = "This video is longer than 10 minutes. Please send a shorter clip."
 TOO_LARGE = "This video is too large for the frame (the limit is 350 MB). Please send a shorter clip."
 FAILED = "The frame couldn't prepare this video."
+QUEUE_FULL = ("The frame is still holding {n} videos it hasn't added yet. Wait for them to finish, "
+              "or remove ones that couldn't be added, then try again.").format(n=MAX_PENDING)
 
 
 class VideoError(Exception):
@@ -118,7 +123,7 @@ def probe(path, runner=None):
     displayed, i.e. after rotation). Raises VideoError(message for the phone) if it must be refused."""
     cmd = ["ffprobe", "-v", "error", "-probesize", "5M", "-analyzeduration", "5M",
            "-format_whitelist", FORMAT_WHITELIST, "-protocol_whitelist", "file",
-           "-print_format", "json", "-show_streams", "-show_format", "file:" + path]
+           "-codec_whitelist", CODEC_WHITELIST, "-print_format", "json", "-show_streams", "-show_format", "file:" + path]
     runner = runner or subprocess.run
     try:
         r = runner(cmd, capture_output=True, timeout=30, check=False)
@@ -201,7 +206,7 @@ def convert_cmd(src, dst, info):
     hw = ["-hwaccel", "drm"] if info["codec"] == "hevc" else []     # HEVC: Pi 4 hardware decode (~55 % faster)
     return (["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-threads", "2", *hw,
              "-format_whitelist", FORMAT_WHITELIST, "-protocol_whitelist", "file",
-             "-probesize", "5M", "-analyzeduration", "5M", "-t", str(MAX_SECONDS), "-i", "file:" + src,
+             "-codec_whitelist", CODEC_WHITELIST, "-probesize", "5M", "-analyzeduration", "5M", "-t", str(MAX_SECONDS), "-i", "file:" + src,
              "-filter_complex", filter_graph(info), "-map", "[v]", "-an", "-sn", "-dn",
              "-map_metadata", "-1", "-map_chapters", "-1", "-fflags", "+bitexact",
              "-c:v", "libx264", "-preset", "veryfast", "-crf", "26", "-maxrate", "2.5M", "-bufsize", "5M",
@@ -211,7 +216,7 @@ def convert_cmd(src, dst, info):
 
 def poster_cmd(src, dst):
     return ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-protocol_whitelist", "file",
-            "-i", "file:" + src, "-frames:v", "1", "-q:v", "3", "-f", "image2", "-c:v", "mjpeg", "file:" + dst]
+            "-codec_whitelist", "h264", "-i", "file:" + src, "-frames:v", "1", "-q:v", "3", "-f", "image2", "-c:v", "mjpeg", "file:" + dst]
 
 
 def timeout_for(info):
@@ -227,17 +232,14 @@ def _prefix(timeout_s):
     return pre
 
 
-def _limit():                         # child only: cap address space so a hostile file cannot eat the Pi's RAM
-    try:
-        import resource
-        resource.setrlimit(resource.RLIMIT_AS, (RLIMIT_AS, RLIMIT_AS))
-    except (ImportError, ValueError, OSError):
-        pass
+def _limit():
+    """Address-space cap as a `prlimit` prefix (not preexec_fn, which can deadlock in threaded waitress),
+    so a hostile file cannot eat the Pi's RAM."""
+    return ["prlimit", "--as=%d" % RLIMIT_AS, "--"] if shutil.which("prlimit") else []
 
 
 def _run(cmd, timeout_s, runner):
-    r = runner(_prefix(timeout_s) + cmd, capture_output=True, timeout=timeout_s + 30, check=False,
-               preexec_fn=_limit)
+    r = runner(_prefix(timeout_s) + _limit() + cmd, capture_output=True, timeout=timeout_s + 30, check=False)
     if r.returncode != 0:
         raise VideoError("ffmpeg exit %s: %s" % (r.returncode, (r.stderr or b"")[-300:].decode("utf-8", "replace")))
 
@@ -254,6 +256,7 @@ def convert(data_dir, stored_name, runner=None):
         _run(convert_cmd(src, part, info), timeout_for(info), runner)
         if not os.path.exists(part) or os.path.getsize(part) == 0:
             raise VideoError("ffmpeg made no output")
+        out_s = check_output(part, runner)
         imaging.fsync_path(part)
         os.replace(part, final)
         imaging.fsync_dir(os.path.dirname(final))
@@ -270,7 +273,32 @@ def convert(data_dir, stored_name, runner=None):
             except OSError:
                 pass
         raise
-    return int(round(min(info["duration"], MAX_SECONDS) * 1000))
+    return int(round(min(out_s, MAX_SECONDS) * 1000))
+
+
+def check_output(path, runner=None):
+    """ffprobe the converted file before it is marked ready: exactly one H.264 stream, 800x480,
+    0 < duration <= 30.5 s. Returns the duration; raises VideoError otherwise (the row goes 'failed')."""
+    runner = runner or subprocess.run
+    cmd = ["ffprobe", "-v", "error", "-format_whitelist", "mov,mp4", "-protocol_whitelist", "file",
+           "-codec_whitelist", "h264", "-print_format", "json", "-show_streams", "-show_format", "file:" + path]
+    try:
+        r = runner(_prefix(60) + _limit() + cmd, capture_output=True, timeout=90, check=False)
+        info = json.loads(r.stdout or b"{}") if r.returncode == 0 else {}
+        streams = info.get("streams") or []
+        v = streams[0] if len(streams) == 1 else {}
+        dur = float(v.get("duration") or (info.get("format") or {}).get("duration") or 0)
+    except (OSError, subprocess.TimeoutExpired, ValueError, TypeError, AttributeError):
+        v, dur = {}, 0.0
+    if (v.get("codec_type") != "video" or v.get("codec_name") != "h264"
+            or (v.get("width"), v.get("height")) != (OUT_W, OUT_H) or not 0 < dur <= OUT_MAX_SECONDS):
+        raise VideoError("converted output failed its check")
+    return dur
+
+
+def pending(conn):
+    """Clips holding an input on the card: queued, preparing or failed."""
+    return conn.execute("SELECT COUNT(*) FROM media WHERE kind = 'video' AND state <> 'ready'").fetchone()[0]
 
 
 def make_video_thumb(data_dir, stored_name):

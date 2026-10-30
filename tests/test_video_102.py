@@ -30,12 +30,17 @@ class FakeFF:
         self.info = {"streams": streams if streams is not None else [stream()], "format": {"duration": "12.5"}}
         self.calls = []
         self.fail_convert = fail_convert
+        self.out = None
 
     def __call__(self, cmd, **kw):
         self.calls.append(cmd)
         prog = next(c for c in cmd if c in ("ffprobe", "ffmpeg"))
         if prog == "ffprobe":
-            return subprocess.CompletedProcess(cmd, 0, json.dumps(self.info).encode(), b"")
+            info = self.info
+            if cmd[-1].endswith(".mp4.part"):          # the output check
+                info = self.out if self.out is not None else {"streams": [
+                    {"codec_type": "video", "codec_name": "h264", "width": 800, "height": 480, "duration": "12.5"}]}
+            return subprocess.CompletedProcess(cmd, 0, json.dumps(info).encode(), b"")
         if self.fail_convert:
             return subprocess.CompletedProcess(cmd, 1, b"", b"boom")
         out = cmd[-1][len("file:"):]
@@ -366,6 +371,8 @@ def test_failed_tile_has_retry_and_remove(vapp, paired, ff):
     work(vapp)
     h = paired.get("/admin/library", environ_base=PHONE).get_data(as_text=True)
     assert "Couldn't add" in h and 'class="vretry"' in h and 'class="vremove"' in h
+    assert 'aria-label="Retry video"' in h and 'aria-label="Remove video"' in h and h.count("<svg") >= 2   # Wren 63267ba
+    assert ">Retry<" not in h and ">Remove<" not in h
 
 
 def test_upload_page_copy(vapp, paired):
@@ -377,3 +384,69 @@ def test_frame_script_plays_once_loops_short_and_releases():
     src = open(os.path.join(os.path.dirname(__file__), "..", "static", "script.js")).read()
     assert "VIDEO_MIN_MS = 5000" in src and "VIDEO_STALL_MS = 5000" in src
     assert 'videoElement.removeAttribute("src")' in src and "armVideoTimers(token, playMs)" in src
+
+
+# ---------------- Sage's should-fixes (review on 71ee4c1) ----------------
+
+def test_codec_whitelist_on_every_ffmpeg_call(tmp_path):
+    info = {"codec": "hevc", "width": 1920, "height": 1080, "rotation": 0, "duration": 5, "fps": 30}
+    cmd = video.convert_cmd("a", "b", info)
+    assert cmd[cmd.index("-codec_whitelist") + 1] == video.CODEC_WHITELIST
+    assert cmd.index("-codec_whitelist") < cmd.index("-i")
+    p = video.poster_cmd("a", "b")
+    assert p[p.index("-codec_whitelist") + 1] == "h264" and p.index("-codec_whitelist") < p.index("-i")
+    fake = FakeFF()
+    video.probe(str(tmp_path / "x"), runner=fake)
+    assert "-codec_whitelist" in fake.calls[0]
+    assert set(video.CODEC_WHITELIST.split(",")) >= video.CODECS
+
+
+def test_prlimit_prefix_not_preexec(monkeypatch):
+    seen = {}
+
+    def runner(cmd, **kw):
+        seen.update(kw, cmd=cmd)
+        return subprocess.CompletedProcess(cmd, 0, b"", b"")
+    monkeypatch.setattr(video.shutil, "which", lambda n: "/usr/bin/" + n)
+    video._run(["ffmpeg", "-x"], 60, runner)
+    assert "preexec_fn" not in seen
+    i = seen["cmd"].index("prlimit")
+    assert seen["cmd"][i:i + 3] == ["prlimit", "--as=%d" % video.RLIMIT_AS, "--"]
+    assert seen["cmd"][-2:] == ["ffmpeg", "-x"]
+
+
+@pytest.mark.parametrize("out", [
+    {"streams": []},
+    {"streams": [{"codec_type": "video", "codec_name": "hevc", "width": 800, "height": 480, "duration": "5"}]},
+    {"streams": [{"codec_type": "video", "codec_name": "h264", "width": 1920, "height": 1080, "duration": "5"}]},
+    {"streams": [{"codec_type": "video", "codec_name": "h264", "width": 800, "height": 480, "duration": "31"}]},
+    {"streams": [{"codec_type": "video", "codec_name": "h264", "width": 800, "height": 480, "duration": "0"}]},
+])
+def test_bad_output_marks_failed(vapp, paired, ff, out):
+    ff.out = out
+    assert post(paired).status_code == 202
+    work(vapp)
+    r = rows(vapp)[-1]
+    assert r["state"] == "failed"
+    assert not os.path.exists(os.path.join(vapp.config["DATA_DIR"], "originals", r["stored_name"]))
+
+
+def test_good_output_duration_from_output(vapp, paired, ff):
+    ff.out = {"streams": [{"codec_type": "video", "codec_name": "h264", "width": 800, "height": 480,
+                           "duration": "30.02"}]}
+    post(paired)
+    work(vapp)
+    r = rows(vapp)[-1]
+    assert r["state"] == "ready" and r["duration_ms"] == 30000
+
+
+def test_pending_cap_refuses_new_videos(vapp, paired, ff):
+    for i in range(video.MAX_PENDING):
+        assert post(paired, MP4 + bytes([i]) * 8, "c%d.mp4" % i).status_code == 202
+    r = post(paired, MP4 + b"extra", "x.mp4")
+    assert r.status_code == 429 and r.get_json()["error"] == video.QUEUE_FULL
+    assert len(rows(vapp)) == video.MAX_PENDING
+    assert os.listdir(os.path.join(vapp.config["DATA_DIR"], "tmp")) in ([], ["video-in"], ["video-in", "video-out"],
+                                                                         ["video-out", "video-in"])
+    work(vapp)                                      # one becomes ready -> room again
+    assert post(paired, MP4 + b"extra", "x.mp4").status_code == 202

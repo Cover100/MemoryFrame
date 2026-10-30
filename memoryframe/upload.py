@@ -179,6 +179,8 @@ def _save_video(conn, data_dir, tmp, client_name, min_free):
     size = os.path.getsize(tmp)
     if size > video.MAX_UPLOAD_BYTES:
         raise UploadError(413, video.TOO_LARGE)
+    if video.pending(conn) >= video.MAX_PENDING:          # Sage: cap what can sit on the card unconverted
+        raise UploadError(429, video.QUEUE_FULL)
     if not video.space_ok(data_dir, min_free, size):     # the converted clip + poster + thumb fit
         raise UploadError(507, FULL)
     try:

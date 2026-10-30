@@ -98,37 +98,42 @@
             <div class="successTitle">Restart the frame to pair a phone</div>
         </div>
         <div id="pairBox">
+            <!-- #98 W0 (Wren 16/16b): welcome header and footer, shown only on first run -->
+            <div id="welcomeHead" hidden><h1 class="welcomeTitle">Welcome to your Memory Frame</h1>
+            <div class="welcomeSub">Send photos from your phone and they appear here.</div></div>
             <div class="pairHead"><span id="pairTitle">Pair a phone</span> <button id="pairClose" class="mf-btn mf-btn-secondary" type="button" hidden>Close</button></div>
             <div class="pairCols">
                 <div class="step" id="wifiStep" hidden>
-                    <div class="stepTitle"><span class="stepBadge">1</span>Join Wi-Fi</div>
+                    <div class="stepTitle"><span class="stepBadge">1</span><span id="wifiTitle">Join Wi-Fi</span></div>
                     <div id="wifiQr" class="qr"></div>
-                    <div class="stepText" id="wifiNameLine">Wi-Fi name<b id="pairSsid"></b></div>
+                    <div class="stepText" id="wifiNameLine"><span class="oldLabel">Wi-Fi name</span><b id="pairSsid"></b></div>
                     <div class="stepText stepText--inline" id="wifiJoin" hidden>Join <b id="wifiJoinName"></b> with its password</div>
                 </div>
                 <div class="step">
                     <div class="stepTitle"><span class="stepBadge" id="siteBadge">1</span><span id="siteTitle">Open site</span></div>
                     <div id="pairQr" class="qr"></div>
-                    <div class="stepText">or open<b id="pairUrl"></b><span id="pairUrlAlt"></span></div>
+                    <div class="stepText"><span class="oldLabel">or open</span><b id="pairUrl"></b><span id="pairUrlAlt"></span></div>
                 </div>
                 <div class="step" id="codeStep">
-                    <div class="stepTitle"><span class="stepBadge" id="codeBadge">2</span>Enter code</div>
+                    <div class="stepTitle"><span class="stepBadge" id="codeBadge">2</span><span id="codeTitle">Enter code</span></div>
                     <div class="codeWrap"><div id="pairCode">--- ---</div>
-                    <div class="stepText">Type this on your phone if it asks for a code</div></div>
+                    <div class="stepText" id="codeHint">Type this on your phone if it asks for a code</div></div>
                 </div>
             </div>
+            <div id="welcomeFoot" hidden>Then tap <b>Upload</b> on your phone.</div>
         </div>
     </div>
 
     <!-- Photos but no phone paired: the slideshow runs; only this small hint -->
     <div id="pairHint">Double-tap for menu to pair a phone</div>
 
-    <!-- MF-19: empty library -->
+    <!-- MF-19 / #98 W1 (Wren 16c): paired, empty library -->
     <div id="emptyOverlay" class="overlay">
+        <button id="emptyClose" class="mf-btn mf-btn-secondary" type="button">Close</button>
         <div class="emptyText">
-            <div class="emptyTitle">No photos yet</div>
-            <div>Open <b id="emptyUrl">10.42.0.1</b> on your paired phone and tap "Upload photos".</div>
-            <button id="emptyClose" class="mf-btn mf-btn-secondary" type="button">Close</button>
+            <span class="welcomeTick"><svg class="mf-tick w1-tick" viewBox="0 0 24 24" aria-hidden="true"><polyline points="5,12.5 10,17.5 19,7" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            <div class="emptyTitle">You're connected</div>
+            <div>Open <b id="emptyUrl">http://10.42.0.1</b> on your phone and tap <b>Upload</b>.</div>
         </div>
     </div>
 

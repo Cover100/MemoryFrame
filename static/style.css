@@ -617,3 +617,34 @@ body:has(.overlay.visible,#shuttingDown:not([hidden]),#safeScreen:not([hidden]),
 #safeScreen .safeNote{font-size:20px;color:var(--mf-oat);margin-top:16px}
 /* AC2: document.getAnimations() is empty on the final screen, so stop the Ken Burns / fade under the cover */
 body.mf-safe-final .media{animation:none!important;transition:none!important}
+/* #98 welcome W0 (Wren 16/16b) and W1 (16c): 800x480, no scroll, no animation */
+#welcomeHead[hidden],#welcomeFoot[hidden]{display:none}
+#pairOverlay.welcome #pairBox{padding:18px 24px}
+#pairOverlay.welcome .pairHead{display:none}
+.welcomeTitle{font-size:40px;line-height:1.1;margin:0;font-weight:700}
+.welcomeSub{font-size:22px;color:var(--mf-oat);margin:4px 0 12px}
+#pairOverlay.welcome .pairCols{gap:14px}
+/* Wren: QR cards a fixed 256 px (240 QR + 8 each side); the code card gets the rest. Same 8 px inset everywhere. */
+#pairOverlay.welcome .step{padding:10px 8px;gap:6px;flex:0 0 256px;box-sizing:border-box;min-width:0}
+#pairOverlay.welcome #codeStep{flex:1 1 0;justify-content:center}
+#pairOverlay.welcome #wifiStep[hidden]~.step{flex:1 1 0}
+/* titles wrap inside the card if they must (never smaller than 22 px) */
+#pairOverlay.welcome .stepTitle{font-size:22px;white-space:normal;max-width:100%;text-align:left;line-height:1.15}
+#pairOverlay.welcome .stepTitle>span:last-child{min-width:0}
+#pairOverlay.welcome .stepBadge{flex:none}
+#pairOverlay.welcome .stepBadge{background:var(--mf-brass);color:var(--mf-ink)}
+#pairOverlay.welcome .qr svg,#pairOverlay.welcome #wifiStep[hidden]~.step .qr svg{width:240px;height:240px;max-width:none;background:#fff}
+#pairOverlay.welcome .stepText{font-size:20px}
+/* Wren must-fix: welcome shows only the bold name/URL (the old labels pushed the URL onto the footer) */
+#pairOverlay.welcome .oldLabel{display:none}
+#pairOverlay.welcome #pairCode{font-size:48px;letter-spacing:0}
+#pairOverlay.welcome #wifiStep[hidden]~#codeStep #pairCode{font-size:64px}
+#welcomeFoot{font-size:20px;color:var(--mf-oat);margin-top:8px;text-align:center}
+#welcomeFoot b{color:var(--mf-linen)}
+#emptyOverlay{background:var(--mf-ink)}
+#emptyClose{position:absolute;top:18px;right:24px;min-height:56px;min-width:96px}
+.welcomeTick{display:inline-grid;place-items:center;width:72px;height:72px;border-radius:50%;background:var(--mf-forest-600);color:#fff;margin-bottom:18px}
+.w1-tick{width:40px;height:40px}
+#emptyOverlay .emptyText{font-size:26px;color:var(--mf-oat)}
+#emptyOverlay .emptyText b{color:var(--mf-linen)}
+#emptyOverlay .emptyTitle{color:var(--mf-linen)}

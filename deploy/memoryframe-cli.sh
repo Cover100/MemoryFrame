@@ -4,7 +4,9 @@
 set -euo pipefail
 [ "$EUID" = 0 ] || exec sudo "$0" "$@"
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
-cd /var/lib/memoryframe
-exec runuser -u mfapp -- env MEMORYFRAME_DATA_DIR=/var/lib/memoryframe \
+# Like memoryframe.service (WorkingDirectory=/opt/memoryframe), the package is imported from the code dir,
+# not pip-installed: `-m` searches cwd, so run from /opt/memoryframe and pin PYTHONPATH too.
+cd /opt/memoryframe
+exec runuser -u mfapp -- env PYTHONPATH=/opt/memoryframe MEMORYFRAME_DATA_DIR=/var/lib/memoryframe \
     MEMORYFRAME_LEGACY_UPLOADS="${MEMORYFRAME_LEGACY_UPLOADS:-/nonexistent}" \
     /opt/memoryframe/.venv/bin/python -m memoryframe "$@"

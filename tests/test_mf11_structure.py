@@ -81,6 +81,7 @@ READ_ONLY_GET_ENDPOINTS = {
     "pairing.state", "pairing.pair_page", "pairing.frame_status", "admin.upload_page", "api.storage",
     "admin.library_page", "admin.settings_page", "api.get_settings", "api.get_message", "wifi.page", "wifi.keep_page", "api.list_media", "api.thumb", "display.show_now_state",
     "display.frame_fonts",
+    "pairing.liveness",   # #95: kiosk.sh freeze check, localhost only, read-only
 }
 
 

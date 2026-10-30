@@ -68,7 +68,8 @@ def status():
 
 def _limits():
     c = current_app.config
-    return c["MIN_FREE_BYTES"], c["AVG_PHOTO_BYTES"]
+    from . import storage
+    return storage.min_free(c), c["AVG_PHOTO_BYTES"]
 
 
 @bp.route("/storage")
@@ -88,7 +89,8 @@ def upload_media():
         stored, name = upload.save_upload(get_db(), current_app.config["DATA_DIR"], f, min_free,
                                           current_app.config["DISPLAY_TARGET"],
                                           current_app.config.get("MAX_IMAGE_PIXELS", upload.MAX_PIXELS),
-                                          current_app.config.get("MAX_NONJPEG_PIXELS", upload.MAX_NONJPEG_PIXELS))
+                                          current_app.config.get("MAX_NONJPEG_PIXELS", upload.MAX_NONJPEG_PIXELS),
+                                          incoming=request.content_length or 0)
     except upload.UploadError as e:
         return jsonify({"error": e.message}), e.status
     if stored is None:

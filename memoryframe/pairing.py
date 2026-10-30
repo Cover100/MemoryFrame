@@ -8,6 +8,7 @@
   GET  /frame/status           frame (localhost): IP, SSID, free storage, version (MF-19 menu)
 """
 import os
+import time
 
 from flask import Blueprint, current_app, jsonify, make_response, redirect, render_template, request
 
@@ -82,7 +83,18 @@ def _state():
 @bp.route("/pairing/state")
 @localhost_only
 def state():
+    current_app.extensions["mf_kiosk_seen"] = time.monotonic()   # #95: kiosk heartbeat (2 s poll)
     return jsonify(_state())
+
+
+@bp.route("/frame/liveness")
+@localhost_only
+def liveness():
+    """#95: kiosk.sh restarts a frozen Chromium when the page stops polling /pairing/state."""
+    seen = current_app.extensions.get("mf_kiosk_seen")
+    st = current_app.extensions.get("mf_shutdown") or {}
+    return jsonify({"kiosk_age_s": None if seen is None else round(time.monotonic() - seen, 1),
+                    "shutting_down": bool(st.get("synced"))})
 
 
 @bp.route("/pairing/start", methods=["POST"])

@@ -215,8 +215,50 @@ def test_log_rotated_inside_a_crash_loop(env):
                      'printf "%*s\\n" 400000 "" >&2\nexit 1\n')
     log = tmp_path / ".cache" / "memoryframe-kiosk.log"
     old = tmp_path / ".cache" / "memoryframe-kiosk.log.1"
+    e["MEMORYFRAME_KIOSK_BACKOFF"] = "0"                           # #95 crash backoff would make 7 launches slow
     run_until(e, lambda: len(launches(tmp_path)) >= 7, timeout=60)
     assert old.exists()
     assert log.stat().st_size <= 1048576 + 500000 and old.stat().st_size <= 1048576 + 500000
     assert sorted(p.name for p in log.parent.glob("memoryframe-kiosk.log*")) == ["memoryframe-kiosk.log",
                                                                               "memoryframe-kiosk.log.1"]
+
+
+# ---------------- #95: liveness kill + backoff ----------------
+
+def _liveness_env(env, body):
+    tmp_path, state, calls, e = env
+    bin_ = tmp_path / "bin"
+    (bin_ / "chromium").write_text(f'#!/bin/bash\nprintf "%s\\n" "$@" > "{calls}.$(date +%s%N)"\nexec sleep 30\n')
+    (bin_ / "curl").write_text(
+        "#!/bin/bash\ncase \"$*\" in *liveness*) echo '" + body + "';; *healthz*) echo '{\"status\":\"ok\"}';; "
+        "*/media*) echo '[]';; esac\n")
+    e.update(MEMORYFRAME_LIVENESS_EVERY="0.1", MEMORYFRAME_KIOSK_BACKOFF="0")
+    return tmp_path, e
+
+
+def test_liveness_kills_frozen_browser_then_rate_limits(env):
+    tmp_path, e = _liveness_env(env, '{"kiosk_age_s": 200.5, "shutting_down": false}')
+    run_until(e, lambda: "not killing" in log_text(tmp_path), timeout=20)
+    t = log_text(tmp_path)
+    assert t.count("liveness: no heartbeat for 200 s; killing") == 3
+    assert len(launches(tmp_path)) == 4
+
+
+@pytest.mark.parametrize("body", ['{"kiosk_age_s": 3.0, "shutting_down": false}',
+                                  '{"kiosk_age_s": 500, "shutting_down": true}'])
+def test_liveness_no_kill_when_fresh_or_shutting_down(env, body):
+    tmp_path, e = _liveness_env(env, body)
+    run_until(e, lambda: "liveness" in log_text(tmp_path) or (len(launches(tmp_path)) >= 1 and time.sleep(1) is None))
+    assert "killing" not in log_text(tmp_path) and len(launches(tmp_path)) == 1
+
+
+def test_crash_backoff_doubles():
+    s = SCRIPT.read_text()
+    assert 'delay=$((delay * 2))' in s and "BACKOFF_MAX=60" in s and '-gt 60 ] && delay="$BACKOFF_BASE"' in s
+
+
+def test_kills_file_never_in_tmp():
+    """Sage (#111): the kill-rate file lives in $XDG_RUNTIME_DIR or the kiosk state dir, never /tmp."""
+    s = SCRIPT.read_text()
+    assert 'KILLS_FILE="${XDG_RUNTIME_DIR:-$STATE_DIR}/memoryframe-kiosk.kills"' in s
+    assert "/tmp" not in [l for l in s.splitlines() if l.startswith("KILLS_FILE=")][0]

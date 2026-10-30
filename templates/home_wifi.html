@@ -1,0 +1,52 @@
+{% extends "_phone.html" %}
+{% block title %}Home Wi-Fi{% endblock %}
+{% block styles %}<link rel="stylesheet" href="{{ static('homewifi.css') }}">{% endblock %}
+{% block heading %}Home <span class="nw">Wi-Fi</span>{% endblock %}
+{% block content %}
+<div id="formStep">
+{% if saved %}<p class="muted">Saved network: <b class="strong"><bdi id="savedName">{{ saved }}</bdi></b></p>{% endif %}
+<form id="homeForm" novalidate>
+  <label class="f" for="hwSsid">Network name</label>
+  <input class="field" id="hwSsid" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+  <label class="f" for="hwPassword">Password</label>
+  <div class="pw">
+    <input class="field" id="hwPassword" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <button type="button" id="hwShow" class="secondary hw-eye" aria-label="Show password" aria-pressed="false">Show</button>
+  </div>
+  <p class="hw-err" id="hwError" role="alert" hidden></p>
+  <p class="small muted hw-hint">The frame tests it, then goes back to its own <span class="nw">Wi-Fi</span>.</p>
+  <button type="submit" id="hwSave" class="block big mt">Test and save</button>
+</form>
+</div>
+<div id="hwConfirm" class="scrim" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="hwConfirmTitle">
+    <h2 id="hwConfirmTitle">Change home <span class="nw">Wi-Fi</span>?</h2>
+    <p>Your phone will disconnect from the frame for up to 90 seconds.</p>
+    <p class="flush">Network: <b><bdi id="hwConfirmName"></bdi></b></p>
+    <div class="rowb">
+      <button type="button" id="hwCancel" class="secondary big btn-default">Cancel</button>
+      <button type="button" id="hwGo" class="big">Test and save</button>
+    </div>
+  </div>
+</div>
+<div id="hwTesting" class="hw-state" role="status" hidden>
+  <div class="hw-spin" aria-hidden="true"></div>
+  <h1>Testing <bdi id="hwTestName"></bdi>...</h1>
+  <p>Your phone may disconnect. Wait, or rejoin the frame's <span class="nw">Wi-Fi</span> at <span class="hw-accent">http://10.42.0.1/</span></p>
+</div>
+<div id="hwSaved" class="hw-state" role="status" hidden>
+  <div class="hw-ic hw-ok" aria-hidden="true"><svg class="hw-svg" viewBox="0 0 24 24" aria-hidden="true"><polyline points="5,12.5 10,17.5 19,7" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+  <h1>Saved</h1>
+  <p>The frame will use <b class="strong"><bdi id="hwSavedName"></bdi></b> next time it starts in developer mode.</p>
+  <button type="button" class="block big" id="hwDone">Done</button>
+</div>
+<div id="hwFailed" class="hw-state" role="alert" hidden>
+  <div class="hw-ic hw-no" aria-hidden="true">!</div>
+  <h1 id="hwFailedTitle" tabindex="-1">Couldn't connect</h1>
+  <p id="hwFailedLine">The frame is back on its own <span class="nw">Wi-Fi</span>. Your saved network did not change.</p>
+  <ol class="hw-steps" id="hwFailedSteps"><li>Check the name and password.</li><li>Make sure the router is in range.</li><li>Try again.</li></ol>
+  <button type="button" id="hwRetry" class="block big">Try again</button>
+  <p class="small muted mt">Lost the page? Join the frame's <span class="nw">Wi-Fi</span> and open <span class="hw-accent">http://10.42.0.1/</span></p>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ static('homewifi.js') }}"></script>{% endblock %}

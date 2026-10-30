@@ -352,6 +352,18 @@
         </div>
     </div>
 </div>
+<!-- #68 (Wren 17a-17c): home Wi-Fi test overlay (not dismissable) and 10 s result -->
+<div id="homeWifiTesting" class="wifi-overlay hw-frame" role="status" hidden>
+    <div class="hw-frame-card">
+        <div class="hw-frame-ring" aria-hidden="true"></div>
+        <h2>Testing home <span class="nw">Wi-Fi</span>...</h2>
+        <p>Phones may disconnect for up to 90 seconds.</p>
+    </div>
+</div>
+<div id="homeWifiToast" class="dev-toast hw-toast" role="status" hidden>
+    <span class="hw-tick" id="homeWifiTick" aria-hidden="true"><svg class="hw-svg" viewBox="0 0 24 24" aria-hidden="true"><polyline points="5,12.5 10,17.5 19,7" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg><b>!</b></span>
+    <div><div class="dev-toast-title" id="homeWifiTitle"></div><div class="dev-toast-sub" id="homeWifiSub"></div></div>
+</div>
 <!-- MF-18: hotspot change (rejoin countdown, updated, cancelled) -->
 <div id="wifiRejoin" class="wifi-overlay" hidden>
     <div class="wifi-card wifi-rj">

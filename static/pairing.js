@@ -148,6 +148,30 @@
         $("hotspotError").hidden = true;
     });
 
+    // ---------- #68: home Wi-Fi test (17a overlay while testing, 17b/17c result for 10 s) ----------
+    const HW_TOAST_MS = 10 * 1000;
+    let hwLast = null, hwTimer = null;
+    $("homeWifiTesting").addEventListener("pointerdown", (e)=>{ e.stopPropagation(); e.preventDefault(); });
+    $("homeWifiTesting").addEventListener("click", (e)=> e.stopPropagation());
+    function renderHomeWifi(hw){
+        hw = hw || {};
+        $("homeWifiTesting").hidden = hw.state !== "testing";
+        const done = hw.state === "saved" || hw.state === "failed";
+        const key = hw.state + ":" + hw.ts;
+        // Show a result once, and only when this page saw the test (or it ended under a minute ago).
+        if(done && hwLast !== null && key !== hwLast && (hwLast.startsWith("testing") || Date.now() / 1000 - hw.ts < 60)){
+            const ok = hw.state === "saved";
+            $("homeWifiTick").classList.toggle("bad", !ok);
+            $("homeWifiTitle").textContent = ok ? "Home Wi-Fi saved" : "Home Wi-Fi test failed";
+            $("homeWifiSub").textContent = ok ? "Used next time the frame starts in developer mode."
+                                              : "Back on the frame's Wi-Fi. Rejoin it and open http://10.42.0.1/";
+            $("homeWifiToast").hidden = false;
+            clearTimeout(hwTimer);
+            hwTimer = setTimeout(()=>{ $("homeWifiToast").hidden = true; }, HW_TOAST_MS);
+        }
+        hwLast = key;
+    }
+
     // ---------- MF-18: hotspot change ----------
     const CANCELLED_TIMEOUT = 60 * 1000;
     let wifiDeadline = 0, cancelledClosedId = null, cancelledShownAt = 0, cancelledId = null;
@@ -198,6 +222,7 @@
         try{
             let st = await getJSON("/pairing/state");
             renderNetmode(st.netmode);
+            renderHomeWifi(st.home_wifi);
             renderWifi(st.wifi_change);
             // #98 W0: unpaired and empty, not dev_temp, no hotspot error (it wins). Not dismissable.
             // (dev_temp keeps its "Restart the frame to pair a phone" card, which is not W0.)

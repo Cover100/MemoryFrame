@@ -50,6 +50,8 @@ def create_app(config=None):
     app.register_blueprint(admin_bp, url_prefix="/admin")
     from .wifi import bp as wifi_bp
     app.register_blueprint(wifi_bp, url_prefix="/admin/wifi")
+    from .homewifi import bp as homewifi_bp
+    app.register_blueprint(homewifi_bp, url_prefix="/admin/home-wifi")
     app.register_blueprint(api_bp, url_prefix="/api/v1")
     app.register_blueprint(pairing_bp)
 

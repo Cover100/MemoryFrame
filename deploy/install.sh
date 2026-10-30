@@ -126,7 +126,7 @@ sed -e "s#@APP_DIR@#$APP_DIR#g" \
     "$APP_DIR/deploy/memoryframe-netmode.service" | sudo tee /etc/systemd/system/memoryframe-netmode.service >/dev/null
 # #62: root oneshot units for the app's privileged actions + a polkit rule that lets only the app
 # user start them (and power off). No sudoers rules: the app service keeps NoNewPrivileges.
-for u in devtemp wifi-apply wifi-commit wifi-rollback; do
+for u in devtemp wifi-apply wifi-commit wifi-rollback home-wifi; do
     sudo install -o root -g root -m 0644 "$APP_DIR/deploy/units/memoryframe-$u.service" "/etc/systemd/system/memoryframe-$u.service"
 done
 sudo install -o root -g root -m 0644 "$APP_DIR/deploy/units/memoryframe-factory-reset.service" /etc/systemd/system/memoryframe-factory-reset.service

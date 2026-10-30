@@ -646,6 +646,19 @@ body.mf-safe-final .media{animation:none!important;transition:none!important}
 #resetCover .resetTitle{font-size:40px;font-weight:700}
 #resetCover .resetSub{font-size:30px;font-weight:700;margin-top:12px;color:var(--mf-brass)}
 #resetCover .resetPlug{color:var(--mf-brass);width:120px;height:120px;margin-bottom:20px}
+/* #68 (Wren 17a-17c): home Wi-Fi test overlay + 10 s result toast */
+.hw-frame{z-index:8750;font-family:var(--mf-font-frame)}
+.hw-frame-card{text-align:center;color:var(--mf-linen)}
+.hw-frame-card h2{font-size:44px;margin:20px 0 10px}
+.hw-frame-card p{font-size:20px;color:var(--mf-oat);margin:0}
+.hw-frame-ring{width:72px;height:72px;margin:0 auto;border-radius:50%;border:6px solid var(--mf-forest-700);border-top-color:var(--mf-leaf);
+    box-sizing:border-box;animation:hw-frame-spin 1.2s linear infinite}
+@keyframes hw-frame-spin{to{transform:rotate(360deg)}}
+.hw-toast{display:flex;align-items:center;gap:14px;width:auto;max-width:720px;height:auto}
+.hw-toast[hidden]{display:none}
+.hw-tick{flex:none;width:36px;height:36px;border-radius:50%;background:var(--mf-green);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700}
+.hw-tick.bad{background:var(--mf-brick)}
+.hw-tick .hw-svg{width:24px;height:24px}.hw-tick b{display:none}.hw-tick.bad .hw-svg{display:none}.hw-tick.bad b{display:inline}
 /* #98 welcome W0 (Wren 16/16b) and W1 (16c): 800x480, no scroll, no animation */
 #welcomeHead[hidden],#welcomeFoot[hidden]{display:none}
 #pairOverlay.welcome #pairBox{padding:18px 24px}

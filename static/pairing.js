@@ -255,6 +255,7 @@
             const used = total > 0 ? Math.min(1, Math.max(0, 1 - free / total)) : 0;
             $("menuUsed").style.transform = "scaleX(" + used.toFixed(3) + ")";
             $("menuMeter").setAttribute("aria-valuenow", String(Math.round(used * 100)));
+            $("menuFull").hidden = s.storage.almost_full !== true;      // #96: below the upload reserve
         }catch(e){
             console.warn("frame status unavailable", e);
         }

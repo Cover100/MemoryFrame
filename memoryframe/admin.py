@@ -47,7 +47,8 @@ def phone_storage():
     from . import upload
     c = current_app.config
     try:
-        s = upload.storage_info(c["DATA_DIR"], c["MIN_FREE_BYTES"], c["AVG_PHOTO_BYTES"])
+        from . import storage
+        s = upload.storage_info(c["DATA_DIR"], storage.min_free(c), c["AVG_PHOTO_BYTES"])
     except OSError:
         return None
     total, free = s["total"], s["free"]

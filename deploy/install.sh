@@ -132,6 +132,12 @@ sed -e "s#@USER@#$APP_USER#g" "$APP_DIR/deploy/memoryframe-polkit.rules" > "$POL
 [ -d /etc/polkit-1/rules.d ] || sudo install -d -o root -g root -m 0755 /etc/polkit-1/rules.d   # never re-perm the distro's dir
 sudo install -o root -g root -m 0644 "$POLKIT_TMP" /etc/polkit-1/rules.d/50-memoryframe.rules
 rm -f "$POLKIT_TMP"
+# #96: cap the journal and disable core dumps so logs can't fill the SD card (root 0644 drop-ins).
+for d in journald coredump; do
+    sudo install -d -o root -g root -m 0755 "/etc/systemd/$d.conf.d"
+    sudo install -o root -g root -m 0644 "$APP_DIR/deploy/$d-memoryframe.conf" "/etc/systemd/$d.conf.d/memoryframe.conf"
+done
+sudo systemctl restart systemd-journald 2>/dev/null || true
 # Old sudoers rules from before #62 (unused now).
 sudo rm -f /etc/sudoers.d/memoryframe /etc/sudoers.d/memoryframe-poweroff
 sudo systemctl daemon-reload

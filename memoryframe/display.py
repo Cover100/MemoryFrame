@@ -23,9 +23,11 @@ bp = Blueprint("display", __name__)
 def get_media():
     """Visible media for the slideshow, same JSON shape as before MF-11."""
     rows = get_db().execute(
-        "SELECT stored_name, kind FROM media WHERE hidden = 0 "
+        "SELECT stored_name, kind, duration_ms FROM media WHERE hidden = 0 AND state = 'ready' "
         "ORDER BY lower(original_name), id").fetchall()
-    return [{"type": r["kind"], "filename": r["stored_name"]} for r in rows]
+    return [{"type": r["kind"], "filename": r["stored_name"]} if r["kind"] == "image"
+            else {"type": r["kind"], "filename": r["stored_name"], "duration_ms": r["duration_ms"]}
+            for r in rows]     # #102: photo entries are unchanged (byte-identical JSON)
 
 
 @bp.route("/")
@@ -64,9 +66,12 @@ def media():
 def uploads(filename):
     # Only files known to the library are served (no directory browsing).
     row = get_db().execute(
-        "SELECT 1 FROM media WHERE stored_name = ? AND hidden = 0", (filename,)).fetchone()
+        "SELECT kind FROM media WHERE stored_name = ? AND hidden = 0 AND state = 'ready'", (filename,)).fetchone()
     if row is None:
         abort(404)
+    if row["kind"] == "video":                       # #102: the converted 800x480 clip itself (Range works)
+        return send_from_directory(os.path.join(current_app.config["DATA_DIR"], "originals"), filename,
+                                   mimetype="video/mp4")
     # MF-15: serve the downscaled display copy (made on first request if the
     # backfill has not run yet); originals are never modified.
     served = imaging.ensure_display_copy(
@@ -79,7 +84,7 @@ def show_now_state():
     """MF-16: the frame polls this; a new seq means "jump to filename now"."""
     state = current_app.extensions.get("mf_show_now", {"seq": 0, "filename": None})
     name = state["filename"]
-    if name and get_db().execute("SELECT 1 FROM media WHERE stored_name = ? AND hidden = 0",
+    if name and get_db().execute("SELECT 1 FROM media WHERE stored_name = ? AND hidden = 0 AND state = 'ready'",
                                  (name,)).fetchone() is None:
         name = None                                  # deleted or hidden since
     from . import settings

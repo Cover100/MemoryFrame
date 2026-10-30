@@ -4,7 +4,7 @@ import time
 
 from flask import current_app, g
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2      # 2: #102 media.state + media.duration_ms
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
@@ -18,7 +18,10 @@ CREATE TABLE IF NOT EXISTS media (
     size_bytes    INTEGER NOT NULL,
     source        TEXT NOT NULL CHECK (source IN ('legacy', 'upload')),
     hidden        INTEGER NOT NULL DEFAULT 0,  -- unused since #80 (cleared by init_db)
-    created_at    REAL NOT NULL
+    created_at    REAL NOT NULL,
+    state         TEXT NOT NULL DEFAULT 'ready'
+                  CHECK (state IN ('queued', 'processing', 'ready', 'failed')),   -- #102: videos convert first
+    duration_ms   INTEGER                                                         -- #102: videos only
 );
 CREATE INDEX IF NOT EXISTS media_sha256 ON media (sha256);
 
@@ -75,12 +78,25 @@ def init_db(db_path):
         row = conn.execute("SELECT version FROM schema_version").fetchone()
         if row is None:
             conn.execute("INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,))
+        migrate(conn)
         # #80 (user decision 19 Oct 2026): Hide is gone and photos hidden before all show again. Clearing at
         # every start is idempotent and cheap; the column stays so older databases need no schema change.
         conn.execute("UPDATE media SET hidden = 0 WHERE hidden <> 0")
         conn.commit()
     finally:
         conn.close()
+
+
+def migrate(conn):
+    """Bring an older database up to SCHEMA_VERSION. Each step is idempotent (checked by column), so a
+    power cut between steps is safe; the version is bumped in the same transaction as the last step."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(media)")}
+    if "state" not in cols:        # 1 -> 2 (#102): every existing row is a ready photo
+        conn.execute("ALTER TABLE media ADD COLUMN state TEXT NOT NULL DEFAULT 'ready' "
+                     "CHECK (state IN ('queued', 'processing', 'ready', 'failed'))")
+    if "duration_ms" not in cols:
+        conn.execute("ALTER TABLE media ADD COLUMN duration_ms INTEGER")
+    conn.execute("UPDATE schema_version SET version = ? WHERE version < ?", (SCHEMA_VERSION, SCHEMA_VERSION))
 
 
 def get_db():

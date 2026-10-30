@@ -160,7 +160,11 @@ def test_hold_3s_hold_opens_confirm_cancel_default_no_brightness_or_menu(page, s
     assert ring_shown(page)                                  # faint ring filling
     ev(page, "pointermove", x + 8, y + 8)                    # small move is fine
     page.pump(1.9)
-    assert visible(page, "devModeOverlay") and not visible(page, "menuOverlay")
+    assert visible(page, "toolsOverlay") and not visible(page, "menuOverlay")   # #99: Frame tools first
+    assert evaluate(page, "document.activeElement.id") == "toolsClose"
+    evaluate(page, "document.getElementById('toolsDev').click()")
+    page.pump(0.2)
+    assert visible(page, "devModeOverlay") and not visible(page, "toolsOverlay")
     assert evaluate(page, "document.activeElement.id") == "devModeCancel"
     box = text(page, "devModeBox")
     assert "Switch to dev mode?" in box and "disconnect until you restart the frame" in box
@@ -170,6 +174,7 @@ def test_hold_3s_hold_opens_confirm_cancel_default_no_brightness_or_menu(page, s
     page.pump(0.4)
     assert not out.exists() and not visible(page, "devModeOverlay")
     ev(page, "pointerdown", x, y); page.pump(3.3); ev(page, "pointerup", x, y)
+    evaluate(page, "document.getElementById('toolsDev').click()")
     evaluate(page, "document.getElementById('devModeConfirm').click()")
     page.pump(1.0)
     assert out.read_text().strip() == "dev-temp"
@@ -194,12 +199,14 @@ def test_hold_move_20px_cancels(page, server, mf_app, net, tmp_path):
     assert not ring_shown(page) and not visible(page, "devModeOverlay") and not visible(page, "menuOverlay")
 
 
-def test_hold_anywhere_opens_dev_confirm_not_menu(page, server, mf_app, net, tmp_path):
+def test_hold_anywhere_opens_tools_then_dev_confirm_not_menu(page, server, mf_app, net, tmp_path):
     out, w = setup_page(page, mf_app, tmp_path)
     for x, y in ((w // 2, 300), (60, 500)):
         ev(page, "pointerdown", x, y); page.pump(3.4); ev(page, "pointerup", x, y)
         page.pump(0.3)
-        assert visible(page, "devModeOverlay") and not visible(page, "menuOverlay")
+        assert visible(page, "toolsOverlay") and not visible(page, "menuOverlay")
+        evaluate(page, "document.getElementById('toolsDev').click()")
+        assert visible(page, "devModeOverlay")
         evaluate(page, "document.getElementById('devModeCancel').click()")
         page.pump(0.3)
     assert not out.exists()

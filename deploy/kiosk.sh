@@ -19,7 +19,11 @@ HEALTH="$URL/healthz"
 STATE_DIR="${MEMORYFRAME_STATE_DIR:-$HOME/.cache/memoryframe}"
 PROFILE_DIR="$STATE_DIR/chromium-profile"
 LOG="${MEMORYFRAME_KIOSK_LOG:-$HOME/.cache/memoryframe-kiosk.log}"
-LOCK="${XDG_RUNTIME_DIR:-/tmp}/memoryframe-kiosk.lock"
+# Sage (#113): never /tmp; the user's own state dir if there is no runtime dir.
+LOCK="${XDG_RUNTIME_DIR:-$STATE_DIR}/memoryframe-kiosk.lock"
+# #113: while a factory reset runs (marker present) the kiosk neither relaunches Chromium nor polls the app.
+RESET_MARKER="${MEMORYFRAME_DATA_DIR:-/var/lib/memoryframe}/.factory-reset"
+resetting() { [ -e "$RESET_MARKER" ] || [ -L "$RESET_MARKER" ]; }
 
 mkdir -p "$STATE_DIR" "$PROFILE_DIR" "$(dirname "$LOG")"
 
@@ -64,7 +68,12 @@ log "start: browser=$BROWSER url=$URL session=${XDG_SESSION_TYPE:-?} wayland=${W
 
 wait_healthy() {
     local n=0
-    until curl -fsS --max-time 2 "$HEALTH" >/dev/null 2>&1; do
+    while resetting; do
+        [ $((n % 30)) -eq 0 ] && log "factory reset in progress; waiting"
+        n=$((n + 1)); sleep 1
+    done
+    n=0
+    until ! resetting && curl -fsS --max-time 2 "$HEALTH" >/dev/null 2>&1; do
         n=$((n + 1))
         [ $((n % 30)) -eq 1 ] && log "waiting for $HEALTH"
         sleep 1
@@ -119,6 +128,7 @@ watch_liveness() {  # $1 = browser pid
     local pid="$1" body age now recent
     while kill -0 "$pid" 2>/dev/null; do
         sleep "$LIVE_EVERY"
+        resetting && continue
         body="$(curl -fsS --max-time 5 "$URL/frame/liveness" 2>/dev/null)" || continue
         case "$body" in *'"shutting_down":true'*|*'"shutting_down": true'*) continue ;; esac
         age="$(printf '%s' "$body" | sed -n 's/.*"kiosk_age_s": *\([0-9]*\).*/\1/p')"
@@ -144,6 +154,7 @@ delay="$BACKOFF_BASE"
 while true; do
     rotate_log
     wait_healthy
+    resetting && continue
     mark_clean_exit
     rm -f "$PROFILE_DIR"/Singleton{Lock,Socket,Cookie}
     # shellcheck disable=SC2086

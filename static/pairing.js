@@ -148,6 +148,30 @@
         $("hotspotError").hidden = true;
     });
 
+    // ---------- #68: home Wi-Fi test (17a overlay while testing, 17b/17c result for 10 s) ----------
+    const HW_TOAST_MS = 10 * 1000;
+    let hwLast = null, hwTimer = null;
+    $("homeWifiTesting").addEventListener("pointerdown", (e)=>{ e.stopPropagation(); e.preventDefault(); });
+    $("homeWifiTesting").addEventListener("click", (e)=> e.stopPropagation());
+    function renderHomeWifi(hw){
+        hw = hw || {};
+        $("homeWifiTesting").hidden = hw.state !== "testing";
+        const done = hw.state === "saved" || hw.state === "failed";
+        const key = hw.state + ":" + hw.ts;
+        // Show a result once, and only when this page saw the test (or it ended under a minute ago).
+        if(done && hwLast !== null && key !== hwLast && (hwLast.startsWith("testing") || Date.now() / 1000 - hw.ts < 60)){
+            const ok = hw.state === "saved";
+            $("homeWifiTick").classList.toggle("bad", !ok);
+            $("homeWifiTitle").textContent = ok ? "Home Wi-Fi saved" : "Home Wi-Fi test failed";
+            $("homeWifiSub").textContent = ok ? "Used next time the frame starts in developer mode."
+                                              : "Back on the frame's Wi-Fi. Rejoin it and open http://10.42.0.1/";
+            $("homeWifiToast").hidden = false;
+            clearTimeout(hwTimer);
+            hwTimer = setTimeout(()=>{ $("homeWifiToast").hidden = true; }, HW_TOAST_MS);
+        }
+        hwLast = key;
+    }
+
     // ---------- MF-18: hotspot change ----------
     const CANCELLED_TIMEOUT = 60 * 1000;
     let wifiDeadline = 0, cancelledClosedId = null, cancelledShownAt = 0, cancelledId = null;
@@ -198,6 +222,7 @@
         try{
             let st = await getJSON("/pairing/state");
             renderNetmode(st.netmode);
+            renderHomeWifi(st.home_wifi);
             renderWifi(st.wifi_change);
             // #98 W0: unpaired and empty, not dev_temp, no hotspot error (it wins). Not dismissable.
             // (dev_temp keeps its "Restart the frame to pair a phone" card, which is not W0.)
@@ -292,7 +317,8 @@
         corner = null;
     }
     window.addEventListener("pointerdown", (e)=>{
-        if(window.mfShuttingDown || overlayOpen() || devOverlay.classList.contains("visible")){ return; }
+        if(window.mfShuttingDown || overlayOpen() || devOverlay.classList.contains("visible")
+            || toolsOverlay.classList.contains("visible") || !$("resetCover").hidden){ return; }
         cornerStop();
         const c = corner = {id: e.pointerId, x: e.clientX, y: e.clientY};
         c.ringT = setTimeout(()=>{
@@ -300,7 +326,7 @@
             ring.classList.remove("filling"); ring.hidden = false;
             void ring.offsetWidth; ring.classList.add("filling");
         }, RING_DELAY);
-        c.doneT = setTimeout(()=>{ cornerStop(); if(!window.mfBrightnessDragging){ openDevConfirm(); } }, CORNER_MS);
+        c.doneT = setTimeout(()=>{ cornerStop(); if(!window.mfBrightnessDragging){ openTools(); } }, CORNER_MS);
     }, true);
     window.addEventListener("pointermove", (e)=>{
         if(!corner || e.pointerId !== corner.id){ return; }
@@ -312,6 +338,81 @@
             cornerStop();
         }, true);
     }
+    // ---------- #99: Frame tools (the 3 s hold) and Reset the frame ----------
+    const toolsOverlay = $("toolsOverlay");
+    const PANELS = ["toolsMenu", "resetChoose", "resetKeepAsk", "resetEraseAsk", "resetFail"];
+    const ERASE_HOLD_MS = 2000;
+    let resetBusy = false;
+    function showPanel(id, focus){
+        for(const p of PANELS){ $(p).hidden = (p !== id); }
+        toolsOverlay.classList.add("visible");
+        $(focus).focus();
+    }
+    function openTools(){ showPanel("toolsMenu", "toolsClose"); }       // Close is the default
+    function closeTools(){ if(!resetBusy){ eraseStop(); toolsOverlay.classList.remove("visible"); } }
+    window.mfOpenTools = openTools;
+    button("toolsClose", closeTools);
+    button("toolsDev", ()=>{ toolsOverlay.classList.remove("visible"); openDevConfirm(); });
+    button("toolsReset", ()=> showPanel("resetChoose", "resetKeep"));   // Keep my photos is the safe default
+    button("resetChooseCancel", closeTools);
+    button("resetKeep", ()=> showPanel("resetKeepAsk", "resetKeepCancel"));
+    button("resetErase", ()=> showPanel("resetEraseAsk", "resetEraseCancel"));
+    button("resetKeepCancel", closeTools);
+    button("resetEraseCancel", closeTools);
+    button("resetFailOk", closeTools);
+    async function doReset(mode){
+        if(resetBusy){ return; }
+        resetBusy = true;
+        const cover = $("resetCover");
+        cover.hidden = false;
+        let r = null, res = {};
+        try{
+            const meta = document.querySelector('meta[name="mf-frame-token"]');
+            r = await fetch("/frame/reset", {method: "POST", headers: {"Content-Type": "application/json",
+                "X-Frame-Token": meta ? meta.content : ""}, body: JSON.stringify({mode: mode})});
+            try{ res = await r.json(); }catch(e){ res = {}; }
+        }catch(e){ console.warn(e); }
+        if(r && r.ok && res.ok === true){
+            if(mode === "keep-photos"){ location.reload(); return; }
+            window.mfWaitForRestart();                    // the helper stops and restarts the app
+            return;
+        }
+        cover.hidden = true; resetBusy = false;
+        $("resetFailReason").textContent = (res && typeof res.reason === "string" && res.reason)
+            ? res.reason : "Nothing was changed. Try again.";
+        showPanel("resetFail", "resetFailOk");
+    }
+    function waitForRestart(){
+        // Reload once the app has gone down and answers again (or after 20 s if it was never seen down).
+        const t0 = performance.now();
+        let wentDown = false;
+        const poll = async ()=>{
+            let up = false;
+            try{ up = (await fetch("/healthz", {cache: "no-store"})).ok; }catch(e){ up = false; }
+            if(!up){ wentDown = true; }
+            if(up && (wentDown || performance.now() - t0 > 20000)){ location.reload(); return; }
+            setTimeout(poll, 1000);
+        };
+        setTimeout(poll, 1000);
+    }
+    window.mfWaitForRestart = waitForRestart;
+    button("resetKeepConfirm", ()=> doReset("keep-photos"));
+    // Erase must be HELD 2 s (the fill runs across the button); lifting, leaving or cancelling early stops it.
+    const eraseBtn = $("resetEraseHold");
+    let eraseT = null;
+    function eraseStop(){ clearTimeout(eraseT); eraseT = null; eraseBtn.classList.remove("holding"); }
+    eraseBtn.addEventListener("pointerdown", (e)=>{
+        e.stopPropagation(); e.preventDefault();
+        if(resetBusy){ return; }
+        eraseStop();
+        void eraseBtn.offsetWidth; eraseBtn.classList.add("holding");
+        eraseT = setTimeout(()=>{ eraseStop(); doReset("erase"); }, ERASE_HOLD_MS);
+    });
+    for(const t of ["pointerup", "pointercancel", "pointerleave"]){
+        eraseBtn.addEventListener(t, (e)=>{ e.stopPropagation(); eraseStop(); });
+    }
+    eraseBtn.addEventListener("click", (e)=> e.stopPropagation());   // a tap or key press never erases
+
     button("devModeCancel", ()=>{ if(!devBusy){ devOverlay.classList.remove("visible"); } });
     button("devModeConfirm", async ()=>{
         if(devBusy){ return; }
@@ -454,7 +555,7 @@
     let lastTap = null;        // {x, y, t (pointerup time)} of the previous completed tap
     let pointers = 0;
     function overlayOpen(){
-        return [menuOverlay, pairOverlay, emptyOverlay, $("confirmOverlay")].some((o)=> o && o.classList.contains("visible"))
+        return [menuOverlay, pairOverlay, emptyOverlay, $("confirmOverlay"), $("toolsOverlay")].some((o)=> o && o.classList.contains("visible"))
             || !!document.querySelector(".mf-modal:not([hidden])");
     }
     document.addEventListener("pointerdown", (e)=>{

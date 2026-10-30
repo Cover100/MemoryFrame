@@ -310,3 +310,65 @@ def dev_mode():
         reason = "home Wi-Fi did not connect"
     log.warning("dev mode switch failed (exit %s): %s", rc, reason)
     return jsonify({"ok": False, "reason": reason}), 502
+
+
+# ---------------- #99: Reset the frame (hold menu, kiosk only) ----------------
+
+RESET_UNIT = "memoryframe-factory-reset.service"   # root oneshot started via polkit (deploy/factory-reset.sh)
+
+
+def _reset_refused():
+    """A plain reason while Shut down or a Wi-Fi change (MF-18) is in progress, else None."""
+    from . import wifi
+    st = current_app.extensions.get("mf_shutdown") or {}
+    if st.get("synced"):
+        return "The frame is shutting down."
+    if wifi.pending(get_db()) is not None or wifi.busy():
+        return "A Wi-Fi change is in progress. Try again in a few minutes."
+    return None
+
+
+@bp.route("/frame/reset", methods=["POST"])
+@localhost_only
+def frame_reset():
+    """keep-photos: phones sign out, settings and the frame message reset, photos stay (one SQLite
+    transaction, so a power cut leaves either all or nothing). erase: hand off to the root helper,
+    which stops this app, erases the data and starts it again (it also finishes after a power cut)."""
+    from . import message
+    _check_token()
+    mode = (request.get_json(silent=True) or {}).get("mode")
+    if mode not in ("keep-photos", "erase"):
+        abort(400)
+    reason = _reset_refused()
+    if reason:
+        return jsonify({"ok": False, "reason": reason}), 409
+    cfg = current_app.config
+    if mode == "keep-photos":
+        log.warning("reset (keep photos) requested from the frame")
+        conn = get_db()
+        with conn:
+            conn.execute("DELETE FROM sessions")
+            conn.execute("DELETE FROM devices")
+            conn.execute("DELETE FROM settings")
+        message.save(cfg["DATA_DIR"], "")
+        return jsonify({"ok": True})
+    log.warning("reset (erase everything) requested from the frame")
+    import subprocess
+    try:
+        if cfg.get("FACTORY_RESET_CMD"):               # tests: a stub argv instead of the unit
+            rc = subprocess.run(list(cfg["FACTORY_RESET_CMD"]), timeout=30, check=False).returncode
+        else:
+            from . import privileged
+            path = os.path.join(cfg.get("PRIV_INPUT_DIR", privileged.INPUT_DIR), "factory-reset")
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+            with os.fdopen(fd, "w") as f:
+                f.write("erase\n")
+            # --no-block: the helper stops this app, so never wait for it here.
+            rc = subprocess.run(["systemctl", "start", "--no-block", RESET_UNIT], capture_output=True,
+                                timeout=30, check=False).returncode
+    except (OSError, subprocess.TimeoutExpired) as e:
+        log.warning("reset helper failed to run: %s", type(e).__name__)
+        rc = 99
+    if rc != 0:
+        return jsonify({"ok": False, "reason": "Couldn't start the reset. Nothing was erased."}), 502
+    return jsonify({"ok": True}), 202

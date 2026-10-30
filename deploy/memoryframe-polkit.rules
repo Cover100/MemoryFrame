@@ -1,10 +1,12 @@
 // #62: /etc/polkit-1/rules.d/50-memoryframe.rules (install.sh replaces @USER@).
-// The app (NoNewPrivileges, no sudo) may only START these four root oneshot units, and power off.
+// The app (NoNewPrivileges, no sudo) may only START these five root oneshot units, and power off.
 polkit.addRule(function(action, subject) {
     if (subject.user !== "@USER@") { return polkit.Result.NOT_HANDLED; }
     if (action.id === "org.freedesktop.systemd1.manage-units" && action.lookup("verb") === "start") {
         var allowed = ["memoryframe-devtemp.service", "memoryframe-wifi-apply.service",
-                       "memoryframe-wifi-commit.service", "memoryframe-wifi-rollback.service"];
+                       "memoryframe-wifi-commit.service", "memoryframe-wifi-rollback.service",
+                       "memoryframe-home-wifi.service",
+                       "memoryframe-factory-reset.service"];   // #99: Erase everything
         if (allowed.indexOf(action.lookup("unit")) >= 0) { return polkit.Result.YES; }
     }
     if (action.id === "org.freedesktop.login1.power-off" ||

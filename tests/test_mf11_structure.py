@@ -50,7 +50,7 @@ def test_display_write_routes_are_enumerated(mf_app):
         if r.endpoint.startswith("display.") and r.methods - {"GET", "HEAD", "OPTIONS"}:
             for m in r.methods - {"GET", "HEAD", "OPTIONS"}:
                 found.add((r.rule, m.lower()))
-    separately_tested = {("/frame/shutdown", "post"), ("/frame/dev-mode", "post")}     # MF-49: tests/test_shutdown.py (token + localhost)
+    separately_tested = {("/frame/shutdown", "post"), ("/frame/dev-mode", "post"), ("/frame/reset", "post")}  # #99: tests/test_factory_reset_99.py     # MF-49: tests/test_shutdown.py (token + localhost)
     assert found == {(p, m) for p, m, _ in DISPLAY_WRITE_ROUTES} | separately_tested
 
 
@@ -81,6 +81,7 @@ READ_ONLY_GET_ENDPOINTS = {
     "pairing.state", "pairing.pair_page", "pairing.frame_status", "admin.upload_page", "api.storage",
     "admin.library_page", "admin.settings_page", "api.get_settings", "api.get_message", "wifi.page", "wifi.keep_page", "api.list_media", "api.thumb", "display.show_now_state",
     "display.frame_fonts",
+    "homewifi.page", "homewifi.status",   # #68: /admin/home-wifi/ page and its read-only status
     "pairing.liveness",   # #95: kiosk.sh freeze check, localhost only, read-only
 }
 

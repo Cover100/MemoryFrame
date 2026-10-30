@@ -59,6 +59,8 @@ def test_product_has_no_lan_ip(client, nmstate, net):
 def test_no_network_mode_controls_in_user_ui():
     """6: no dev-mode / network-mode item in the frame menu or on any phone page."""
     for f in (ROOT / "templates").glob("*.html"):
+        if f.name == "home_wifi.html":      # #68: gated developer-only page; Wren's copy says "developer mode"
+            continue
         html = f.read_text()
         # the MF-36 status displays themselves (banner/toast/error copy) are not controls
         html = re.sub(r"<!-- MF-36 \(frame only\).*?(?=<script)", "", html, flags=re.S)

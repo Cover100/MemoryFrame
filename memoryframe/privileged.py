@@ -9,7 +9,8 @@ import subprocess
 log = logging.getLogger(__name__)
 
 UNITS = {"dev-temp": "memoryframe-devtemp.service", "wifi-apply": "memoryframe-wifi-apply.service",
-         "wifi-commit": "memoryframe-wifi-commit.service", "wifi-rollback": "memoryframe-wifi-rollback.service"}
+         "wifi-commit": "memoryframe-wifi-commit.service", "wifi-rollback": "memoryframe-wifi-rollback.service",
+         "home-wifi": "memoryframe-home-wifi.service"}
 OUT_DIR = "/run/memoryframe"
 INPUT_DIR = "/run/memoryframe-app"          # the app's own RuntimeDirectory (0700)
 POWEROFF_CMD = ["systemctl", "poweroff"]     # logind, allowed by the polkit rule
@@ -27,7 +28,11 @@ def run(config, verb, stdin=None, timeout=120):
             return r.returncode, (r.stdout or "") + (r.stderr or "")
         if stdin is not None:
             path = os.path.join(config.get("PRIV_INPUT_DIR", INPUT_DIR), verb)
-            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            try:                         # #68: never write through a symlink or into a stale file
+                os.unlink(path)
+            except FileNotFoundError:
+                pass
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
             with os.fdopen(fd, "w") as f:
                 f.write(stdin)
         r = subprocess.run(["systemctl", "start", UNITS[verb]], capture_output=True, text=True, timeout=timeout)

@@ -194,6 +194,8 @@ render "$SRC_DIR/deploy/memoryframe.service" /etc/systemd/system/memoryframe.ser
 put_file "$SRC_DIR/deploy/netmode.sh" /usr/local/sbin/memoryframe-netmode 0755
 # Root-owned hotspot.sh + config for the memoryframe-reset boot path (root never runs checkout files).
 put_file "$SRC_DIR/deploy/hotspot.sh" /usr/local/sbin/memoryframe-hotspot 0755
+# #99: root-owned copy of the Erase everything helper (also finishes an interrupted reset at boot).
+put_file "$SRC_DIR/deploy/factory-reset.sh" /usr/local/sbin/memoryframe-factory-reset 0755
 sudo install -d -o root -g root -m 0755 /etc/memoryframe
 if [ -f "$SRC_DIR/deploy/hotspot.conf" ]; then
     # #69: root:mfapp 0640: root parses it, the app reads SSID/QR from it; nobody else can.
@@ -202,8 +204,8 @@ fi
 render "$SRC_DIR/deploy/memoryframe-netmode.service" /etc/systemd/system/memoryframe-netmode.service 0644
 # #62: root oneshot units for the app's privileged actions + a polkit rule that lets only the app
 # user start them (and power off). No sudoers rules: the app service keeps NoNewPrivileges.
-# #69: + the boot-flag rollback unit.
-for u in devtemp wifi-apply wifi-commit wifi-rollback rollback; do
+# #69: + the boot-flag rollback unit; #68: home-wifi; #99: factory-reset.
+for u in devtemp wifi-apply wifi-commit wifi-rollback rollback home-wifi factory-reset; do
     put_file "$SRC_DIR/deploy/units/memoryframe-$u.service" "/etc/systemd/system/memoryframe-$u.service" 0644
 done
 [ -d /etc/polkit-1/rules.d ] || sudo install -d -o root -g root -m 0755 /etc/polkit-1/rules.d   # never re-perm the distro's dir
@@ -229,6 +231,8 @@ if [ ! -e "$MODE_FILE" ] && [ -n "$CUR_WIFI" ] && [ "$CUR_WIFI" != "MemoryFrame-
 fi
 # MF-36: applied at the NEXT boot (enabling does not switch the network now).
 sudo systemctl enable memoryframe-netmode.service
+# #99: runs before the app at every boot; does nothing unless a reset was cut short.
+sudo systemctl enable memoryframe-factory-reset.service
 sudo systemctl enable memoryframe.service memoryframe-rollback.service
 sudo systemctl restart memoryframe.service
 # #69: only "restarted" once it answers. If not, exit into the #90 trap (it rolls back first, restarts once).

@@ -1,0 +1,13 @@
+/* #68 home Wi-Fi (Wren 12a-12f) */
+.mf-phone .hw-eye{min-width:72px;min-height:52px}
+.mf-phone #homeForm .field:focus,.mf-phone .hw-eye:focus-visible{outline:3px solid var(--mf-brass);border-color:var(--mf-brass)}
+.mf-phone .hw-err{color:var(--mf-brick-text);font-size:var(--mf-p-small);font-weight:700;margin:6px 0 0}
+.mf-phone .field.bad{border-color:var(--mf-brick-text)}
+.mf-phone .hw-state{text-align:center;padding-top:40px;overflow-wrap:anywhere}
+.mf-phone .hw-state p{color:var(--mf-text-2)}
+.mf-phone .hw-spin,.mf-phone .hw-ic{width:60px;height:60px;margin:0 auto 16px;border-radius:50%;box-sizing:border-box;display:grid;place-items:center;color:#fff;font-size:34px;font-weight:700}
+.mf-phone .hw-spin{border:5px solid var(--mf-forest-700);border-top-color:var(--mf-leaf)}
+.mf-phone .hw-ok{background:var(--mf-green)}.mf-phone .hw-no{background:var(--mf-brick)}
+.mf-phone .hw-ic .hw-svg{width:36px;height:36px}
+.mf-phone .hw-steps{text-align:left;background:var(--mf-forest-900);border:1px solid var(--mf-forest-700);border-radius:12px;padding:12px 14px 12px 34px}
+.mf-phone .hw-accent{color:var(--mf-accent-text);font-weight:700}

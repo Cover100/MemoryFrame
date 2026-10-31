@@ -50,6 +50,10 @@ STATES = ("queued", "processing", "ready", "failed")
 FORMAT_WHITELIST = "mov,mp4,m4a,3gp,3g2,mj2,matroska,webm"
 CODECS = {"h264", "hevc", "vp8", "vp9", "av1", "mpeg4"}
 CODEC_WHITELIST = "h264,hevc,vp8,vp9,av1,libdav1d,mpeg4"   # decoders ffmpeg may open (Sage: enforced, not just probed)
+# ffprobe opens a decoder for EVERY stream and exits 1 if one is not whitelisted, so phone clips with sound were
+# all refused (Hale, Pi). Probe only (never convert: it runs -an) may also open these common phone audio decoders.
+AUDIO_WHITELIST = "aac,mp3,opus,pcm_s16le,pcm_s16be,pcm_s24le,pcm_f32le,alac,ac3,eac3,amr_nb,amr_wb,vorbis,flac"
+PROBE_WHITELIST = CODEC_WHITELIST + "," + AUDIO_WHITELIST
 MAX_PENDING = 5                          # queued + preparing + failed clips (each keeps up to 350 MB on the card)
 OUT_MAX_SECONDS = MAX_SECONDS + 0.5
 NICE = ["nice", "-n", "19", "ionice", "-c", "3"]
@@ -123,18 +127,47 @@ def _fps(rate):
         return 0.0
 
 
+def _ffprobe(path, runner, whitelist):
+    cmd = ["ffprobe", "-v", "error", "-probesize", "5M", "-analyzeduration", "5M",
+           "-format_whitelist", FORMAT_WHITELIST, "-protocol_whitelist", "file",
+           "-codec_whitelist", whitelist, "-print_format", "json", "-show_streams", "-show_format", "file:" + path]
+    try:
+        r = runner(cmd, capture_output=True, timeout=30, check=False)
+        return (json.loads(r.stdout or b"{}") if r.returncode == 0 else None), (r.stderr or b"")
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return None, b""
+
+
+def _video_only_info(path, runner):
+    """Fallback when ffprobe refused a stream that is not on the whitelist (e.g. pcm_alaw audio): ffmpeg (which
+    tolerates an unopenable extra stream) stream-copies only the video into a temp .mov, which is probed with the
+    VIDEO-only whitelist. No decoder outside CODEC_WHITELIST is ever allowed; nothing is decoded at all."""
+    tmp = path + ".probe.mov"
+    try:
+        cmd = (_prefix(60) + _limit() + ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
+               "-format_whitelist", FORMAT_WHITELIST, "-protocol_whitelist", "file", "-codec_whitelist", CODEC_WHITELIST,
+               "-i", "file:" + path, "-map", "0:v", "-c", "copy", "-an", "-sn", "-dn", "-f", "mov", "file:" + tmp])
+        try:
+            r = runner(cmd, capture_output=True, timeout=90, check=False)
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        if r.returncode != 0 or not os.path.exists(tmp):
+            return None
+        return _ffprobe(tmp, runner, CODEC_WHITELIST)[0]
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+
+
 def probe(path, runner=None):
     """ffprobe the upload. Returns {codec, width, height, rotation, duration, fps} (width/height as
     displayed, i.e. after rotation). Raises VideoError(message for the phone) if it must be refused."""
-    cmd = ["ffprobe", "-v", "error", "-probesize", "5M", "-analyzeduration", "5M",
-           "-format_whitelist", FORMAT_WHITELIST, "-protocol_whitelist", "file",
-           "-codec_whitelist", CODEC_WHITELIST, "-print_format", "json", "-show_streams", "-show_format", "file:" + path]
     runner = runner or subprocess.run
-    try:
-        r = runner(cmd, capture_output=True, timeout=30, check=False)
-        info = json.loads(r.stdout or b"{}") if r.returncode == 0 else None
-    except (OSError, subprocess.TimeoutExpired, ValueError):
-        info = None
+    info, err = _ffprobe(path, runner, PROBE_WHITELIST)
+    if not info and b"not on whitelist" in err:
+        info = _video_only_info(path, runner)
     if not info:
         raise VideoError(NOT_A_VIDEO)
     streams = info.get("streams") or []
@@ -225,12 +258,16 @@ def filter_graph(info, target=(OUT_W, OUT_H)):
         f"[bgs][fg]overlay={x0}:{y0},{tail}")
 
 
-def convert_cmd(src, dst, info):
-    """The ffmpeg argv (without the nice/ionice/taskset/timeout prefix)."""
+def _uses_hw(info):
+    return info["codec"] == "hevc" and not info.get("high_res")
+
+
+def convert_cmd(src, dst, info, hwaccel=True):
+    """The ffmpeg argv (without the nice/ionice/taskset/timeout prefix). hwaccel=False forces software decode."""
     hires = bool(info.get("high_res"))
     # HEVC: Pi 4 hardware decode (~55 % faster), but only up to 4K: over 4K it is refused anyway (Hale), so go
     # straight to software, with one decoder thread so the frame buffers fit the 1.5 GiB address-space cap.
-    hw = ["-hwaccel", "drm"] if info["codec"] == "hevc" and not hires else []
+    hw = ["-hwaccel", "drm"] if hwaccel and _uses_hw(info) else []
     return (["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-threads", "1" if hires else "2", *hw,
              *(["-noautorotate", "-display_rotation", "0"] if hires else []),   # turned in filter_graph instead
              "-format_whitelist", FORMAT_WHITELIST, "-protocol_whitelist", "file",
@@ -285,7 +322,14 @@ def convert(data_dir, stored_name, runner=None):
     final = os.path.join(data_dir, "originals", stored_name)
     info = probe(src, runner)
     try:
-        _run(convert_cmd(src, part, info), timeout_for(info), runner)
+        try:
+            _run(convert_cmd(src, part, info), timeout_for(info), runner)
+        except VideoError:
+            # Under User=mfapp the DRM device may be unavailable (no render group, no /dev/dri): ffmpeg then
+            # fails at once with "Device creation failed". Retry once in software rather than fail the clip.
+            if not _uses_hw(info):
+                raise
+            _run(convert_cmd(src, part, info, hwaccel=False), timeout_for(info), runner)
         if not os.path.exists(part) or os.path.getsize(part) == 0:
             raise VideoError("ffmpeg made no output")
         out_s = check_output(part, runner, min(info["duration"], MAX_SECONDS))

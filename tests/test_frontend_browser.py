@@ -217,16 +217,18 @@ def test_state_a_no_photos_no_phone_full_onboarding_on_hotspot(page, server, mf_
     o = overlay(page)
     assert o["visible"] and o["qr"]
     code = mf_app.extensions["mf_pairing"].code
-    assert o["code"].replace(" ", "") == code and o["font"] >= 56
+    assert o["code"] == code and o["font"] >= 48                 # #98 W0: no space, ≥48 px
     assert (o["vw"], o["vh"]) == (800, 480)
     left, top, right, bottom = o["box"]
     assert left >= 0 and top >= 0 and right <= o["vw"] and bottom <= o["vh"], o   # fits 800x480
     # Wi-Fi join QR first, then the site QR for the hotspot address (port 80 is served)
     assert visible(page, "wifiStep") and evaluate(page, "!!document.querySelector('#wifiQr svg')")
-    assert text(page, "pairTitle") == "Pair a phone"                                   # mock 03
-    assert text(page, "siteTitle") == "Open site" and text(page, "siteBadge") == "2" and text(page, "codeBadge") == "3"
-    assert text(page, "pairUrl") == "http://10.42.0.1/pair"
-    assert text(page, "pairUrlAlt") == "or http://memoryframe.lan/pair"
+    assert visible(page, "welcomeHead") and visible(page, "welcomeFoot") and not visible(page, "pairClose")  # #98 W0
+    assert text(page, "wifiTitle") == "Join the Wi-Fi" and text(page, "siteTitle") == "Open the site"
+    assert text(page, "codeTitle") == "Type the code" and text(page, "codeHint") == "New code every 2 minutes"
+    assert text(page, "siteBadge") == "2" and text(page, "codeBadge") == "3"
+    assert text(page, "pairUrl") == "http://10.42.0.1"                                # Wren 16: the site
+    assert text(page, "pairUrlAlt") == ""
     assert not visible(page, "pairHint")
 
     phone_pair(server, code)
@@ -360,16 +362,13 @@ def test_upload_page_uploads_files_with_progress(page, server, mf_app, tmp_path)
 # ---------------- Close keeps overlays dismissed for the session ----------------
 
 @pytest.mark.no_media
-def test_close_dismisses_onboarding_for_the_session(page, server, mf_app, net):
+def test_welcome_has_no_close_but_on_demand_pairing_does(page, server, mf_app, net):
     page.pump(2.5)
-    assert overlay(page)["visible"] and visible(page, "pairClose")
-    evaluate(page, "document.getElementById('pairClose').click()")
-    page.pump(5)                                    # > 2 polls: must not come back
-    assert not overlay(page)["visible"] and not visible(page, "emptyOverlay")
-    assert visible(page, "pairHint")
-    page.call("Page.reload")                        # same browser session -> still dismissed
+    assert overlay(page)["visible"] and not visible(page, "pairClose")   # #98: W0 is not dismissable
+    evaluate(page, "sessionStorage.setItem('mfOverlayDismissed','1')")
+    page.call("Page.reload")
     page.pump(3)
-    assert not overlay(page)["visible"] and visible(page, "pairHint")
+    assert overlay(page)["visible"] and visible(page, "welcomeHead")    # an old dismissal doesn't hide W0
     # pairing is still available from the menu
     evaluate(page, "memoryFramePairing.openMenu()")
     page.pump(0.5)
@@ -378,7 +377,7 @@ def test_close_dismisses_onboarding_for_the_session(page, server, mf_app, net):
     assert overlay(page)["visible"]
     evaluate(page, "document.getElementById('pairClose').click()")
     page.pump(3)
-    assert not overlay(page)["visible"]
+    assert overlay(page)["visible"] and visible(page, "welcomeHead")   # still unpaired + empty: back to W0
     assert page.exceptions() == [], fmt(page.exceptions())
 
 

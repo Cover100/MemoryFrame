@@ -53,6 +53,8 @@ def create_app(config=None):
     app.register_blueprint(admin_bp, url_prefix="/admin")
     from .wifi import bp as wifi_bp
     app.register_blueprint(wifi_bp, url_prefix="/admin/wifi")
+    from .homewifi import bp as homewifi_bp
+    app.register_blueprint(homewifi_bp, url_prefix="/admin/home-wifi")
     app.register_blueprint(api_bp, url_prefix="/api/v1")
     app.register_blueprint(pairing_bp)
 
@@ -123,7 +125,7 @@ def _sweep(app):
     except Exception as e:  # noqa: BLE001 - never block start-up
         log.warning("start-up video recovery failed: %s", e)
     try:                        # #91: before the sweep, so an adopted photo keeps its copies; before serving
-        library.reconcile_orphans(conn, app.config["DATA_DIR"])
+        _, app.config["ORPHANS_REPORTED"] = library.reconcile_orphans(conn, app.config["DATA_DIR"])
     except Exception as e:  # noqa: BLE001 - never block start-up
         log.warning("start-up orphan reconcile failed: %s", e)
     try:

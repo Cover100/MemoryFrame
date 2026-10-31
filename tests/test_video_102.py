@@ -540,3 +540,48 @@ def test_4k_keeps_autorotate():
 def test_malloc_arena_cap_in_prefix(monkeypatch):
     monkeypatch.setattr(video.shutil, "which", lambda n: "/usr/bin/" + n)
     assert video._limit()[-2:] == ["env", "MALLOC_ARENA_MAX=2"]
+
+
+def test_hevc_falls_back_to_software_when_drm_device_missing(tmp_path):
+    """Under User=mfapp the DRM device may be unusable: ffmpeg -hwaccel drm fails at once. Retry in software."""
+    class NoDrm(FakeFF):
+        def __call__(self, cmd, **kw):
+            if "-hwaccel" in cmd:
+                self.calls.append(cmd)
+                return subprocess.CompletedProcess(cmd, 1, b"", b"Device creation failed: -14.")
+            return super().__call__(cmd, **kw)
+    d = str(tmp_path)
+    for sub in ("originals", "thumbs", "display", "tmp"):
+        os.makedirs(os.path.join(d, sub), exist_ok=True)
+    src = video.input_path(d, "a" * 32 + ".mp4")
+    os.makedirs(os.path.dirname(src), exist_ok=True)
+    open(src, "wb").write(b"x")
+    os.makedirs(os.path.dirname(video.part_path(d, "a" * 32 + ".mp4")), exist_ok=True)
+    os.makedirs(os.path.dirname(video.poster_path(d, "a" * 32 + ".mp4")), exist_ok=True)
+    fake = NoDrm([stream(1920, 1080, "hevc")])
+    video.convert(d, "a" * 32 + ".mp4", runner=fake)
+    ff = [c for c in fake.calls if "ffmpeg" in c and "-filter_complex" in c]
+    assert len(ff) == 2 and "-hwaccel" in ff[0] and "-hwaccel" not in ff[1]
+    assert os.path.exists(os.path.join(d, "originals", "a" * 32 + ".mp4"))
+
+
+def test_h264_failure_is_not_retried(tmp_path):
+    d = str(tmp_path)
+    src = video.input_path(d, "b" * 32 + ".mp4")
+    os.makedirs(os.path.dirname(src), exist_ok=True)
+    os.makedirs(os.path.join(d, "originals"), exist_ok=True)
+    open(src, "wb").write(b"x")
+    fake = FakeFF(fail_convert=True)
+    with pytest.raises(video.VideoError):
+        video.convert(d, "b" * 32 + ".mp4", runner=fake)
+    assert len([c for c in fake.calls if "ffmpeg" in c]) == 1
+
+
+def test_probe_whitelist_adds_audio_only_and_convert_stays_video_only(tmp_path):
+    fake = FakeFF()
+    video.probe(str(tmp_path / "x"), runner=fake)
+    wl = fake.calls[0][fake.calls[0].index("-codec_whitelist") + 1].split(",")
+    assert wl == video.CODEC_WHITELIST.split(",") + video.AUDIO_WHITELIST.split(",")
+    assert video.CODEC_WHITELIST == "h264,hevc,vp8,vp9,av1,libdav1d,mpeg4"
+    c = video.convert_cmd("a", "b", video.probe(str(tmp_path / "x"), runner=fake))
+    assert c[c.index("-codec_whitelist") + 1] == video.CODEC_WHITELIST and "-an" in c

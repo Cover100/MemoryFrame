@@ -69,6 +69,10 @@ def _state():
     out["netmode"] = {"dev": nm["mode"] == "dev", "lan_ip": lan_ip if isinstance(lan_ip, str) and lan_ip else None,
                       "dev_fallback": nm["dev_fallback"], "hotspot_error": nm["hotspot_error"],
                       "boot_id": nm["boot_id"], "temp": nm.get("temp", False)}
+    # #68: home Wi-Fi test state for the frame overlay (17a) and 10 s result (17b/17c); no SSID or password.
+    from . import homewifi
+    hw = homewifi.read_status()
+    out["home_wifi"] = {"state": hw["state"], "ts": hw["ts"]}
     # MF-55 G3: in temporary Developer Wi-Fi phones can't reach the frame's site; pairing shows
     # "Restart the frame to pair a phone" and the state carries no address, QR or code.
     if nm.get("temp"):
@@ -148,5 +152,7 @@ def frame_status():
     return jsonify({"ips": frameinfo.own_ips(), "ssid": name, "version": frameinfo.version(),
                     "network": urls["mode"], "site": urls["primary"] + "/", "site_fallback":
                     urls["fallback"] + "/" if urls["fallback"] else None,
-                    "storage": frameinfo.free_storage(current_app.config["DATA_DIR"]),
+                    "storage": frameinfo.free_storage(current_app.config["DATA_DIR"],
+                                                      storage.min_free(current_app.config)),
+                    "orphans": current_app.config.get("ORPHANS_REPORTED", 0),     # #96: files kept, not deleted
                     "paired": auth.paired_count(get_db())})

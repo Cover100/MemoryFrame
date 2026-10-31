@@ -103,7 +103,7 @@ def test_explicit_exit_without_err_record_says_unknown_step(env, tmp_path):
     def tweak(app):
         script = app / "deploy" / "install.sh"
         script.write_text(script.read_text().replace(
-            '"$APP_DIR/deploy/audit-autostart.sh" --disable', 'false || true; exit 4', 1))
+            '"$SRC_DIR/deploy/audit-autostart.sh" --disable', 'false || true; exit 4', 1))
     r, log = run_install(tmp_path, env, tweak=tweak)
     assert r.returncode == 4 and len(calls(log, "restart")) == 1
     assert "failed (exit 4) at an unknown step" in r.stderr

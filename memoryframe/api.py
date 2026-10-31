@@ -68,7 +68,8 @@ def status():
 
 def _limits():
     c = current_app.config
-    return c["MIN_FREE_BYTES"], c["AVG_PHOTO_BYTES"]
+    from . import storage
+    return storage.min_free(c), c["AVG_PHOTO_BYTES"]
 
 
 @bp.route("/storage")
@@ -101,7 +102,8 @@ def upload_media():
                                           current_app.config.get("MAX_NONJPEG_PIXELS", upload.MAX_NONJPEG_PIXELS),
                                           videos=videos,
                                           max_photo_bytes=current_app.config["MAX_CONTENT_LENGTH"] if videos else None,
-                                          meta=meta)
+                                          meta=meta,
+                                          incoming=request.content_length or 0)
     except upload.UploadError as e:
         return jsonify({"error": e.message}), e.status
     is_video = name.endswith(".mp4")              # photo labels never end in .mp4

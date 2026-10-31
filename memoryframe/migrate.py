@@ -65,6 +65,21 @@ def backup_legacy(files, backups_dir, stamp=None):
     return tar_path, manifest
 
 
+def prune_backups(backups_dir, keep, log=print):
+    """#96: backups/ is unbounded otherwise. After a verified backup AND a finished import, older
+    legacy-uploads-*.tar files are removed; only `keep` (the newest) stays. Nothing else is touched."""
+    removed = 0
+    for name in sorted(os.listdir(backups_dir)):
+        p = os.path.join(backups_dir, name)
+        if (name.startswith("legacy-uploads-") and name.endswith(".tar") and os.path.abspath(p) != os.path.abspath(keep)
+                and os.path.isfile(p) and not os.path.islink(p)):
+            os.remove(p)
+            removed += 1
+    if removed:
+        log(f"Removed {removed} older backup(s); kept {os.path.basename(keep)}.")
+    return removed
+
+
 def migrate_legacy(config, backup=True, log=print):
     """Run the migration. Returns a summary dict. Safe to run repeatedly."""
     data_dir = config["DATA_DIR"]
@@ -114,6 +129,8 @@ def migrate_legacy(config, backup=True, log=print):
         if backup_path:
             db.set_setting(conn, "legacy_import_backup", backup_path)
         conn.commit()
+        if backup_path:
+            prune_backups(os.path.join(data_dir, "backups"), keep=backup_path, log=log)
         log(f"Imported {imported}, skipped {skipped} duplicate(s), {too_large} too large. "
             f"Legacy folder left untouched.")
         return {"imported": imported, "skipped": skipped, "backup": backup_path, "already_done": False,

@@ -121,14 +121,16 @@ def test_brightness_drag_never_opens_menu(ready, backlight):
     assert (backlight / "brightness").read_text().strip() != "100"
 
 
-def dev_confirm_open(page):
-    return evaluate(page, "document.getElementById('devModeOverlay').classList.contains('visible')")
+def dev_confirm_open(page):   # #99: the hold opens Frame tools (which leads to the dev confirm)
+    return evaluate(page, "['devModeOverlay','toolsOverlay'].some((i)=>"
+                          "document.getElementById(i).classList.contains('visible'))")
 
 
-def test_three_second_hold_opens_dev_confirm_not_menu(ready):   # Tester #52: only double tap opens the menu
+def test_three_second_hold_opens_frame_tools_not_menu(ready):   # Tester #52: only double tap opens the menu
     hold(ready, 3.5)
     ready.pump(0.5)
-    assert dev_confirm_open(ready) and not menu_open(ready)
+    assert evaluate(ready, "document.getElementById('toolsOverlay').classList.contains('visible')")
+    assert not menu_open(ready)
 
 
 def test_brightness_drag_never_opens_dev_confirm(ready, backlight):

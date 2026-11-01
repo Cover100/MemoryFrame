@@ -1,6 +1,7 @@
 """deploy/kiosk.sh with stub chromium/curl: flags, profile, logging, restart."""
 import json
 import os
+import re
 import signal
 import shutil
 import subprocess
@@ -380,3 +381,102 @@ def test_service_never_starts_during_factory_reset():
         argv = cond.split("=", 1)[1].replace("/var/lib/memoryframe/.factory-reset", str(p)).split()
         assert subprocess.run(argv).returncode == code
         shutil.rmtree(m)
+
+
+# ---------------- #122: main browser stopped (state T) for over STOPPED_MAX s in a row ----------------
+
+def _browser_pid(sid):
+    for pid in session_pids(sid):
+        try:
+            if Path(f"/proc/{pid}/cmdline").read_bytes().startswith(b"sleep\x0030"):
+                return pid
+        except OSError:
+            pass
+    return None
+
+
+def _stopped_env(env, max_s):
+    tmp_path, e = _liveness_env(env, '{"kiosk_age_s": 3.0, "shutting_down": false}')   # heartbeat is fresh
+    e["MEMORYFRAME_STOPPED_MAX"] = str(max_s)
+    return tmp_path, e
+
+
+def _first_browser(p, tmp_path):
+    deadline = time.monotonic() + 15
+    while True:
+        assert p.poll() is None and time.monotonic() < deadline
+        pid = _browser_pid(p.pid)
+        if pid and launches(tmp_path):
+            return pid
+        time.sleep(0.05)
+
+
+def test_stopped_browser_is_killed_and_relaunched(env):
+    tmp_path, e = _stopped_env(env, 1)
+    p = start_kiosk(e)
+    pid = _first_browser(p, tmp_path)
+    os.kill(pid, signal.SIGSTOP)
+    deadline = time.monotonic() + 10                               # > 1 s in a row, 1 s date granularity
+    while len(launches(tmp_path)) < 2:
+        assert time.monotonic() < deadline, log_text(tmp_path)
+        time.sleep(0.05)
+    t = log_text(tmp_path)
+    assert f"liveness: browser stopped (state T) for over 1 s; killing browser {pid}" in t
+    assert "no heartbeat" not in t
+    assert not Path(f"/proc/{pid}").exists() or Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0] == "Z"
+
+
+def test_brief_stop_then_cont_is_not_relaunched(env):
+    tmp_path, e = _stopped_env(env, 3)
+    p = start_kiosk(e)
+    pid = _first_browser(p, tmp_path)
+    os.kill(pid, signal.SIGSTOP)
+    time.sleep(1.5)                                                # under the 3 s threshold
+    os.kill(pid, signal.SIGCONT)
+    time.sleep(1)
+    os.kill(pid, signal.SIGSTOP)                                   # a second short stop: the timer restarted
+    time.sleep(1.5)
+    os.kill(pid, signal.SIGCONT)
+    time.sleep(3)
+    assert len(launches(tmp_path)) == 1 and "killing" not in log_text(tmp_path)
+    assert _browser_pid(p.pid) == pid
+
+
+def test_stopped_kill_shares_the_rate_limit(env):
+    tmp_path, e = _stopped_env(env, 0)
+    kills = tmp_path / "memoryframe-kiosk.kills"
+    now = int(time.time())
+    kills.write_text(f"{now}\n{now}\n{now}\n")                     # 3 kills in the last 10 min already
+    p = start_kiosk(e)
+    pid = _first_browser(p, tmp_path)
+    os.kill(pid, signal.SIGSTOP)
+    deadline = time.monotonic() + 10
+    while "not killing" not in log_text(tmp_path):
+        assert time.monotonic() < deadline, log_text(tmp_path)
+        time.sleep(0.05)
+    assert len(launches(tmp_path)) == 1
+    os.kill(pid, signal.SIGCONT)
+
+
+@pytest.mark.parametrize("comm,state", [("a b", "S"), ("x) T (y", "S"), ("plain", "S")])
+def test_proc_state_parses_after_the_last_paren(tmp_path, comm, state):
+    exe = tmp_path / comm
+    shutil.copy(shutil.which("sleep"), exe)
+    p = subprocess.Popen([str(exe), "300"], start_new_session=True)
+    try:
+        deadline = time.monotonic() + 5
+        while f"({comm})" not in Path(f"/proc/{p.pid}/stat").read_text():
+            assert time.monotonic() < deadline
+            time.sleep(0.02)
+        fn = re.search(r"^proc_state\(\) \{.*?^\}", SCRIPT.read_text(), re.S | re.M).group(0)
+        got = lambda: subprocess.run([BASH, "-c", f"{fn}\nproc_state {p.pid}"], capture_output=True,
+                                     text=True).stdout.strip()
+        assert got() == state
+        os.kill(p.pid, signal.SIGSTOP)
+        deadline = time.monotonic() + 5
+        while got() != "T":
+            assert time.monotonic() < deadline
+            time.sleep(0.02)
+    finally:
+        os.killpg(p.pid, signal.SIGKILL)
+        p.wait()

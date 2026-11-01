@@ -71,6 +71,65 @@ QUEUE_FULL = ("The frame is still holding {n} videos it hasn't added yet. Wait f
               "or remove ones that couldn't be added, then try again.").format(n=MAX_PENDING)
 
 
+# #103 trim (picked on the phone, checked here against the PROBED duration, never the phone's).
+MIN_KEEP_MS = 1000
+TRIM_SLACK_MS = 250                      # the phone's <video>.duration may read a little past ffprobe's
+TRIM_BAD = "The trim points for this video aren't valid. Please choose the part again."
+TRIM_TOO_LONG = "That part is {len}. Choose 30 seconds or less."
+TRIM_TOO_SHORT = "That part is under 1 second. Choose at least 1 second."
+PROGRESS_WRITE_S = 1.0                   # write progress_pct at most once a second (SD card)
+CANCEL_GRACE_S = 5                       # SIGTERM, then SIGKILL after this
+MAX_PROGRESS_LINE = 1024
+
+
+class Cancelled(Exception):
+    """The clip was cancelled (or deleted) while ffmpeg ran: ffmpeg is stopped, nothing is kept."""
+
+
+class TrimError(Exception):
+    """Bad trim points: the phone gets 400 with this message."""
+
+
+def _mmss(ms):
+    s = int(ms // 1000)
+    return "%d:%02d" % (s // 60, s % 60)
+
+
+def parse_trim(start, end):
+    """Form values -> (start_ms, end_ms), or None if neither was sent (default: the first 30 s).
+    Only plain non-negative integers (at most 9 digits) are accepted: no floats, signs, NaN or spaces."""
+    if start is None and end is None:
+        return None
+    if not (isinstance(start, str) and isinstance(end, str)
+            and 0 < len(start) <= 9 and 0 < len(end) <= 9 and start.isascii() and end.isascii()
+            and start.isdigit() and end.isdigit()):
+        raise TrimError(TRIM_BAD)
+    return int(start), int(end)
+
+
+def resolve_trim(trim, duration_s):
+    """Check (start_ms, end_ms) against the probed duration; None -> the default first 30 s.
+    Returns (start_ms, end_ms) with 1 s <= end - start <= 30 s. Raises TrimError."""
+    dur_ms = int(duration_s * 1000)
+    if trim is None:
+        return 0, max(1, min(dur_ms, MAX_SECONDS * 1000))
+    start, end = trim
+    if end > dur_ms and end - dur_ms <= TRIM_SLACK_MS:
+        end = dur_ms
+    if not 0 <= start < end <= dur_ms:
+        raise TrimError(TRIM_BAD)
+    if end - start > MAX_SECONDS * 1000:
+        raise TrimError(TRIM_TOO_LONG.format(len=_mmss(end - start)))
+    if end - start < MIN_KEEP_MS:
+        raise TrimError(TRIM_TOO_SHORT)
+    return start, end
+
+
+def keep_seconds(info):
+    """Seconds the converted clip will last: the trimmed part (info["keep"]) or the default first 30 s."""
+    return info.get("keep") or min(info["duration"], MAX_SECONDS)
+
+
 class VideoError(Exception):
     pass
 
@@ -190,7 +249,7 @@ def prep_minutes(info):
     """Rough minutes the Pi needs for an over-4K clip (only what is kept: at most 30 s); None otherwise."""
     if not info.get("high_res"):
         return None
-    return max(1, math.ceil(min(info["duration"], MAX_SECONDS) * HIRES_RATE / 60))
+    return max(1, math.ceil(keep_seconds(info) * HIRES_RATE / 60))
 
 
 # ---------------- filter graph (rotation, then cover or B2 blur-fill) ----------------
@@ -251,14 +310,19 @@ def convert_cmd(src, dst, info, hwaccel=True):
     # HEVC: Pi 4 hardware decode (~55 % faster), but only up to 4K: over 4K it is refused anyway (Hale), so go
     # straight to software, with one decoder thread so the frame buffers fit the 1.5 GiB address-space cap.
     hw = ["-hwaccel", "drm"] if hwaccel and _uses_hw(info) else []
-    return (["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-threads", "1" if hires else "2", *hw,
+    # #103: input seek + length (frame-accurate, as everything is re-encoded); output -t stays as a cap.
+    # Only these two formatted numbers ever reach ffmpeg from the phone.
+    start, keep = "%.3f" % info.get("start", 0), "%.3f" % keep_seconds(info)
+    return (["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-nostats", "-progress", "pipe:1", "-y",
+             "-threads", "1" if hires else "2", *hw,
              *(["-noautorotate", "-display_rotation", "0"] if hires else []),   # turned in filter_graph instead
              "-format_whitelist", FORMAT_WHITELIST, "-protocol_whitelist", "file",
-             "-codec_whitelist", CODEC_WHITELIST, "-probesize", "5M", "-analyzeduration", "5M", "-t", str(MAX_SECONDS), "-i", "file:" + src,
+             "-codec_whitelist", CODEC_WHITELIST, "-probesize", "5M", "-analyzeduration", "5M",
+             "-ss", start, "-t", keep, "-i", "file:" + src,
              "-filter_complex", filter_graph(info), "-map", "[v]", "-an", "-sn", "-dn",
              "-map_metadata", "-1", "-map_chapters", "-1", "-fflags", "+bitexact",
              "-c:v", "libx264", "-preset", "veryfast", "-crf", "26", "-maxrate", "2.5M", "-bufsize", "5M",
-             "-profile:v", "high", "-g", "60", "-movflags", "+faststart", "-t", str(MAX_SECONDS),
+             "-profile:v", "high", "-g", "60", "-movflags", "+faststart", "-t", keep,
              "-fs", OUT_MAX_BYTES, "-f", "mp4", "file:" + dst])
 
 
@@ -269,7 +333,7 @@ def poster_cmd(src, dst):
 
 def timeout_for(info):
     rate = HIRES_TIMEOUT_RATE if info.get("high_res") else 10
-    return int(max(60, rate * min(info["duration"], MAX_SECONDS)))
+    return int(max(60, rate * keep_seconds(info)))
 
 
 def _prefix(timeout_s):
@@ -303,18 +367,100 @@ def _run(cmd, timeout_s, runner):
         raise VideoError("ffmpeg exit %s: %s" % (r.returncode, (r.stderr or b"")[-300:].decode("utf-8", "replace")))
 
 
-def convert(data_dir, stored_name, runner=None):
+def _stop(p):
+    """Stop ffmpeg and its wrappers (timeout/nice/prlimit/env run in its own session): TERM, then KILL."""
+    import signal
+    for sig, wait in ((signal.SIGTERM, CANCEL_GRACE_S), (signal.SIGKILL, 5)):
+        try:
+            os.killpg(p.pid, sig)
+        except (ProcessLookupError, PermissionError):
+            pass
+        try:
+            p.wait(timeout=wait)
+            return
+        except subprocess.TimeoutExpired:
+            continue
+
+
+def _run_progress(cmd, timeout_s, popen, on_time=None, cancelled=None):
+    """#103: run the convert like _run (same timeout/nice/prlimit prefix), reading ffmpeg's -progress lines.
+    Only out_time_us=<int> is used (clamped, passed to on_time); every other key is ignored. The pipe is
+    polled with a 1 s timeout, so cancelled() and the deadline are checked even while ffmpeg prints nothing
+    (e.g. stalled before its first frame). stderr goes to an unlinked temp file (no pipe that could fill up
+    and stall ffmpeg); only its last 300 bytes are ever read."""
+    import select
+    import tempfile
+    with tempfile.TemporaryFile() as err:
+        p = popen(_prefix(timeout_s) + _limit() + cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                  stderr=err, start_new_session=True)
+        deadline = time.monotonic() + timeout_s + 30
+        fd, buf = p.stdout.fileno(), b""
+        try:
+            while True:
+                ready = select.select([fd], [], [], 1.0)[0]
+                if cancelled is not None and cancelled():
+                    _stop(p)
+                    raise Cancelled()
+                if time.monotonic() > deadline:           # belt and braces: `timeout` should have fired
+                    _stop(p)
+                    raise VideoError("ffmpeg timed out")
+                if not ready:
+                    continue
+                chunk = os.read(fd, 4096)
+                if not chunk:
+                    break
+                *lines, buf = (buf + chunk).split(b"\n")
+                if len(buf) > MAX_PROGRESS_LINE:          # an overlong line is dropped, never buffered
+                    buf = b""
+                for line in lines:
+                    k, _, v = line[:MAX_PROGRESS_LINE].strip().partition(b"=")
+                    if k == b"out_time_us" and on_time is not None and v.isdigit():
+                        on_time(min(int(v), 10**12) / 1e6)
+            rc = p.wait(timeout=max(1, deadline - time.monotonic()))
+        except BaseException:
+            if p.poll() is None:
+                _stop(p)
+            raise
+        finally:
+            p.stdout.close()
+        if rc != 0:
+            err.seek(0, os.SEEK_END)
+            err.seek(max(0, err.tell() - 300))
+            raise VideoError("ffmpeg exit %s: %s" % (rc, err.read().decode("utf-8", "replace")))
+
+
+def convert(data_dir, stored_name, runner=None, trim=None, on_progress=None, cancelled=None, popen=None):
     """Probe + convert one queued clip into originals/<stem>.mp4 with its poster and thumbnail.
-    Returns duration_ms of the stored clip. Raises VideoError on any failure (nothing half-made is left)."""
+    trim: the row's stored (start_ms, end_ms) or None (first 30 s). on_progress(pct 0-99) and cancelled()
+    are used when ffmpeg runs through popen (production; tests that mock `runner` alone skip them).
+    Returns duration_ms of the stored clip. Raises VideoError / Cancelled (nothing half-made is left)."""
+    use_popen = popen is not None or runner is None
     runner = runner or subprocess.run
+    popen = popen or subprocess.Popen
     src = input_path(data_dir, stored_name)
     part = part_path(data_dir, stored_name)
     final = os.path.join(data_dir, "originals", stored_name)
     info = probe(src, runner)
     try:
+        start_ms, end_ms = resolve_trim(trim, info["duration"])
+    except TrimError as e:                 # stored trim no longer fits the file: fail, never guess
+        raise VideoError(str(e)) from e
+    info.update(start=start_ms / 1000, keep=(end_ms - start_ms) / 1000)
+    keep = info["keep"]
+
+    def on_time(t):
+        if on_progress is not None:
+            on_progress(max(0, min(99, int(t * 100 / keep))))
+
+    def run(cmd, budget):
+        if use_popen:
+            _run_progress(cmd, budget, popen, on_time, cancelled)
+        else:
+            _run(cmd, budget, runner)
+    try:
         budget, t0 = timeout_for(info), time.monotonic()
         try:
-            _run(convert_cmd(src, part, info), budget, runner)
+            run(convert_cmd(src, part, info), budget)
         except VideoError as e:
             # Under User=mfapp the DRM device may be unusable (no render group, no /dev/dri): ffmpeg then fails at
             # once opening the hwaccel. Only THAT failure is retried, once, in software, with the same command
@@ -323,10 +469,12 @@ def convert(data_dir, stored_name, runner=None):
             if not (_uses_hw(info) and _hw_open_failed(str(e))) or left < 1:
                 raise
             log.warning("video: DRM hwaccel unavailable, decoding %s in software", stored_name)
-            _run(convert_cmd(src, part, info, hwaccel=False), left, runner)
+            run(convert_cmd(src, part, info, hwaccel=False), left)
         if not os.path.exists(part) or os.path.getsize(part) == 0:
             raise VideoError("ffmpeg made no output")
-        out_s = check_output(part, runner, min(info["duration"], MAX_SECONDS))
+        out_s = check_output(part, runner, keep)
+        if cancelled is not None and cancelled():
+            raise Cancelled()
         imaging.fsync_path(part)
         os.replace(part, final)
         imaging.fsync_dir(os.path.dirname(final))
@@ -382,8 +530,9 @@ def make_video_thumb(data_dir, stored_name):
 
 # ---------------- accept an upload (request thread) ----------------
 
-def accept(conn, data_dir, tmp_path, original_name, digest):
+def accept(conn, data_dir, tmp_path, original_name, digest, trim=None):
     """Move an uploaded video (already on the card, already hashed) into tmp/video-in and queue it.
+    trim: checked (start_ms, end_ms) or None; stored on the row so a retry or a restart cuts the same part.
     Returns the stored name, or None for a duplicate. The caller has checked space and sniffed it."""
     from . import db
     if conn.execute("SELECT 1 FROM media WHERE sha256 = ? AND state <> 'failed'", (digest,)).fetchone():
@@ -396,8 +545,10 @@ def accept(conn, data_dir, tmp_path, original_name, digest):
     imaging.fsync_dir(os.path.dirname(dst))
     try:
         conn.execute("INSERT INTO media (stored_name, original_name, kind, sha256, size_bytes, source,"
-                     " created_at, state) VALUES (?, ?, 'video', ?, ?, 'upload', ?, 'queued')",
-                     (stored, original_name, digest, os.path.getsize(dst), db.now()))
+                     " created_at, state, trim_start_ms, trim_end_ms)"
+                     " VALUES (?, ?, 'video', ?, ?, 'upload', ?, 'queued', ?, ?)",
+                     (stored, original_name, digest, os.path.getsize(dst), db.now(),
+                      *(trim if trim else (None, None))))
         conn.commit()
     except BaseException:
         try:
@@ -425,7 +576,9 @@ def remove_files(data_dir, stored_name):
 
 def recover(conn, data_dir):
     """After a power cut: drop *.part files and inputs without a row; a row left 'processing' goes back to
-    'queued' (its input is still there) or to 'failed' (input gone). Returns (requeued, failed, swept)."""
+    'queued' at 0 % with resumed=1 and its stored trim (its input is still there) or to 'failed' (input
+    gone). #103: a clip whose Cancel was pending is finished as cancelled (row and files removed).
+    Returns (requeued, failed, swept)."""
     din, dout = _dirs(data_dir)
     swept = 0
     for f in os.listdir(dout) if os.path.isdir(dout) else []:
@@ -434,6 +587,13 @@ def recover(conn, data_dir):
             swept += 1
         except OSError:
             pass
+    for r in conn.execute("SELECT stored_name FROM media WHERE kind = 'video' AND cancel_requested = 1"
+                          " AND state <> 'ready'").fetchall():
+        conn.execute("DELETE FROM media WHERE stored_name = ?", (r["stored_name"],))
+        imaging.remove_all(data_dir, r["stored_name"])
+        remove_files(data_dir, r["stored_name"])
+        swept += 1
+    conn.commit()
     rows = conn.execute("SELECT stored_name, state FROM media WHERE kind = 'video'").fetchall()
     stems = {os.path.splitext(r["stored_name"])[0] for r in rows if r["state"] != "ready"}
     for f in os.listdir(din) if os.path.isdir(din) else []:
@@ -448,7 +608,8 @@ def recover(conn, data_dir):
         if r["state"] in ("queued", "processing"):
             if os.path.exists(input_path(data_dir, r["stored_name"])):
                 if r["state"] == "processing":
-                    conn.execute("UPDATE media SET state = 'queued' WHERE stored_name = ?", (r["stored_name"],))
+                    conn.execute("UPDATE media SET state = 'queued', progress_pct = 0, resumed = 1"
+                                 " WHERE stored_name = ?", (r["stored_name"],))
                     requeued += 1
             else:
                 conn.execute("UPDATE media SET state = 'failed' WHERE stored_name = ?", (r["stored_name"],))
@@ -468,35 +629,85 @@ def wake():
     _wake.set()
 
 
-def work_one(conn, data_dir, runner=None):
+def work_one(conn, data_dir, runner=None, popen=None, clock=time.monotonic):
     """Convert the oldest queued clip. Returns its stored name, or None if the queue is empty."""
-    row = conn.execute("SELECT id, stored_name FROM media WHERE kind = 'video' AND state = 'queued' "
-                       "ORDER BY created_at, id LIMIT 1").fetchone()
+    row = conn.execute("SELECT id, stored_name, trim_start_ms, trim_end_ms FROM media WHERE kind = 'video'"
+                       " AND state = 'queued' ORDER BY created_at, id LIMIT 1").fetchone()
     if row is None:
         return None
-    if conn.execute("UPDATE media SET state = 'processing' WHERE id = ? AND state = 'queued'",
+    if conn.execute("UPDATE media SET state = 'processing', progress_pct = 0 WHERE id = ? AND state = 'queued'",
                     (row["id"],)).rowcount != 1:
         conn.commit()
         return row["stored_name"]
     conn.commit()
-    name = row["stored_name"]
+    name, mid = row["stored_name"], row["id"]
+    trim = (row["trim_start_ms"], row["trim_end_ms"]) if row["trim_end_ms"] is not None else None
+    last = {"pct": 0, "write": 0.0, "check": 0.0, "cancel": False}
+
+    def on_progress(pct):          # at most one write a second, and only when the percent moved
+        now = clock()
+        if pct != last["pct"] and now - last["write"] >= PROGRESS_WRITE_S:
+            conn.execute("UPDATE media SET progress_pct = ? WHERE id = ? AND state = 'processing'", (pct, mid))
+            conn.commit()
+            last.update(pct=pct, write=now)
+
+    def cancelled():               # Cancel pressed, or the clip deleted, while converting
+        now = clock()
+        if not last["cancel"] and now - last["check"] >= 0.5:
+            last["check"] = now
+            r = conn.execute("SELECT cancel_requested FROM media WHERE id = ?", (mid,)).fetchone()
+            last["cancel"] = r is None or r[0] == 1
+        return last["cancel"]
     try:
-        ms = convert(data_dir, name, runner)
+        ms = convert(data_dir, name, runner, trim=trim, on_progress=on_progress, cancelled=cancelled, popen=popen)
+    except Cancelled:
+        log.info("video %s cancelled", name)
+        _drop(conn, data_dir, mid, name)
+        return name
     except Exception as e:  # noqa: BLE001 - any failure marks the row failed; Retry requeues it
         log.warning("video %s failed: %s", name, e)
-        conn.execute("UPDATE media SET state = 'failed' WHERE id = ? AND state = 'processing'", (row["id"],))
+        if conn.execute("UPDATE media SET state = 'failed', progress_pct = 0 WHERE id = ? AND state = 'processing'"
+                        " AND cancel_requested = 0", (mid,)).rowcount == 0:
+            _drop(conn, data_dir, mid, name)      # cancelled (or deleted) while it failed: just remove it
         conn.commit()
         return name
     final = os.path.join(data_dir, "originals", name)
-    n = conn.execute("UPDATE media SET state = 'ready', duration_ms = ?, size_bytes = ? "
-                     "WHERE id = ? AND state = 'processing'", (ms, os.path.getsize(final), row["id"])).rowcount
+    n = conn.execute("UPDATE media SET state = 'ready', duration_ms = ?, size_bytes = ?, progress_pct = 100,"
+                     " resumed = 0 WHERE id = ? AND state = 'processing' AND cancel_requested = 0",
+                     (ms, os.path.getsize(final), mid)).rowcount
     conn.commit()
     if n == 1:
         remove_files(data_dir, name)          # the input is only dropped once the clip is ready
-    else:                                     # removed while converting: its files go too
-        imaging.remove_all(data_dir, name)
-        remove_files(data_dir, name)
+    else:                                     # cancelled / removed while converting: its files go too
+        _drop(conn, data_dir, mid, name)
     return name
+
+
+def _drop(conn, data_dir, media_id, name):
+    """Cancel finished: the row (if still there), the input, the .part and anything made from it go."""
+    conn.execute("DELETE FROM media WHERE id = ? AND state <> 'ready'", (media_id,))
+    conn.commit()
+    imaging.remove_all(data_dir, name)
+    remove_files(data_dir, name)
+
+
+def status(conn, row):
+    """#103: what the phone shows for one clip (no ffmpeg text ever reaches it, only the percent):
+    state (queued/processing/cancelling/ready/failed), progress 0-99 (100 once ready), queue position
+    (1 = next in line) while queued, resumed after a restart."""
+    st = row["state"]
+    out = {"id": row["id"], "state": st, "progress": 100 if st == "ready" else int(row["progress_pct"] or 0),
+           "resumed": bool(row["resumed"]) and st in ("queued", "processing")}
+    if st == "ready":
+        out["duration_ms"] = row["duration_ms"]            # the Library turns the tile into "▶ m:ss"
+    if row["cancel_requested"] and st != "ready":
+        out["state"] = "cancelling"
+    elif st == "queued":
+        out["queue_pos"] = conn.execute(
+            "SELECT COUNT(*) FROM media WHERE kind = 'video' AND state = 'queued' AND cancel_requested = 0"
+            " AND (created_at < ? OR (created_at = ? AND id <= ?))",
+            (row["created_at"], row["created_at"], row["id"])).fetchone()[0]
+    return out
 
 
 def start_worker(app, on_ready=None):

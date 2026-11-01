@@ -2,7 +2,7 @@
 {% from "_storage.html" import storage_meter %}
 {% block title %}{{ "Upload" if videos else "Upload photos" }} - Memory Frame{% endblock %}
 {% block heading %}{{ "Upload" if videos else "Upload photos" }}{% endblock %}
-{% block styles %}{% if videos %}<link rel="stylesheet" href="{{ static('video.css') }}">{% endif %}{% endblock %}
+{% block styles %}{% if videos %}<link rel="stylesheet" href="{{ static('video.css') }}"><link rel="stylesheet" href="{{ static('trim.css') }}">{% endif %}{% endblock %}
 {% block content %}
 {% if videos %}<p class="upnote">Photos and videos. Videos play silently, up to 30 seconds. The frame keeps its own copy, not your original.</p>{% endif %}
 <div id="storage" class="card storeCard">
@@ -21,5 +21,24 @@
 </label>
 <div id="summary" class="ok-box" aria-live="polite"></div>
 <ul id="list" class="mt"></ul>
+{% if videos %}<p id="vlive" class="sr-only" aria-live="polite"></p>
+{# #103 (13a/13b): the trim screen, shown over the page for a video longer than 30 s, before it is sent. #}
+<section id="trim" class="trim" hidden aria-labelledby="trimTitle">
+  <header class="bar"><button type="button" class="back" id="trimBack" aria-label="Cancel trimming">‹</button><h1 class="name" id="trimTitle" tabindex="-1">Trim video</h1></header>
+  <div class="tbody">
+    <div class="tprev"><video id="trimVideo" muted playsinline preload="metadata"></video>
+      <button type="button" class="tplay" id="trimPlay" aria-label="Play selection"></button>
+      <span class="tc" id="trimTime" aria-hidden="true">0:00</span></div>
+    <p class="tlen"><span id="trimLen" role="status">0:30 selected</span><span class="tof" id="trimOf"></span></p>
+    <div class="ttrack" id="trimTrack"><span class="tfill" id="trimFill"></span>
+      <span class="th" id="trimStart" role="slider" tabindex="0" aria-label="Start"></span>
+      <span class="th" id="trimEnd" role="slider" tabindex="0" aria-label="End"></span></div>
+    <p class="tends" aria-hidden="true"><span>0:00</span><span id="trimTotal"></span></p>
+    <p class="err" id="trimErr" role="alert" hidden></p>
+    <button type="button" class="block big" id="trimUse">Use this part</button>
+    <button type="button" class="block big tcancel" id="trimCancel">Cancel</button>
+    <p class="small muted">Drag the handles, or focus one and use the arrow keys (0.5 s a step). Videos play silently on the frame.</p>
+  </div>
+</section>{% endif %}
 {% endblock %}
-{% block scripts %}<script src="{{ static('upload.js') }}"></script>{% endblock %}
+{% block scripts %}{% if videos %}<script src="{{ static('trim.js') }}"></script>{% endif %}<script src="{{ static('upload.js') }}"></script>{% endblock %}

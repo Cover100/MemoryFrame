@@ -13,9 +13,9 @@ from memoryframe import video
 pytestmark = pytest.mark.skipif(not (shutil.which("ffmpeg") and shutil.which("ffprobe")), reason="needs ffmpeg")
 
 
-def make(path, vcodec="libx264", acodec="aac", rotate=None, size="320x240"):
-    cmd = ["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", f"testsrc2=s={size}:r=30:d=2",
-           "-f", "lavfi", "-i", "sine=f=440:d=2", "-c:v", vcodec, "-pix_fmt", "yuv420p", "-c:a", acodec, "-shortest"]
+def make(path, vcodec="libx264", acodec="aac", rotate=None, size="320x240", secs=2):
+    cmd = ["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", f"testsrc2=s={size}:r=30:d={secs}",
+           "-f", "lavfi", "-i", f"sine=f=440:d={secs}", "-c:v", vcodec, "-pix_fmt", "yuv420p", "-c:a", acodec, "-shortest"]
     if vcodec == "libx265":
         cmd += ["-x265-params", "log-level=error"]
     tmp = path + ".tmp" + os.path.splitext(path)[1]
@@ -35,7 +35,7 @@ def streams(path):
     return json.loads(r.stdout)["streams"]
 
 
-def convert(tmp_path, src):
+def convert(tmp_path, src, **kw):
     d = str(tmp_path / "data")
     name = "e" * 32 + ".mp4"
     dst = video.input_path(d, name)
@@ -44,7 +44,7 @@ def convert(tmp_path, src):
     for sub in ("originals", "thumbs", "display"):
         os.makedirs(os.path.join(d, sub), exist_ok=True)
     shutil.copy(src, dst)
-    ms = video.convert(d, name)
+    ms = video.convert(d, name, **kw)
     out = os.path.join(d, "originals", name)
     return ms, out, video.poster_path(d, name)
 
@@ -173,3 +173,23 @@ def test_amr_3gp_is_accepted(tmp_path):
                     "-i", "sine=d=2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-ar", "8000", "-ac", "1",
                     "-c:a", "libopencore_amrnb", "-b:a", "12.2k", "-shortest", src], check=True)
     assert video.probe(src)["width"] == 176
+
+
+def test_trim_middle_part_real(tmp_path):
+    """#103: keep 2.0-4.5 s of a 6 s clip: the output lasts 2.5 s (+-0.2) and progress climbs, never past 99."""
+    src = make(str(tmp_path / "six.mp4"), secs=6)
+    seen = []
+    ms, out, _ = convert(tmp_path, src, trim=(2000, 4500), on_progress=seen.append, cancelled=lambda: False)
+    dur = float(json.loads(subprocess.run(["ffprobe", "-v", "error", "-print_format", "json", "-show_format", out],
+                                          capture_output=True, check=True).stdout)["format"]["duration"])
+    assert abs(dur - 2.5) <= 0.2 and abs(ms - 2500) <= 200
+    assert seen and seen == sorted(seen) and max(seen) <= 99
+
+
+def test_cancel_real_ffmpeg_leaves_nothing(tmp_path):
+    src = make(str(tmp_path / "six.mp4"), secs=6)
+    with pytest.raises(video.Cancelled):
+        convert(tmp_path, src, cancelled=lambda: True)
+    d = str(tmp_path / "data")
+    assert os.listdir(os.path.join(d, "originals")) == [] and os.listdir(os.path.join(d, "tmp", "video-out")) == []
+    assert subprocess.run(["pgrep", "-f", "e" * 32], capture_output=True).returncode != 0    # ffmpeg gone

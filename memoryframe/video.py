@@ -394,7 +394,7 @@ def _run_progress(cmd, timeout_s, popen, on_time=None, cancelled=None):
         p = popen(_prefix(timeout_s) + _limit() + cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                   stderr=err, start_new_session=True)
         deadline = time.monotonic() + timeout_s + 30
-        fd, buf = p.stdout.fileno(), b""
+        fd, buf, skipping = p.stdout.fileno(), b"", False
         try:
             while True:
                 ready = select.select([fd], [], [], 1.0)[0]
@@ -409,9 +409,16 @@ def _run_progress(cmd, timeout_s, popen, on_time=None, cancelled=None):
                 chunk = os.read(fd, 4096)
                 if not chunk:
                     break
-                *lines, buf = (buf + chunk).split(b"\n")
+                data = buf + chunk
+                if skipping:                              # Sage (#118): drop the rest of an overlong line, up to
+                    nl = data.find(b"\n")                 # its newline, so its tail is never parsed as progress
+                    if nl < 0:
+                        buf = b""
+                        continue
+                    data, skipping = data[nl + 1:], False
+                *lines, buf = data.split(b"\n")
                 if len(buf) > MAX_PROGRESS_LINE:          # an overlong line is dropped, never buffered
-                    buf = b""
+                    buf, skipping = b"", True
                 for line in lines:
                     k, _, v = line[:MAX_PROGRESS_LINE].strip().partition(b"=")
                     if k == b"out_time_us" and on_time is not None and v.isdigit():

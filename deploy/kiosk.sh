@@ -146,7 +146,7 @@ BACKOFF_MAX=60
 
 # #122: a stopped main browser process (state T: SIGSTOP or traced) leaves a frozen screen while the
 # renderer keeps the heartbeat going (Hale's spike), so the watcher also relaunches when the browser pid has
-# been in state T for more than STOPPED_MAX s IN A ROW (checked on the same LIVE_EVERY poll; any other state
+# been in state T for STOPPED_MAX s or more IN A ROW (checked on the same LIVE_EVERY poll; any other state
 # resets the timer). Same kill limits and relaunch path as a stale heartbeat. v1 residual risk (accepted):
 # a real deadlock of the main process with a healthy renderer is not detected.
 STOPPED_MAX="${MEMORYFRAME_STOPPED_MAX:-60}"
@@ -181,9 +181,11 @@ watch_liveness() {  # $1 = browser pid
         resetting && { stopped_since=""; continue; }
         st="$(proc_state "$pid")" || st=""
         if [ "$st" = T ]; then
-            [ -n "$stopped_since" ] || stopped_since="$(date +%s)"
-            if [ $(( $(date +%s) - stopped_since )) -gt "$STOPPED_MAX" ]; then
-                kill_for_liveness "$pid" "browser stopped (state T) for over ${STOPPED_MAX} s" && return 0
+            # Timed in ms from the poll that first saw T, so with the defaults (20 s poll, 60 s) the relaunch
+            # comes 60-80 s after the stop: >= STOPPED_MAX, at most one poll later.
+            [ -n "$stopped_since" ] || stopped_since="$(date +%s%3N)"
+            if [ $(( $(date +%s%3N) - stopped_since )) -ge $(( STOPPED_MAX * 1000 )) ]; then
+                kill_for_liveness "$pid" "browser stopped (state T) for ${STOPPED_MAX} s or more" && return 0
                 stopped_since=""                 # rate-limited: start a new 60 s window
             fi
             continue

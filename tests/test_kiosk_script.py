@@ -422,7 +422,7 @@ def test_stopped_browser_is_killed_and_relaunched(env):
         assert time.monotonic() < deadline, log_text(tmp_path)
         time.sleep(0.05)
     t = log_text(tmp_path)
-    assert f"liveness: browser stopped (state T) for over 1 s; killing browser {pid}" in t
+    assert f"liveness: browser stopped (state T) for 1 s or more; killing browser {pid}" in t
     assert "no heartbeat" not in t
     assert not Path(f"/proc/{pid}").exists() or Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0] == "Z"
 
@@ -489,3 +489,22 @@ def test_proc_state_parses_after_the_last_paren(comm, state):
     finally:
         os.killpg(p.pid, signal.SIGKILL)
         p.wait()
+
+
+def test_stopped_relaunch_timing_is_pinned(env):
+    """Sage (#124): relaunch no earlier than STOPPED_MAX after the stop and no later than STOPPED_MAX + one
+    poll (+ margin for the relaunch itself and a slow runner). Scaled down: poll 1 s, max 3 s."""
+    tmp_path, e = _stopped_env(env, 3)
+    e["MEMORYFRAME_LIVENESS_EVERY"] = "1"
+    p = start_kiosk(e)
+    pid = _first_browser(p, tmp_path)
+    time.sleep(0.3)                                                # stop at an arbitrary phase of the poll
+    stopped_ns = time.time_ns()
+    os.kill(pid, signal.SIGSTOP)
+    deadline = time.monotonic() + 15
+    while len(launches(tmp_path)) < 2:
+        assert time.monotonic() < deadline, log_text(tmp_path)
+        time.sleep(0.02)
+    relaunch_ns = int(sorted(tmp_path.glob("calls.*"))[1].name.split(".", 1)[1])   # stub writes date +%s%N
+    took = (relaunch_ns - stopped_ns) / 1e9
+    assert 3.0 <= took <= 3.0 + 1.0 + 1.5, took

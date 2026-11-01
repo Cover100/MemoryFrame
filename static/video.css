@@ -1,0 +1,33 @@
+/* #102 video (phone/11-VIDEO.md, Wren's video.css). Only on Library and Upload when videos are on.
+   Dark phone tokens only; no runtime blur, no animation. */
+.mf-phone .upnote { font-size: var(--mf-p-small); color: var(--mf-text-2); margin: 8px 2px 0; line-height: 1.35; }
+.mf-phone .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 6px; }
+.mf-phone .chip { all: unset; box-sizing: border-box; min-height: 48px; padding: 0 16px; border-radius: 24px; display: inline-flex;
+  align-items: center; gap: 8px; font-size: 16px; font-weight: 700; cursor: pointer; border: 1.5px solid var(--mf-oat); color: var(--mf-text); }
+.mf-phone .chip[aria-pressed="true"] { background: var(--mf-green); border-color: var(--mf-green); color: #fff; }
+.mf-phone .chip[aria-pressed="true"]::before { content: "✓"; }
+.mf-phone .chip[aria-disabled="true"] { cursor: default; }
+.mf-phone .chip:focus-visible { outline: 3px solid var(--mf-brass); outline-offset: 2px; }
+.mf-phone .chiphint { font-size: var(--mf-p-small); color: var(--mf-text-2); margin: 0 0 10px; min-height: 1.3em; }
+.mf-phone .lib li.filtered { display: none; }
+.mf-phone .tile .badge { position: absolute; left: 6px; bottom: 6px; background: rgba(14, 19, 17, .82); color: var(--mf-linen);
+  font-size: 14px; font-weight: 700; padding: 3px 7px; border-radius: 6px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.mf-phone .vtile { cursor: default; }
+.mf-phone .tile .state { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; background: rgba(14, 19, 17, .72); color: var(--mf-linen); font-size: 14px; font-weight: 700; text-align: center; }
+.mf-phone .tile .state.fail { background: var(--mf-red-50); color: var(--mf-brick-text); justify-content: flex-start; padding-top: 10px; }
+.mf-phone .tile .spin { width: 22px; height: 22px; border-radius: 50%; border: 3px solid var(--mf-forest-700); border-top-color: var(--mf-leaf); }
+.mf-phone .tile .acts { position: absolute; left: 0; right: 0; bottom: 10px; display: flex; justify-content: center; gap: 8px; }
+.mf-phone .tile .acts button { all: unset; box-sizing: border-box; flex: none; width: 48px; height: 48px; border-radius: 10px; display: flex;
+  align-items: center; justify-content: center; border: 1.5px solid var(--mf-oat); color: var(--mf-linen); background: var(--mf-ink); cursor: pointer; }
+.mf-phone .tile .acts .vremove { color: var(--mf-brick-text); }
+.mf-phone .tile .acts button:disabled { opacity: .5; cursor: default; }
+.mf-phone .tile .acts button:focus-visible { outline: 3px solid var(--mf-brass); outline-offset: -3px; }   /* the tile clips overflow */
+.mf-phone.selecting .vtile { opacity: .5; }
+.mf-phone.selecting .vtile::after { content: none; }
+/* Large text (~130 %) makes tiles < 112 px: two 48 px buttons + 8 px gap no longer fit, so a failed tile
+   takes two columns at the normal row height instead of clipping or shrinking its buttons. */
+@media (max-width: 340px) {
+  .mf-phone .lib li[data-state="failed"] { grid-column: span 2; aspect-ratio: auto; height: calc((100vw - 6px) / 3); }
+}
+.mf-phone #list .slow { display: block; font-size: var(--mf-p-small); color: var(--mf-text-2); margin-top: 2px; line-height: 1.35; }

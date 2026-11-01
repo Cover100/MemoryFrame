@@ -1,4 +1,14 @@
 // MF-14 phone upload page: one request per file, in order, with per-file progress.
+
+// #96/#102 (Wren): "N photos were added; ..." counted videos as photos. Counts each kind, singular/plural.
+function mfAddedSummary(photos, videos){
+    const part = (n, w)=> n + " " + w + (n === 1 ? "" : "s");
+    const items = [];
+    if(photos || !videos){ items.push(part(photos, "photo")); }
+    if(videos){ items.push(part(videos, "video")); }
+    return items.join(" and ") + (photos + videos === 1 ? " was" : " were") + " added; the frame is almost full.";
+}
+
 (function(){
     const CSRF = document.querySelector('meta[name="csrf-token"]').content;
     const input = document.getElementById("files");
@@ -122,7 +132,7 @@
     }
 
     async function send(file, ui){
-        if(file.size >= SHRINK_MIN_BYTES){
+        if(file.size >= SHRINK_MIN_BYTES && !/^video\//i.test(file.type)){      // #102: videos go as they are
             ui.li.className = "sending";
             ui.msg.textContent = "Making it smaller...";
             const small = await shrink(file);
@@ -144,17 +154,25 @@
             xhr.onload = ()=>{
                 let body = {};
                 try{ body = JSON.parse(xhr.responseText); }catch(e){ /* not JSON */ }
-                const ok = xhr.status === 201 || xhr.status === 200;
+                const queued = xhr.status === 202;                // #102: a video, prepared on the frame
+                const ok = xhr.status === 201 || xhr.status === 200 || queued;
                 ui.bar.value = 100;
-                ui.li.className = ok ? (xhr.status === 201 ? "ok" : "ok dup") : "bad";
+                ui.li.className = ok ? (xhr.status === 200 ? "ok dup" : "ok") : "bad";
                 if(xhr.status === 201 && Number.isInteger(body.media_id)){
                     const img = document.createElement("img");
                     img.className = "th"; img.alt = ""; img.width = 52; img.height = 52; img.decoding = "async";
                     img.src = "/api/v1/media/" + body.media_id + "/thumb";
                     ui.th.replaceWith(img);
                 }
-                mfSetText(ui.msg, ok ? (xhr.status === 201 ? "Added" : "Already on the frame")
+                mfSetText(ui.msg, ok ? (queued ? "Added. The frame is preparing it." : xhr.status === 201 ? "Added" : "Already on the frame")
                                         : (body.error || ("Failed (" + xhr.status + ")")));
+                if(queued && Number.isInteger(body.prep_minutes)){        // #102: over 4K, slow on the Pi
+                    const n = body.prep_minutes, note = document.createElement("span");
+                    note.className = "slow";
+                    note.textContent = "This video is very high resolution and may take about " + n + " minute" + (n === 1 ? "" : "s") + " to prepare.";
+                    ui.msg.after(note);
+                }
+                ui.kind = body.kind === "video" ? "video" : "photo";
                 if(xhr.status === 401){ location.href = "/pair"; }
                 if(xhr.status === 507){ resolve("full"); return; }
                 resolve(ok);
@@ -189,17 +207,18 @@
         pickLabel.textContent = "Uploading...";
         list.textContent = "";
         const rows = files.map(row);
-        let done = 0, good = 0, added = 0, stopped = false;
-        summary.textContent = "Sending " + files.length + " photo" + (files.length === 1 ? "" : "s") + "...";
+        let done = 0, good = 0, added = 0, addedVideos = 0, stopped = false;
+        const word = input.dataset.videos ? " file" : " photo";
+        summary.textContent = "Sending " + files.length + word + (files.length === 1 ? "" : "s") + "...";
         for(let i = 0; i < files.length; i++){
             const r = await send(files[i], rows[i]);
             if(r === "full"){                        // #96: stop the batch at the first refusal
                 for(let j = i + 1; j < files.length; j++){ rows[j].li.className = "bad"; mfSetText(rows[j].msg, "Not sent"); }
-                summary.textContent = added + " photo" + (added === 1 ? " was" : "s were") + " added; the frame is almost full.";
+                summary.textContent = mfAddedSummary(added - addedVideos, addedVideos);
                 stopped = true;
                 break;
             }
-            if(r){ good++; if(rows[i].li.className === "ok"){ added++; } }
+            if(r){ good++; if(rows[i].li.className === "ok"){ added++; if(rows[i].kind === "video"){ addedVideos++; } } }
             done++;
             summary.textContent = done + " of " + files.length + " done (" + good + " added or already there).";
         }
@@ -209,7 +228,7 @@
         drop.classList.remove("busy");
         drop.removeAttribute("aria-disabled");
         drop.classList.add("again");
-        pickLabel.textContent = "Choose more photos";
+        pickLabel.textContent = input.dataset.videos ? "Choose more" : "Choose more photos";
         busy = false;
         loadStorage();
     }

@@ -64,6 +64,11 @@ if ! command -v pkaction >/dev/null 2>&1; then
     exit 1
 fi
 command -v chromium-browser >/dev/null || command -v chromium >/dev/null || sudo apt-get install -y chromium-browser
+# ffmpeg (#102): videos are converted on the frame. Not fatal: without it uploads say "videos are coming later".
+sudo apt-get install -y ffmpeg || echo "WARNING: ffmpeg could not be installed: videos cannot be added until it is (sudo apt-get install ffmpeg)." >&2
+# prlimit/taskset/ionice (util-linux) cap and pin each conversion; they ship with Raspberry Pi OS. Without
+# prlimit a conversion still runs, but without its 1.5 GiB address-space cap.
+command -v prlimit >/dev/null 2>&1 || echo "WARNING: prlimit (util-linux) is missing: video conversions run without their memory cap." >&2
 
 echo "== Service user and rollback pack (#69)"
 DATA_DIR=/var/lib/memoryframe

@@ -222,9 +222,28 @@ for d in journald coredump; do
     put_file "$SRC_DIR/deploy/$d-memoryframe.conf" "/etc/systemd/$d.conf.d/memoryframe.conf" 0644
 done
 sudo systemctl restart systemd-journald 2>/dev/null || true
+# #97: the kiosk Chromium profile + cache live on a RAM-only tmpfs (/run/mfkiosk, 192M, 0700, owned by the
+# desktop user, fresh every boot; mfapp can't read it).
+mnt_tmp="$(mktemp)"
+sed -e "s#@KIOSK_UID@#$(id -u "$DESKTOP_USER")#g" -e "s#@KIOSK_GID@#$(id -g "$DESKTOP_USER")#g" \
+    "$SRC_DIR/deploy/run-mfkiosk.mount" > "$mnt_tmp"
+put_file "$mnt_tmp" /etc/systemd/system/run-mfkiosk.mount 0644
+rm -f "$mnt_tmp"
+# #97: / mounted noatime (idempotent; one-time history copy /etc/fstab.memoryframe-97.bak).
+# ext4 commit= and cmdline.txt are not touched. MEMORYFRAME_NO_FSTAB=1 skips it.
+if [ "${MEMORYFRAME_NO_FSTAB:-}" = 1 ]; then
+    echo "fstab: skipped (MEMORYFRAME_NO_FSTAB=1)"
+else
+    # Verify/rollback happen inside the script and only when this run changed the file. A failure (no / line,
+    # or an edit that didn't verify and was rolled back) is a WARNING; the install goes on (#97, Sage).
+    fstab_rc=0
+    sudo "$SRC_DIR/deploy/fstab-noatime.sh" --apply /etc/fstab || fstab_rc=$?
+    [ "$fstab_rc" -eq 0 ] || echo "WARNING: fstab-noatime.sh exited $fstab_rc; / not switched to noatime (see above)"
+fi
 # Old sudoers rules from before #62 (unused now).
 sudo rm -f /etc/sudoers.d/memoryframe /etc/sudoers.d/memoryframe-poweroff
 sudo systemctl daemon-reload
+sudo systemctl enable --now run-mfkiosk.mount
 # MF-51 deploy guard: boot now defaults to product (hotspot). A Pi that is on a home Wi-Fi
 # client connection and has no mode file is a dev Pi: write "dev" so its next reboot keeps
 # home Wi-Fi (and Pi Connect). An existing mode file is never changed.
@@ -268,18 +287,21 @@ sed -e "s#@APP_DIR@#$APP_DIR#g" "$SRC_DIR/deploy/memoryframe-kiosk.desktop" \
     > "$HOME/.config/autostart/memoryframe-kiosk.desktop"
 
 echo "== Session type: ${XDG_SESSION_TYPE:-unknown} (record this in the MF-04 PR)"
-echo "== Kiosk reload (new JS/CSS)"
-# The kiosk page never reloads by itself, so after a deploy it would keep running the old JS. If the kiosk
-# Chromium is running (matched by its own profile dir), end it; kiosk.sh's loop relaunches it and it loads
-# the new page (asset URLs carry a content hash, see memoryframe/assets.py). Skipped on CI / headless runs.
-KIOSK_PROFILE="${MEMORYFRAME_STATE_DIR:-$HOME/.cache/memoryframe}/chromium-profile"
+echo "== Kiosk restart (new launcher, profile and JS/CSS)"
+# The kiosk page never reloads by itself, and killing only Chromium would let the OLD kiosk.sh loop relaunch it
+# with the old profile and flags (#97). So the launcher itself is restarted in the desktop session
+# (deploy/kiosk-restart.sh); the new one starts Chromium on the /run/mfkiosk tmpfs with the new assets
+# (asset URLs carry a content hash, see memoryframe/assets.py). Skipped on CI / headless runs.
 if [ -n "${CI:-}" ] || [ "${MEMORYFRAME_NO_KIOSK_RELOAD:-}" = 1 ]; then
     echo "skipped (CI or MEMORYFRAME_NO_KIOSK_RELOAD=1)"
-elif "${PGREP:-pgrep}" -u "$DESKTOP_USER" -f -- "--user-data-dir=$KIOSK_PROFILE" >/dev/null 2>&1; then
-    "${PKILL:-pkill}" -u "$DESKTOP_USER" -f -- "--user-data-dir=$KIOSK_PROFILE" || true
-    echo "kiosk browser restarted by kiosk.sh with the new assets"
 else
-    echo "no kiosk running; nothing to reload"
+    "${KIOSK_RESTART:-$SRC_DIR/deploy/kiosk-restart.sh}" "$APP_DIR/deploy/kiosk.sh" || kiosk_rc=$?
 fi
 
 echo "Done. Reboot to verify: sudo reboot"
+if [ "${kiosk_rc:-0}" -ne 0 ]; then
+    # #97: every other step has run; the frame has no browser, so the install must not report success.
+    echo "ERROR: kiosk restart failed (rc=$kiosk_rc): no browser on the /run/mfkiosk profile. The frame shows" \
+         "nothing until the kiosk launcher runs: log out and in, or reboot. See /run/mfkiosk/memoryframe-kiosk.log." >&2
+    exit 1
+fi

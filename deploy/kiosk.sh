@@ -4,28 +4,38 @@
 #  - waits until the app answers /healthz (no "connection refused" page)
 #  - runs exactly one Chromium kiosk, restarting it if it exits
 #  - uses a dedicated Chromium profile and never touches the OS keyring
-#  - logs to ~/.cache/memoryframe-kiosk.log (launcher + Chromium stdout/stderr, rotated at 1 MB)
+#  - logs launcher + Chromium stdout/stderr (rotated at 1 MB) to the tmpfs (/run/mfkiosk/memoryframe-kiosk.log, #97),
+#    or to ~/.cache/memoryframe-kiosk.log when MEMORYFRAME_STATE_DIR is set or the tmpfs is missing
 #
 # Environment overrides:
 #   MEMORYFRAME_URL             default http://localhost:5000
 #   MEMORYFRAME_CHROMIUM_FLAGS  extra flags, e.g. "--ozone-platform=wayland" or "--disable-gpu"
-#   MEMORYFRAME_STATE_DIR       Chromium profile parent, default ~/.cache/memoryframe
-#   MEMORYFRAME_KIOSK_LOG       default ~/.cache/memoryframe-kiosk.log
+#   MEMORYFRAME_STATE_DIR       Chromium profile + cache parent, default /run/mfkiosk (#97: the RAM-only tmpfs
+#                               from run-mfkiosk.mount, 192M, 0700, kiosk user); ~/.cache/memoryframe if it is missing
+#   MEMORYFRAME_KIOSK_LOG       default: see above
 #   MEMORYFRAME_KIOSK_DEBUG=1   adds DevTools on 127.0.0.1:9222 only + verbose Chromium logging
 set -u
 
 URL="${MEMORYFRAME_URL:-http://localhost:5000}"
 HEALTH="$URL/healthz"
-STATE_DIR="${MEMORYFRAME_STATE_DIR:-$HOME/.cache/memoryframe}"
+KIOSK_TMPFS="${MEMORYFRAME_KIOSK_TMPFS:-/run/mfkiosk}"
+STATE_FALLBACK=""
+if [ -n "${MEMORYFRAME_STATE_DIR:-}" ]; then STATE_DIR="$MEMORYFRAME_STATE_DIR"
+elif [ -d "$KIOSK_TMPFS" ] && [ -w "$KIOSK_TMPFS" ]; then STATE_DIR="$KIOSK_TMPFS"
+else STATE_DIR="$HOME/.cache/memoryframe"; STATE_FALLBACK=1; fi
 PROFILE_DIR="$STATE_DIR/chromium-profile"
-LOG="${MEMORYFRAME_KIOSK_LOG:-$HOME/.cache/memoryframe-kiosk.log}"
+CACHE_DIR="$STATE_DIR/cache"
+# #97: on the tmpfs the log lives there too (no card writes, journald stays at 0); lost on reboot.
+if [ -z "${MEMORYFRAME_STATE_DIR:-}" ] && [ -z "$STATE_FALLBACK" ]; then LOG_DEFAULT="$STATE_DIR/memoryframe-kiosk.log"
+else LOG_DEFAULT="$HOME/.cache/memoryframe-kiosk.log"; fi
+LOG="${MEMORYFRAME_KIOSK_LOG:-$LOG_DEFAULT}"
 # Sage (#113): never /tmp; the user's own state dir if there is no runtime dir.
 LOCK="${XDG_RUNTIME_DIR:-$STATE_DIR}/memoryframe-kiosk.lock"
 # #113: while a factory reset runs (marker present) the kiosk neither relaunches Chromium nor polls the app.
 RESET_MARKER="${MEMORYFRAME_DATA_DIR:-/var/lib/memoryframe}/.factory-reset"
 resetting() { [ -e "$RESET_MARKER" ] || [ -L "$RESET_MARKER" ]; }
 
-mkdir -p "$STATE_DIR" "$PROFILE_DIR" "$(dirname "$LOG")"
+mkdir -p "$STATE_DIR" "$PROFILE_DIR" "$CACHE_DIR" "$(dirname "$LOG")"
 
 # Keep the log small: rotate once it passes 1 MB (one .1 kept). #96: also checked before every
 # browser launch, so a Chromium crash loop can't grow it past about 2 x 1 MB.
@@ -41,7 +51,9 @@ exec >>"$LOG" 2>&1
 
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') memoryframe-kiosk: $*"; }
 
-# Single instance of this launcher.
+# Single instance of this launcher. Only the launcher itself may hold fd 9: the browser and the liveness
+# watcher are started with it closed (9>&-), so a Chromium helper (zygote, GPU, renderer...) that outlives
+# the launcher can never keep the lock and block the next launcher (#97, seen on the Pi).
 exec 9>"$LOCK"
 if ! flock -n 9; then
     log "already running, exiting"
@@ -64,6 +76,14 @@ if [ -z "$BROWSER" ]; then
     exit 1
 fi
 
+# #97: the pre-tmpfs profile on the card (~/.cache/memoryframe/chromium-profile, ~200M of Chromium cache and
+# state the frame doesn't use) is removed once we run from the tmpfs. Safe here: this launcher holds the
+# single-instance lock, so no Chromium of ours is using it. Only that one directory; nothing else is touched.
+LEGACY_PROFILE="$HOME/.cache/memoryframe/chromium-profile"
+if [ -z "${MEMORYFRAME_STATE_DIR:-}" ] && [ -z "$STATE_FALLBACK" ] && [ -d "$LEGACY_PROFILE" ] && [ ! -L "$LEGACY_PROFILE" ]; then
+    rm -rf --one-file-system "$LEGACY_PROFILE" && log "removed the old on-card profile $LEGACY_PROFILE"
+fi
+[ -n "$STATE_FALLBACK" ] && log "WARNING: $KIOSK_TMPFS missing or not writable; profile on the SD card ($STATE_DIR)"
 log "start: browser=$BROWSER url=$URL session=${XDG_SESSION_TYPE:-?} wayland=${WAYLAND_DISPLAY:-} display=${DISPLAY:-}"
 
 wait_healthy() {
@@ -150,6 +170,23 @@ watch_liveness() {  # $1 = browser pid
     done
 }
 
+# #97: Chromium honours only the last --disable-features, so ours and any from MEMORYFRAME_CHROMIUM_FLAGS
+# are merged into one (no duplicates), and the extra flags are passed without their --disable-features.
+DISABLE_FEATURES="Translate,OptimizationHints,MediaRouter"
+EXTRA_FLAGS=()
+# shellcheck disable=SC2086
+for f in ${MEMORYFRAME_CHROMIUM_FLAGS:-}; do
+    case "$f" in
+        --disable-features=*)
+            IFS=, read -r -a _feats <<< "${f#--disable-features=}"
+            for x in "${_feats[@]}"; do
+                [ -n "$x" ] || continue
+                case ",$DISABLE_FEATURES," in *",$x,"*) ;; *) DISABLE_FEATURES="$DISABLE_FEATURES,$x" ;; esac
+            done ;;
+        *) EXTRA_FLAGS+=("$f") ;;
+    esac
+done
+
 delay="$BACKOFF_BASE"
 while true; do
     rotate_log
@@ -157,18 +194,20 @@ while true; do
     resetting && continue
     mark_clean_exit
     rm -f "$PROFILE_DIR"/Singleton{Lock,Socket,Cookie}
-    # shellcheck disable=SC2086
-    set -- --kiosk --user-data-dir="$PROFILE_DIR" --password-store=basic --no-first-run \
+    # #97: profile and cache on the tmpfs, caches capped at 32 MiB, no background/component/crash-report writes.
+    set -- --kiosk --user-data-dir="$PROFILE_DIR" --disk-cache-dir="$CACHE_DIR" \
+        --disk-cache-size=33554432 --media-cache-size=33554432 --password-store=basic --no-first-run \
         --no-default-browser-check --noerrdialogs --disable-infobars \
         --disable-session-crashed-bubble --hide-crash-restore-bubble \
-        --disable-features=Translate --autoplay-policy=no-user-gesture-required \
+        --disable-background-networking --disable-component-update --disable-breakpad \
+        --disable-features="$DISABLE_FEATURES" --autoplay-policy=no-user-gesture-required \
         --check-for-update-interval=31536000 \
-        "${PLATFORM_FLAGS[@]}" "${DEBUG_FLAGS[@]}" ${MEMORYFRAME_CHROMIUM_FLAGS:-} "$URL"
+        "${PLATFORM_FLAGS[@]}" "${DEBUG_FLAGS[@]}" "${EXTRA_FLAGS[@]}" "$URL"
     log "launch: $BROWSER $*"
     started="$(date +%s)"
     "$BROWSER" "$@" 9>&- &
     bpid=$!
-    watch_liveness "$bpid" &
+    watch_liveness "$bpid" 9>&- &
     wpid=$!
     wait "$bpid"
     rc=$?

@@ -21,7 +21,10 @@ pidio() {  # name pid
     pidio NetworkManager "$(pgrep -xo NetworkManager || true)"
     for p in $(pgrep chromium || true); do pidio chromium "$p"; done
     echo "## mounts"
-    findmnt -no TARGET,FSTYPE,OPTIONS / /boot/firmware /tmp /var/log 2>&1
+    # findmnt takes at most one source and one target, so several paths printed nothing: one call per path.
+    for m in / /boot/firmware /tmp /var/log /run/mfkiosk; do
+        findmnt -no TARGET,FSTYPE,OPTIONS,SIZE,USED --mountpoint "$m" 2>/dev/null || echo "$m (not a mount point)"
+    done
     echo "## swap"
     swapon --show 2>&1
     echo "## journal"

@@ -1,0 +1,45 @@
+/* #103 trim + conversion progress. Dark phone tokens only; transform/opacity animation only. */
+body{width:360px;min-height:0}
+.prev{position:relative;border-radius:12px;overflow:hidden;background:#000;aspect-ratio:16/9}
+.prev img{width:100%;height:100%;object-fit:cover;display:block}
+.pp{all:unset;position:absolute;left:50%;top:50%;width:56px;height:56px;margin:-28px 0 0 -28px;border-radius:50%;background:rgba(14,19,17,.78);color:var(--mf-linen);display:grid;place-items:center;cursor:pointer}
+.pp:focus-visible{outline:3px solid var(--mf-brass);outline-offset:-3px}
+.tc{position:absolute;right:8px;bottom:8px;background:rgba(14,19,17,.82);color:var(--mf-linen);font-size:14px;font-weight:700;padding:3px 7px;border-radius:6px;font-variant-numeric:tabular-nums}
+.len{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;margin:16px 0 4px}
+.len b{font-size:22px;font-variant-numeric:tabular-nums}
+.len span{color:var(--mf-oat);font-size:var(--mf-p-small)}
+.tl{position:relative;height:56px;margin:6px 24px 0}
+.tl .track{position:absolute;left:0;right:0;top:22px;height:12px;border-radius:6px;background:var(--mf-forest-700)}
+.tl .sel{position:absolute;top:18px;height:20px;background:var(--mf-forest-600);border-radius:4px}
+.tl.bad .sel{background:var(--mf-brick)}
+.tl .ph{position:absolute;top:10px;width:3px;height:36px;margin-left:-1.5px;background:var(--mf-linen);border-radius:2px}
+.h{all:unset;position:absolute;top:4px;width:48px;height:48px;margin-left:-24px;display:grid;place-items:center;cursor:pointer}
+.h::before{content:"";width:18px;height:44px;border-radius:6px;background:var(--mf-linen);border:2px solid var(--mf-ink);box-sizing:border-box}
+.h:focus-visible::before,.h.focus::before{outline:3px solid var(--mf-brass);outline-offset:2px}
+.ends{display:flex;justify-content:space-between;margin:2px 0 0;font-size:var(--mf-p-small);color:var(--mf-oat);font-variant-numeric:tabular-nums}
+.err{background:var(--mf-red-50);color:var(--mf-brick-text);border-radius:10px;padding:10px 12px;margin:12px 0 0;font-weight:600;font-size:16px;line-height:1.35}
+.acts2{display:flex;flex-direction:column;gap:10px;margin-top:18px}
+.btn[disabled]{opacity:.5}
+.hint{font-size:var(--mf-p-small);color:var(--mf-oat);margin:10px 0 0;line-height:1.35}
+.files{list-style:none;margin:14px 0 0;padding:0;display:flex;flex-direction:column;gap:10px}
+.files li{background:var(--mf-forest-800);border:1px solid var(--mf-forest-700);border-radius:12px;padding:10px;display:flex;gap:12px;align-items:flex-start}
+.files img{width:52px;height:52px;border-radius:8px;object-fit:cover;flex:none}
+.files .t{flex:1;min-width:0}
+.files .n{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.files .s{font-size:var(--mf-p-small);color:var(--mf-linen);margin-top:2px;display:flex;justify-content:space-between;gap:8px}
+.files .s.ok{color:var(--mf-leaf)}
+.files .m{font-size:var(--mf-p-small);color:var(--mf-oat);margin-top:4px;line-height:1.35}
+.pbar{height:8px;border-radius:4px;background:var(--mf-forest-700);overflow:hidden;margin-top:6px}
+.pbar i{display:block;height:100%;background:var(--mf-leaf);transform-origin:left;transition:transform .3s}
+.ring{width:40px;height:40px}
+.pct{font-variant-numeric:tabular-nums}
+.rowx{all:unset;box-sizing:border-box;min-height:48px;padding:0 14px;border-radius:10px;border:1.5px solid var(--mf-oat);color:var(--mf-linen);font-weight:700;display:inline-flex;align-items:center;margin-top:8px;cursor:pointer}
+.rowx:focus-visible{outline:3px solid var(--mf-brass);outline-offset:2px}
+.rowx[disabled]{opacity:.55;cursor:default;border-color:var(--mf-forest-700);color:var(--mf-oat)}
+.files li.muted{opacity:.7}
+.tx{all:unset;box-sizing:border-box;position:absolute;right:4px;top:4px;width:48px;height:48px;display:grid;place-items:center;color:var(--mf-linen)}
+.tx::before{content:"";position:absolute;width:30px;height:30px;border-radius:50%;background:rgba(14,19,17,.85);border:1.5px solid var(--mf-oat)}
+.tx svg{position:relative}
+.tx:focus-visible{outline:3px solid var(--mf-brass);outline-offset:-3px}
+.state.cx{color:var(--mf-oat);background:rgba(14,19,17,.82)}
+.tile:has(.tx) .state{padding-top:30px;box-sizing:border-box}

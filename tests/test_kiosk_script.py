@@ -1,6 +1,7 @@
 """deploy/kiosk.sh with stub chromium/curl: flags, profile, logging, restart."""
 import json
 import os
+import signal
 import shutil
 import subprocess
 import time
@@ -50,6 +51,57 @@ def env(tmp_path):
     return tmp_path, state, calls, e
 
 
+# kiosk.sh forks a liveness subshell and Chromium; terminating only the launcher left them running ~20 s
+# after each test. Every launcher here runs in its own session, and the whole session is killed and waited
+# for at teardown, with a check that nothing from it is left.
+_SESSIONS = []
+
+
+def start_kiosk(e):
+    p = subprocess.Popen([BASH, str(SCRIPT)], env=e, start_new_session=True)
+    _SESSIONS.append(p.pid)
+    return p
+
+
+def session_pids(sid):
+    out = []
+    for d in Path("/proc").iterdir():
+        if d.name.isdigit():
+            try:
+                st = (d / "stat").read_text()
+            except OSError:
+                continue
+            f = st.rsplit(")", 1)[1].split()
+            if int(f[3]) == sid and f[0] != "Z":
+                out.append(int(d.name))
+    return out
+
+
+def kill_session(sid):
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(sid, sig)
+        except ProcessLookupError:
+            pass
+        deadline = time.monotonic() + 5
+        while session_pids(sid) and time.monotonic() < deadline:
+            time.sleep(0.02)
+        if not session_pids(sid):
+            break
+
+
+@pytest.fixture(autouse=True)
+def _no_leftover_kiosk_processes():
+    yield
+    left = {}
+    while _SESSIONS:
+        sid = _SESSIONS.pop()
+        kill_session(sid)
+        if session_pids(sid):
+            left[sid] = session_pids(sid)
+    assert not left, f"kiosk.sh processes left behind: {left}"
+
+
 def log_text(tmp_path):
     f = tmp_path / ".cache" / "memoryframe-kiosk.log"
     return f.read_text() if f.exists() else ""
@@ -58,7 +110,7 @@ def log_text(tmp_path):
 def run_until(e, condition, timeout=15):
     """Run kiosk.sh until condition() is true (polling), then stop it.
     No fixed sleeps, so slow CI runners don't cause flaky failures."""
-    p = subprocess.Popen([BASH, str(SCRIPT)], env=e)
+    p = start_kiosk(e)
     try:
         deadline = time.monotonic() + timeout
         while not condition():
@@ -66,7 +118,7 @@ def run_until(e, condition, timeout=15):
             assert time.monotonic() < deadline, "condition not met in time"
             time.sleep(0.05)
     finally:
-        p.terminate()
+        kill_session(p.pid)
         p.wait(timeout=5)
 
 
@@ -108,7 +160,7 @@ def test_log_has_launcher_and_chromium_stderr(env):
 
 def test_single_instance(env):
     tmp_path, state, _, e = env
-    p = subprocess.Popen([BASH, str(SCRIPT)], env=e)
+    p = start_kiosk(e)
     deadline = time.monotonic() + 15
     while "start:" not in log_text(tmp_path):
         assert time.monotonic() < deadline
@@ -216,11 +268,13 @@ def test_log_rotated_inside_a_crash_loop(env):
     log = tmp_path / ".cache" / "memoryframe-kiosk.log"
     old = tmp_path / ".cache" / "memoryframe-kiosk.log.1"
     e["MEMORYFRAME_KIOSK_BACKOFF"] = "0"                           # #95 crash backoff would make 7 launches slow
-    run_until(e, lambda: len(launches(tmp_path)) >= 7, timeout=60)
+    # Stop only once the current log exists: the launcher can be killed between rotate_log's `mv` and the
+    # `exec >>"$LOG"` that recreates it, which made log.stat() raise FileNotFoundError now and then.
+    run_until(e, lambda: len(launches(tmp_path)) >= 7 and log.exists(), timeout=60)
     assert old.exists()
-    assert log.stat().st_size <= 1048576 + 500000 and old.stat().st_size <= 1048576 + 500000
-    assert sorted(p.name for p in log.parent.glob("memoryframe-kiosk.log*")) == ["memoryframe-kiosk.log",
-                                                                              "memoryframe-kiosk.log.1"]
+    sizes = {p.name: p.stat().st_size for p in log.parent.glob("memoryframe-kiosk.log*")}
+    assert set(sizes) <= {"memoryframe-kiosk.log", "memoryframe-kiosk.log.1"} and "memoryframe-kiosk.log.1" in sizes
+    assert all(v <= 1048576 + 500000 for v in sizes.values()), sizes
 
 
 # ---------------- #95: liveness kill + backoff ----------------
@@ -286,7 +340,7 @@ def test_liveness_never_kills_during_factory_reset(env):
     data = tmp_path / "data"
     data.mkdir()
     e["MEMORYFRAME_DATA_DIR"] = str(data)
-    p = subprocess.Popen([BASH, str(SCRIPT)], env=e)
+    p = start_kiosk(e)
     try:
         deadline = time.monotonic() + 15
         while not launches(tmp_path):

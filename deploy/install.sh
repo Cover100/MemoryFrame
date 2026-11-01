@@ -229,18 +229,16 @@ sed -e "s#@KIOSK_UID@#$(id -u "$DESKTOP_USER")#g" -e "s#@KIOSK_GID@#$(id -g "$DE
     "$SRC_DIR/deploy/run-mfkiosk.mount" > "$mnt_tmp"
 put_file "$mnt_tmp" /etc/systemd/system/run-mfkiosk.mount 0644
 rm -f "$mnt_tmp"
-# #97: / mounted noatime (idempotent; /etc/fstab backed up once to /etc/fstab.memoryframe-97.bak).
+# #97: / mounted noatime (idempotent; one-time history copy /etc/fstab.memoryframe-97.bak).
 # ext4 commit= and cmdline.txt are not touched. MEMORYFRAME_NO_FSTAB=1 skips it.
 if [ "${MEMORYFRAME_NO_FSTAB:-}" = 1 ]; then
     echo "fstab: skipped (MEMORYFRAME_NO_FSTAB=1)"
 else
-    sudo "$SRC_DIR/deploy/fstab-noatime.sh" /etc/fstab
-    if sudo findmnt --verify --tab-file /etc/fstab >/dev/null 2>&1; then
-        sudo mount -o remount,noatime / || echo "WARNING: remount noatime failed; applies at next boot"
-    else
-        echo "WARNING: findmnt --verify reports problems in /etc/fstab; restoring the backup"
-        sudo cp -p /etc/fstab.memoryframe-97.bak /etc/fstab
-    fi
+    # Verify/rollback happen inside the script and only when this run changed the file. A failure (no / line,
+    # or an edit that didn't verify and was rolled back) is a WARNING; the install goes on (#97, Sage).
+    fstab_rc=0
+    sudo "$SRC_DIR/deploy/fstab-noatime.sh" --apply /etc/fstab || fstab_rc=$?
+    [ "$fstab_rc" -eq 0 ] || echo "WARNING: fstab-noatime.sh exited $fstab_rc; / not switched to noatime (see above)"
 fi
 # Old sudoers rules from before #62 (unused now).
 sudo rm -f /etc/sudoers.d/memoryframe /etc/sudoers.d/memoryframe-poweroff

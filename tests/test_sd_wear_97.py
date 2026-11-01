@@ -162,8 +162,67 @@ def test_fstab_without_root_line_fails_unchanged(tmp_path):
 
 
 def test_install_fstab_step_is_guarded_and_never_touches_commit_or_cmdline():
-    assert 'sudo "$SRC_DIR/deploy/fstab-noatime.sh" /etc/fstab' in INSTALL
-    assert "MEMORYFRAME_NO_FSTAB" in INSTALL and "findmnt --verify --tab-file /etc/fstab" in INSTALL
+    assert 'sudo "$SRC_DIR/deploy/fstab-noatime.sh" --apply /etc/fstab || fstab_rc=$?' in INSTALL
+    assert "MEMORYFRAME_NO_FSTAB" in INSTALL
+    assert "fstab.memoryframe-97.bak /etc/fstab" not in INSTALL           # the one-time .bak is never restored
     for p in [INSTALL, FSTAB_SH.read_text()]:
         assert "commit=" not in p.replace("ext4 commit= ", "")
     assert "cmdline.txt" not in FSTAB_SH.read_text().replace("cmdline.txt is not used", "")
+
+
+def _install_fstab_snippet():
+    a = INSTALL.index("    fstab_rc=0\n")
+    return INSTALL[a:INSTALL.index("\nfi\n", a)]
+
+
+def test_install_continues_with_warning_when_script_exits_2(tmp_path):
+    (tmp_path / "deploy").mkdir()
+    fake = tmp_path / "deploy" / "fstab-noatime.sh"
+    fake.write_text("#!/bin/bash\necho 'fstab-noatime: no / entry' >&2\nexit 2\n")
+    fake.chmod(0o755)
+    script = f'set -euo pipefail\nSRC_DIR="{tmp_path}"\nsudo() {{ "$@"; }}\n{_install_fstab_snippet()}\necho AFTER\n'
+    r = subprocess.run([BASH, "-c", script], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert "WARNING: fstab-noatime.sh exited 2" in r.stdout and r.stdout.rstrip().endswith("AFTER")
+
+
+def run_apply(tmp_path, f, verify_ok):
+    bin_ = tmp_path / "bin"
+    bin_.mkdir(exist_ok=True)
+    calls = tmp_path / "calls.log"
+    (bin_ / "findmnt").write_text(f'#!/bin/bash\necho "findmnt $*" >> "{calls}"\nexit {0 if verify_ok else 1}\n')
+    (bin_ / "mount").write_text(f'#!/bin/bash\necho "mount $*" >> "{calls}"\n')
+    for x in bin_.iterdir():
+        x.chmod(0o755)
+    import os
+    r = subprocess.run([BASH, str(FSTAB_SH), "--apply", str(f)], capture_output=True, text=True,
+                       env={**os.environ, "PATH": f"{bin_}:{os.environ['PATH']}"})
+    return r, (calls.read_text() if calls.exists() else "")
+
+
+def test_apply_unchanged_run_never_verifies_or_restores(tmp_path):
+    f = tmp_path / "fstab"
+    now = "PARTUUID=new-02  /  ext4  defaults,noatime  0  1\n"            # e.g. a cloned card, new PARTUUID
+    f.write_text(now)
+    (tmp_path / "fstab.memoryframe-97.bak").write_text("PARTUUID=old-02 / ext4 defaults 0 1\n")  # stale history
+    r, calls = run_apply(tmp_path, f, verify_ok=False)
+    assert r.returncode == 0 and f.read_text() == now and calls == ""
+
+
+def test_apply_changed_run_verify_fails_restores_this_runs_copy(tmp_path):
+    f = tmp_path / "fstab"
+    (tmp_path / "fstab.memoryframe-97.bak").write_text("PARTUUID=old-02 / ext4 defaults 0 1\n")  # stale history
+    f.write_text(PI_FSTAB)
+    r, calls = run_apply(tmp_path, f, verify_ok=False)
+    assert r.returncode == 3 and "restored this run's copy" in r.stderr
+    assert f.read_text() == PI_FSTAB                                     # this run's copy, not the old .bak
+    assert "findmnt --verify" in calls and "mount" not in calls.replace("findmnt", "")
+    assert sorted(p.name for p in tmp_path.iterdir() if p.name.startswith(".fstab")) == []   # no temp left
+
+
+def test_apply_changed_run_verify_ok_remounts(tmp_path):
+    f = tmp_path / "fstab"
+    f.write_text(PI_FSTAB)
+    r, calls = run_apply(tmp_path, f, verify_ok=True)
+    assert r.returncode == 0 and "defaults,noatime" in f.read_text()
+    assert "mount -o remount,noatime /" in calls

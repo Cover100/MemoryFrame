@@ -124,7 +124,7 @@ def _is_enospc(e):
 
 
 def save_upload(conn, data_dir, filestorage, min_free, display_target, max_pixels=MAX_PIXELS,
-                max_nonjpeg_pixels=MAX_NONJPEG_PIXELS, incoming=0, videos=False, max_photo_bytes=None, meta=None):
+                max_nonjpeg_pixels=MAX_NONJPEG_PIXELS, incoming=0, videos=False, max_photo_bytes=None, meta=None, trim=None):
     """Validate and add one uploaded file. Returns (stored_name or None if duplicate, label).
 
     #96: refused (507, FULL) unless the reserve stays free after this file: free - min_free must cover
@@ -142,7 +142,7 @@ def save_upload(conn, data_dir, filestorage, min_free, display_target, max_pixel
         with open(tmp, "rb") as f:
             head = f.read(32)
         if videos and _video_magic(head):
-            return _save_video(conn, data_dir, tmp, filestorage.filename, min_free, meta)
+            return _save_video(conn, data_dir, tmp, filestorage.filename, min_free, meta, trim)
         if _looks_like_video(head, filestorage.filename):
             raise UploadError(415, VIDEO_LATER if not videos else video.NOT_A_VIDEO)
         if max_photo_bytes and os.path.getsize(tmp) > max_photo_bytes:
@@ -178,7 +178,7 @@ def save_upload(conn, data_dir, filestorage, min_free, display_target, max_pixel
             pass
 
 
-def _save_video(conn, data_dir, tmp, client_name, min_free, meta=None):
+def _save_video(conn, data_dir, tmp, client_name, min_free, meta=None, trim=None):
     """#102: tmp is the upload on the card. Space (#96 reserve) is checked against its real size, then it
     is hashed (duplicates), ffprobed (refused here, not later, if the frame cannot use it) and queued."""
     size = os.path.getsize(tmp)
@@ -192,8 +192,13 @@ def _save_video(conn, data_dir, tmp, client_name, min_free, meta=None):
         info = video.probe(tmp)
     except video.VideoError as e:
         raise UploadError(415, str(e)) from e
+    try:                                                 # #103: against the probed duration
+        start, end = video.resolve_trim(trim, info["duration"])
+    except video.TrimError as e:
+        raise UploadError(400, str(e)) from e
+    info.update(start=start / 1000, keep=(end - start) / 1000)    # prep_minutes counts only the kept part
     name = label(client_name, ".mp4")
-    stored = video.accept(conn, data_dir, tmp, name, library.sha256_file(tmp))
+    stored = video.accept(conn, data_dir, tmp, name, library.sha256_file(tmp), (start, end) if trim else None)
     if meta is not None and info.get("high_res"):       # over 4K: allowed, but slow on the Pi
         meta.update(high_res=True, prep_minutes=video.prep_minutes(info))
     return stored, name

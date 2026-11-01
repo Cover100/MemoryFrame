@@ -339,7 +339,8 @@ def test_migration_from_schema_1(tmp_path):
     conn = mfdb.connect(p)
     r = dict(conn.execute("SELECT * FROM media").fetchone())
     assert r["state"] == "ready" and r["duration_ms"] is None
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 2
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == mfdb.SCHEMA_VERSION
+    assert r["trim_start_ms"] is None and r["progress_pct"] == 0 and r["cancel_requested"] == 0
 
 
 def test_photo_media_json_unchanged(mf_app, lib, client):

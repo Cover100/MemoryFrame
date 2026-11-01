@@ -211,9 +211,9 @@ def probe(path, runner=None):
     streams = info.get("streams") or []
     video = [s for s in streams if s.get("codec_type") == "video"
              and not (s.get("disposition") or {}).get("attached_pic")]
-    # Sage: data tracks (iPhone tmcd/mebx) are fine by type, no decoder needed, convert drops them (-dn). Subtitles
-    # only as mov_text (no decoder added, dropped with -sn); any other subtitle, any attachment, or an unknown
-    # stream type -> 415. At most MAX_STREAMS streams in all.
+    # Sage: data tracks (iPhone tmcd/mebx) are fine by type, no decoder needed, convert drops them (-dn). Any
+    # attachment, unknown stream type or non-mov_text subtitle -> 415 here. mov_text passes this check but is in
+    # practice refused too: no subtitle decoder is whitelisted, so ffprobe fails above -> 415. At most MAX_STREAMS.
     bad = [s for s in streams if s.get("codec_type") not in ("video", "audio", "data", "subtitle")
            or (s.get("codec_type") == "subtitle" and s.get("codec_name") != "mov_text")]
     if len(video) != 1 or bad or len(streams) > MAX_STREAMS:

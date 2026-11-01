@@ -12,11 +12,13 @@
 #
 # Steps (each power-cut safe; boot resumes from the marker):
 #   1 stop the app (on demand only; at boot it has not started), so mfapp can't plant links from here on
-#   2 marker  $DATA/.factory-reset ("erase <id>"): mktemp (O_EXCL, never follows a link) + mv -fT, sync
+#   2 marker  $DATA/.factory-reset ("erase <id>"): mktemp (O_EXCL, never follows a link) + mv -fT, sync,
+#     then stop the app again (closes the window between step 1 and the marker)
 #   3 fresh root-owned 0700 $DATA/.erasing-<id> (a planted link/dir is removed first), mv -t the targets in
 #     (same filesystem: atomic renames), sync
 #   4 rm -rf every .erasing-*, fstrim where supported, recreate the empty layout (data dir owner, 0750)
 #   5 remove the marker LAST, sync, start the app (--no-block: this unit is ordered before it)
+# If a step fails the marker stays, so the app stays stopped (ExecCondition) until the next boot finishes the reset.
 # Files are unlinked and trimmed, not forensically wiped (see docs/runbooks/factory-reset.md).
 #
 # Test hooks (ignored as root): MEMORYFRAME_DATA_DIR, MEMORYFRAME_RESET_REQ, SYSTEMCTL, FSTRIM, SYNC.
@@ -120,6 +122,9 @@ if [ "$rc" = 0 ]; then
     printf 'erase %s\n' "$id" > "$tmp"
     mv -fT -- "$tmp" "$MARKER"
     "$SYNC" || true
+    # Stop again now the marker is there: a start that raced in between the first stop and the marker (Restart=,
+    # watchdog, a manual start) passed ExecCondition; every start from here on is refused by it.
+    "$SYSTEMCTL" stop memoryframe.service || log "could not stop the app (second stop)"
     erase "$id" on-demand
     exit 0
 fi

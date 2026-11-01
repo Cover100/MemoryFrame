@@ -52,7 +52,19 @@
 .mf-phone #list li.muted .name, .mf-phone #list li.muted .msg { color: var(--mf-oat); opacity: .6; }
 .mf-phone #list .slow[hidden] { display: none; }
 .mf-phone .tile .ring { width: 40px; height: 40px; flex: none; aspect-ratio: 1; }
-@container (max-width: 340px) { .mf-phone .tile .ring { width: 32px; height: 32px; } }   /* ring shrinks before the label wraps */
+/* Narrow grid (360 px at 130 % text, tiles ~75 px): like the failed tile, a waiting / preparing / cancelling
+   tile takes two columns; the label sits left of the 48 px × (padding-inline-end) with a 32 px square ring. */
+@container (max-width: 340px) {
+  .mf-phone .lib li[data-state="processing"], .mf-phone .lib li[data-state="queued"],
+  .mf-phone .lib li[data-state="cancelling"] { grid-column: span 2; aspect-ratio: auto; height: calc((100cqw - 6px) / 3); }
+  .mf-phone .tile .ring { width: 32px; height: 32px; }
+  .mf-phone .lib li[data-state="processing"] .state,
+  .mf-phone .lib li[data-state="queued"] .state,
+  .mf-phone .lib li[data-state="cancelling"] .state { padding: 4px 48px 4px 8px; flex-flow: row wrap; align-content: center;
+    justify-content: center; gap: 2px 8px; line-height: 1.2; }
+  .mf-phone .tile .state .resumed { flex-basis: 100%; }
+  .mf-phone .tile .state .resumed { font-size: 11px; }
+}
 .mf-phone .lib li[data-state="queued"] .state, .mf-phone .lib li[data-state="cancelling"] .state { padding: 48px 6px 4px; justify-content: flex-start; }    /* clear of the 48 px × */
 .mf-phone .tile .ring circle { fill: none; stroke-width: 4; }
 .mf-phone .tile .ring .bg { stroke: var(--mf-forest-700); }

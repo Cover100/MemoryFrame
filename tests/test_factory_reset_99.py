@@ -356,3 +356,24 @@ def test_planted_erasing_symlink_and_foreign_dir_on_boot(fr, tmp_path):
     r = fr.run()
     assert r.returncode == 0, r.stderr
     end_state_ok(fr)
+
+
+def test_app_stopped_again_after_marker_written(fr):
+    """#113 follow-up: stop, marker (mktemp + mv -fT), then a second stop that sees the marker in place."""
+    (fr.stub / "systemctl").write_text(
+        f'#!/bin/sh\necho "systemctl $* marker=$([ -e {fr.data}/.factory-reset ] && echo 1 || echo 0)" >> {fr.log}\n')
+    fr.request()
+    r = fr.run()
+    assert r.returncode == 0, r.stderr
+    stops = [l for l in fr.log.read_text().splitlines() if " stop " in l]
+    assert stops == ["systemctl stop memoryframe.service marker=0", "systemctl stop memoryframe.service marker=1"]
+    s = SCRIPT.read_text()
+    first = s.index('"$SYSTEMCTL" stop memoryframe.service')
+    assert first < s.index('mktemp "$DATA/.factory-reset.') < s.index('mv -fT -- "$tmp" "$MARKER"') \
+        < s.index('"$SYSTEMCTL" stop memoryframe.service', first + 1) < s.index('erase "$id" on-demand')
+
+
+def test_polkit_comment_counts_units():
+    rules = (ROOT / "deploy" / "memoryframe-polkit.rules").read_text()
+    n = rules.split("var allowed = [", 1)[1].split("]", 1)[0].count(".service")
+    assert n == 6 and "these six root oneshot units" in rules

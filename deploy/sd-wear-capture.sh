@@ -3,9 +3,24 @@
 # Usage: sudo deploy/sd-wear-capture.sh LABEL [OUTDIR]   e.g. S1-t0, S1-t1. Changes nothing on the system.
 set -u
 LABEL="${1:?usage: sd-wear-capture.sh LABEL [OUTDIR]}"
-OUT="${2:-/tmp/sd-wear}"
+OUT="${2:-/root/sd-wear}"
 DEV="${MEMORYFRAME_SD_DEV:-mmcblk0}"
-mkdir -p "$OUT"
+OWNER_UID="${MEMORYFRAME_SD_WEAR_OWNER_UID:-0}"   # tests only; on the Pi the directory must be root's
+# The label becomes a file name: no slashes, no "..", no spaces.
+if ! [[ "$LABEL" =~ ^[A-Za-z0-9._-]+$ ]] || [ "$LABEL" = . ] || [ "$LABEL" = .. ]; then
+    echo "ERROR: LABEL must match ^[A-Za-z0-9._-]+\$ (got '$LABEL')" >&2; exit 2
+fi
+# Never write through a symlink or into a directory someone else controls (this runs under sudo).
+if [ ! -e "$OUT" ] && [ ! -L "$OUT" ]; then
+    (umask 077; mkdir -p -- "$OUT") || { echo "ERROR: cannot create $OUT" >&2; exit 2; }
+    chmod 0700 -- "$OUT"
+fi
+if [ -L "$OUT" ] || [ ! -d "$OUT" ]; then
+    echo "ERROR: $OUT is not a real directory (symlink or not a directory); refusing" >&2; exit 2
+fi
+if [ "$(stat -c %u -- "$OUT")" != "$OWNER_UID" ]; then
+    echo "ERROR: $OUT is not owned by uid $OWNER_UID; refusing" >&2; exit 2
+fi
 F="$OUT/$LABEL.txt"
 pidio() {  # name pid
     [ -r "/proc/$2/io" ] && printf '%s %s %s\n' "$1" "$2" "$(awk '/^write_bytes/{print $2}' "/proc/$2/io")"

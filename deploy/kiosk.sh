@@ -9,15 +9,21 @@
 # Environment overrides:
 #   MEMORYFRAME_URL             default http://localhost:5000
 #   MEMORYFRAME_CHROMIUM_FLAGS  extra flags, e.g. "--ozone-platform=wayland" or "--disable-gpu"
-#   MEMORYFRAME_STATE_DIR       Chromium profile parent, default ~/.cache/memoryframe
+#   MEMORYFRAME_STATE_DIR       Chromium profile + cache parent, default /run/mfkiosk (#97: the RAM-only tmpfs
+#                               from run-mfkiosk.mount, 192M, 0700, kiosk user); ~/.cache/memoryframe if it is missing
 #   MEMORYFRAME_KIOSK_LOG       default ~/.cache/memoryframe-kiosk.log
 #   MEMORYFRAME_KIOSK_DEBUG=1   adds DevTools on 127.0.0.1:9222 only + verbose Chromium logging
 set -u
 
 URL="${MEMORYFRAME_URL:-http://localhost:5000}"
 HEALTH="$URL/healthz"
-STATE_DIR="${MEMORYFRAME_STATE_DIR:-$HOME/.cache/memoryframe}"
+KIOSK_TMPFS="${MEMORYFRAME_KIOSK_TMPFS:-/run/mfkiosk}"
+STATE_FALLBACK=""
+if [ -n "${MEMORYFRAME_STATE_DIR:-}" ]; then STATE_DIR="$MEMORYFRAME_STATE_DIR"
+elif [ -d "$KIOSK_TMPFS" ] && [ -w "$KIOSK_TMPFS" ]; then STATE_DIR="$KIOSK_TMPFS"
+else STATE_DIR="$HOME/.cache/memoryframe"; STATE_FALLBACK=1; fi
 PROFILE_DIR="$STATE_DIR/chromium-profile"
+CACHE_DIR="$STATE_DIR/cache"
 LOG="${MEMORYFRAME_KIOSK_LOG:-$HOME/.cache/memoryframe-kiosk.log}"
 # Sage (#113): never /tmp; the user's own state dir if there is no runtime dir.
 LOCK="${XDG_RUNTIME_DIR:-$STATE_DIR}/memoryframe-kiosk.lock"
@@ -25,7 +31,7 @@ LOCK="${XDG_RUNTIME_DIR:-$STATE_DIR}/memoryframe-kiosk.lock"
 RESET_MARKER="${MEMORYFRAME_DATA_DIR:-/var/lib/memoryframe}/.factory-reset"
 resetting() { [ -e "$RESET_MARKER" ] || [ -L "$RESET_MARKER" ]; }
 
-mkdir -p "$STATE_DIR" "$PROFILE_DIR" "$(dirname "$LOG")"
+mkdir -p "$STATE_DIR" "$PROFILE_DIR" "$CACHE_DIR" "$(dirname "$LOG")"
 
 # Keep the log small: rotate once it passes 1 MB (one .1 kept). #96: also checked before every
 # browser launch, so a Chromium crash loop can't grow it past about 2 x 1 MB.
@@ -64,6 +70,7 @@ if [ -z "$BROWSER" ]; then
     exit 1
 fi
 
+[ -n "$STATE_FALLBACK" ] && log "WARNING: $KIOSK_TMPFS missing or not writable; profile on the SD card ($STATE_DIR)"
 log "start: browser=$BROWSER url=$URL session=${XDG_SESSION_TYPE:-?} wayland=${WAYLAND_DISPLAY:-} display=${DISPLAY:-}"
 
 wait_healthy() {
@@ -150,6 +157,23 @@ watch_liveness() {  # $1 = browser pid
     done
 }
 
+# #97: Chromium honours only the last --disable-features, so ours and any from MEMORYFRAME_CHROMIUM_FLAGS
+# are merged into one (no duplicates), and the extra flags are passed without their --disable-features.
+DISABLE_FEATURES="Translate,OptimizationHints,MediaRouter"
+EXTRA_FLAGS=()
+# shellcheck disable=SC2086
+for f in ${MEMORYFRAME_CHROMIUM_FLAGS:-}; do
+    case "$f" in
+        --disable-features=*)
+            IFS=, read -r -a _feats <<< "${f#--disable-features=}"
+            for x in "${_feats[@]}"; do
+                [ -n "$x" ] || continue
+                case ",$DISABLE_FEATURES," in *",$x,"*) ;; *) DISABLE_FEATURES="$DISABLE_FEATURES,$x" ;; esac
+            done ;;
+        *) EXTRA_FLAGS+=("$f") ;;
+    esac
+done
+
 delay="$BACKOFF_BASE"
 while true; do
     rotate_log
@@ -157,13 +181,15 @@ while true; do
     resetting && continue
     mark_clean_exit
     rm -f "$PROFILE_DIR"/Singleton{Lock,Socket,Cookie}
-    # shellcheck disable=SC2086
-    set -- --kiosk --user-data-dir="$PROFILE_DIR" --password-store=basic --no-first-run \
+    # #97: profile and cache on the tmpfs, caches capped at 32 MiB, no background/component/crash-report writes.
+    set -- --kiosk --user-data-dir="$PROFILE_DIR" --disk-cache-dir="$CACHE_DIR" \
+        --disk-cache-size=33554432 --media-cache-size=33554432 --password-store=basic --no-first-run \
         --no-default-browser-check --noerrdialogs --disable-infobars \
         --disable-session-crashed-bubble --hide-crash-restore-bubble \
-        --disable-features=Translate --autoplay-policy=no-user-gesture-required \
+        --disable-background-networking --disable-component-update --disable-breakpad \
+        --disable-features="$DISABLE_FEATURES" --autoplay-policy=no-user-gesture-required \
         --check-for-update-interval=31536000 \
-        "${PLATFORM_FLAGS[@]}" "${DEBUG_FLAGS[@]}" ${MEMORYFRAME_CHROMIUM_FLAGS:-} "$URL"
+        "${PLATFORM_FLAGS[@]}" "${DEBUG_FLAGS[@]}" "${EXTRA_FLAGS[@]}" "$URL"
     log "launch: $BROWSER $*"
     started="$(date +%s)"
     "$BROWSER" "$@" 9>&- &

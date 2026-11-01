@@ -1,0 +1,17 @@
+# #97: RAM-only Chromium profile + cache for the kiosk (the S1 audit measured ~17 MB/h of Chromium card
+# writes). Installed by install.sh as /etc/systemd/system/run-mfkiosk.mount with @KIOSK_UID@/@KIOSK_GID@
+# replaced by the desktop (kiosk) user. tmpfs: empty on every boot, 0700 so mfapp can't read it, 192M cap.
+[Unit]
+Description=Memory Frame kiosk browser profile (tmpfs)
+DefaultDependencies=no
+Conflicts=umount.target
+Before=local-fs.target umount.target
+
+[Mount]
+What=tmpfs
+Where=/run/mfkiosk
+Type=tmpfs
+Options=size=192M,mode=0700,uid=@KIOSK_UID@,gid=@KIOSK_GID@,nosuid,nodev,noexec
+
+[Install]
+WantedBy=local-fs.target

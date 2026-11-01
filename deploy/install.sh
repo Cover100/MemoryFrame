@@ -222,9 +222,30 @@ for d in journald coredump; do
     put_file "$SRC_DIR/deploy/$d-memoryframe.conf" "/etc/systemd/$d.conf.d/memoryframe.conf" 0644
 done
 sudo systemctl restart systemd-journald 2>/dev/null || true
+# #97: the kiosk Chromium profile + cache live on a RAM-only tmpfs (/run/mfkiosk, 192M, 0700, owned by the
+# desktop user, fresh every boot; mfapp can't read it).
+mnt_tmp="$(mktemp)"
+sed -e "s#@KIOSK_UID@#$(id -u "$DESKTOP_USER")#g" -e "s#@KIOSK_GID@#$(id -g "$DESKTOP_USER")#g" \
+    "$SRC_DIR/deploy/run-mfkiosk.mount" > "$mnt_tmp"
+put_file "$mnt_tmp" /etc/systemd/system/run-mfkiosk.mount 0644
+rm -f "$mnt_tmp"
+# #97: / mounted noatime (idempotent; /etc/fstab backed up once to /etc/fstab.memoryframe-97.bak).
+# ext4 commit= and cmdline.txt are not touched. MEMORYFRAME_NO_FSTAB=1 skips it.
+if [ "${MEMORYFRAME_NO_FSTAB:-}" = 1 ]; then
+    echo "fstab: skipped (MEMORYFRAME_NO_FSTAB=1)"
+else
+    sudo "$SRC_DIR/deploy/fstab-noatime.sh" /etc/fstab
+    if sudo findmnt --verify --tab-file /etc/fstab >/dev/null 2>&1; then
+        sudo mount -o remount,noatime / || echo "WARNING: remount noatime failed; applies at next boot"
+    else
+        echo "WARNING: findmnt --verify reports problems in /etc/fstab; restoring the backup"
+        sudo cp -p /etc/fstab.memoryframe-97.bak /etc/fstab
+    fi
+fi
 # Old sudoers rules from before #62 (unused now).
 sudo rm -f /etc/sudoers.d/memoryframe /etc/sudoers.d/memoryframe-poweroff
 sudo systemctl daemon-reload
+sudo systemctl enable --now run-mfkiosk.mount
 # MF-51 deploy guard: boot now defaults to product (hotspot). A Pi that is on a home Wi-Fi
 # client connection and has no mode file is a dev Pi: write "dev" so its next reboot keeps
 # home Wi-Fi (and Pi Connect). An existing mode file is never changed.
@@ -273,6 +294,8 @@ echo "== Kiosk reload (new JS/CSS)"
 # Chromium is running (matched by its own profile dir), end it; kiosk.sh's loop relaunches it and it loads
 # the new page (asset URLs carry a content hash, see memoryframe/assets.py). Skipped on CI / headless runs.
 KIOSK_PROFILE="${MEMORYFRAME_STATE_DIR:-$HOME/.cache/memoryframe}/chromium-profile"
+[ -z "${MEMORYFRAME_STATE_DIR:-}" ] && "${PGREP:-pgrep}" -u "$DESKTOP_USER" -f -- "--user-data-dir=/run/mfkiosk/chromium-profile" \
+    >/dev/null 2>&1 && KIOSK_PROFILE=/run/mfkiosk/chromium-profile   # #97 tmpfs profile
 if [ -n "${CI:-}" ] || [ "${MEMORYFRAME_NO_KIOSK_RELOAD:-}" = 1 ]; then
     echo "skipped (CI or MEMORYFRAME_NO_KIOSK_RELOAD=1)"
 elif "${PGREP:-pgrep}" -u "$DESKTOP_USER" -f -- "--user-data-dir=$KIOSK_PROFILE" >/dev/null 2>&1; then

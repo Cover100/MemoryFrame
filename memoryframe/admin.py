@@ -126,7 +126,7 @@ def _videos():
 def library_page():
     """#80 (phone/09-LIBRARY.md): one grid, newest first, rendered here so it shows without a second request.
     Only ids and kinds go to the page (tile labels are "Photo 4 of 128", never file names)."""
-    items = get_db().execute("SELECT id, kind, state, duration_ms FROM media "
+    items = get_db().execute("SELECT id, kind, state, duration_ms, progress_pct, cancel_requested, resumed FROM media "
                              "ORDER BY created_at DESC, id DESC").fetchall()
     nv = sum(1 for m in items if m["kind"] == "video")
     return render_template("library.html", items=items, n=len(items), nv=nv, np=len(items) - nv, st=phone_storage(),

@@ -31,3 +31,28 @@
   .mf-phone .lib li[data-state="failed"] { grid-column: span 2; aspect-ratio: auto; height: calc((100vw - 6px) / 3); }
 }
 .mf-phone #list .slow { display: block; font-size: var(--mf-p-small); color: var(--mf-text-2); margin-top: 2px; line-height: 1.35; }
+/* #103 conversion progress (13c upload row, 13d Library tile). The bar steps to each polled value (scaleX). */
+.mf-phone #list .vhead { display: flex; justify-content: space-between; gap: 8px; }
+.mf-phone #list .vhead .msg { flex: 1; min-width: 0; }
+.mf-phone #list .pct { font-size: var(--mf-p-small); font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.mf-phone #list .vbar { display: block; height: 8px; border-radius: 4px; background: var(--mf-forest-700); overflow: hidden; margin-top: 6px; }
+.mf-phone #list .vbar[hidden] { display: none; }
+.mf-phone #list .vbar > span { display: block; height: 100%; background: var(--mf-leaf); transform: scaleX(0); transform-origin: left;
+  transition: transform .3s ease-out; }
+.mf-phone #list .vacts { display: flex; gap: 8px; margin-top: 8px; }
+.mf-phone #list .vcancel { min-height: 48px; padding: 0 18px; background: transparent; border: 1.5px solid var(--mf-oat); color: var(--mf-linen); }
+.mf-phone #list .vcancel.vrm { color: var(--mf-brick-text); }
+.mf-phone #list .vcancel:disabled { opacity: .6; border-color: var(--mf-forest-700); }
+.mf-phone #list .vcancel:focus-visible { outline: 3px solid var(--mf-brass); outline-offset: 2px; }
+.mf-phone #list li.muted .name, .mf-phone #list li.muted .msg { color: var(--mf-oat); opacity: .6; }
+.mf-phone #list .slow[hidden] { display: none; }
+.mf-phone .tile .ring { width: 40px; height: 40px; }
+.mf-phone .tile .ring circle { fill: none; stroke-width: 4; }
+.mf-phone .tile .ring .bg { stroke: var(--mf-forest-700); }
+.mf-phone .tile .ring .fg { stroke: var(--mf-leaf); stroke-linecap: round; }
+.mf-phone .tile .state .resumed { font-weight: 400; font-size: 12px; color: var(--mf-oat); }
+.mf-phone .lib .vx { all: unset; box-sizing: border-box; position: absolute; top: 0; right: 0; width: 48px; height: 48px; display: flex;
+  align-items: center; justify-content: center; color: var(--mf-linen); cursor: pointer; z-index: 1; }
+.mf-phone .lib .vx:disabled { opacity: .4; cursor: default; }
+.mf-phone .lib .vx:focus-visible { outline: 3px solid var(--mf-brass); outline-offset: -3px; }
+.mf-phone li[data-state="cancelling"] .state { color: var(--mf-oat); opacity: .6; }

@@ -688,6 +688,8 @@ def status(conn, row):
     st = row["state"]
     out = {"id": row["id"], "state": st, "progress": 100 if st == "ready" else int(row["progress_pct"] or 0),
            "resumed": bool(row["resumed"]) and st in ("queued", "processing")}
+    if st == "ready":
+        out["duration_ms"] = row["duration_ms"]            # the Library turns the tile into "▶ m:ss"
     if row["cancel_requested"] and st != "ready":
         out["state"] = "cancelling"
     elif st == "queued":

@@ -1,0 +1,17 @@
+# #99: root oneshot for "Erase everything" (deploy/factory-reset.sh). Started by the app via polkit
+# (deploy/memoryframe-polkit.rules) after it writes /run/memoryframe-app/factory-reset, and at every boot
+# before the app, where it finishes a reset cut short by a power loss (no marker: it does nothing).
+[Unit]
+Description=Memory Frame: erase photos and pairings (finishes an interrupted reset at boot)
+Before=memoryframe.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/memoryframe-factory-reset
+TimeoutStartSec=600
+StandardOutput=journal
+StandardError=journal
+ExecStopPost=/bin/rm -f /run/memoryframe-app/factory-reset
+
+[Install]
+WantedBy=multi-user.target

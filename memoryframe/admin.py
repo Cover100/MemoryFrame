@@ -47,7 +47,8 @@ def phone_storage():
     from . import upload
     c = current_app.config
     try:
-        s = upload.storage_info(c["DATA_DIR"], c["MIN_FREE_BYTES"], c["AVG_PHOTO_BYTES"])
+        from . import storage
+        s = upload.storage_info(c["DATA_DIR"], storage.min_free(c), c["AVG_PHOTO_BYTES"])
     except OSError:
         return None
     total, free = s["total"], s["free"]
@@ -95,7 +96,8 @@ def home():
     # the same name). Only the offline panel (phone_wifi) hides it in dev: there it says which network to rejoin.
     return render_template("admin_home.html", wifi_notice=wifi.admin_notice(conn),
                            just_paired=request.args.get("paired") == "1", preview=preview, total=total,
-                           st=phone_storage(), s=settings.get_all(conn), ssid=wifi.current_wifi(conn)[0] or "")
+                           st=phone_storage(), s=settings.get_all(conn), ssid=wifi.current_wifi(conn)[0] or "",
+                           home_wifi=_home_wifi_link())
 
 
 @bp.route("/sign-out-all", methods=["POST"])
@@ -109,15 +111,32 @@ def upload_page():
     from flask import current_app
     from . import imaging
     store = imaging.stored_size(current_app.config["DISPLAY_TARGET"])      # #82: the browser shrinks to this
-    return render_template("upload.html", st=phone_storage(), store_w=store[0], store_h=store[1])
+    from flask import make_response
+    from . import websec
+    resp = make_response(render_template("upload.html", st=phone_storage(), store_w=store[0], store_h=store[1],
+                                         videos=_videos()))
+    # #103: the trim screen previews the picked video from the phone's own memory (a blob: URL, never uploaded
+    # first). Only this page allows blob: media; everything else keeps the site-wide policy.
+    resp.headers["Content-Security-Policy"] = websec.CSP.replace("media-src 'self'", "media-src 'self' blob:")
+    return resp
+
+
+def _videos():
+    from flask import current_app
+    from . import video
+    v = current_app.config.get("VIDEOS")
+    return video.available() if v is None else bool(v)
 
 
 @bp.route("/library")
 def library_page():
     """#80 (phone/09-LIBRARY.md): one grid, newest first, rendered here so it shows without a second request.
     Only ids and kinds go to the page (tile labels are "Photo 4 of 128", never file names)."""
-    items = get_db().execute("SELECT id, kind FROM media ORDER BY created_at DESC, id DESC").fetchall()
-    return render_template("library.html", items=items, n=len(items), st=phone_storage())
+    items = get_db().execute("SELECT id, kind, state, duration_ms, progress_pct, cancel_requested, resumed FROM media "
+                             "ORDER BY created_at DESC, id DESC").fetchall()
+    nv = sum(1 for m in items if m["kind"] == "video")
+    return render_template("library.html", items=items, n=len(items), nv=nv, np=len(items) - nv, st=phone_storage(),
+                           videos=_videos() or nv > 0)
 
 
 @bp.route("/settings")
@@ -131,3 +150,9 @@ def settings_page():
     return render_template("settings.html", s=settings.get_all(get_db()), slides=settings.SLIDE_SECONDS,
                            message=message.get(current_app.config["DATA_DIR"]),
                            message_max=message.MAX_LEN, about=about)
+
+
+def _home_wifi_link():
+    """#68: the menu entry only while the page's gate holds."""
+    from . import homewifi, wifi as _wifi
+    return homewifi.available() and _wifi._from_hotspot()

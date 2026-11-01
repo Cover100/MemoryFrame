@@ -98,37 +98,42 @@
             <div class="successTitle">Restart the frame to pair a phone</div>
         </div>
         <div id="pairBox">
+            <!-- #98 W0 (Wren 16/16b): welcome header and footer, shown only on first run -->
+            <div id="welcomeHead" hidden><h1 class="welcomeTitle">Welcome to your Memory Frame</h1>
+            <div class="welcomeSub">Send photos from your phone and they appear here.</div></div>
             <div class="pairHead"><span id="pairTitle">Pair a phone</span> <button id="pairClose" class="mf-btn mf-btn-secondary" type="button" hidden>Close</button></div>
             <div class="pairCols">
                 <div class="step" id="wifiStep" hidden>
-                    <div class="stepTitle"><span class="stepBadge">1</span>Join Wi-Fi</div>
+                    <div class="stepTitle"><span class="stepBadge">1</span><span id="wifiTitle">Join Wi-Fi</span></div>
                     <div id="wifiQr" class="qr"></div>
-                    <div class="stepText" id="wifiNameLine">Wi-Fi name<b id="pairSsid"></b></div>
-                    <div class="stepText" id="wifiJoin" hidden>Join <b id="wifiJoinName"></b> with its password</div>
+                    <div class="stepText" id="wifiNameLine"><span class="oldLabel">Wi-Fi name</span><b id="pairSsid"></b></div>
+                    <div class="stepText stepText--inline" id="wifiJoin" hidden>Join <b id="wifiJoinName"></b> with its password</div>
                 </div>
                 <div class="step">
                     <div class="stepTitle"><span class="stepBadge" id="siteBadge">1</span><span id="siteTitle">Open site</span></div>
                     <div id="pairQr" class="qr"></div>
-                    <div class="stepText">or open<b id="pairUrl"></b><span id="pairUrlAlt"></span></div>
+                    <div class="stepText"><span class="oldLabel">or open</span><b id="pairUrl"></b><span id="pairUrlAlt"></span></div>
                 </div>
                 <div class="step" id="codeStep">
-                    <div class="stepTitle"><span class="stepBadge" id="codeBadge">2</span>Enter code</div>
+                    <div class="stepTitle"><span class="stepBadge" id="codeBadge">2</span><span id="codeTitle">Enter code</span></div>
                     <div class="codeWrap"><div id="pairCode">--- ---</div>
-                    <div class="stepText">Type this on your phone if it asks for a code</div></div>
+                    <div class="stepText" id="codeHint">Type this on your phone if it asks for a code</div></div>
                 </div>
             </div>
+            <div id="welcomeFoot" hidden>Then tap <b>Upload</b> on your phone.</div>
         </div>
     </div>
 
     <!-- Photos but no phone paired: the slideshow runs; only this small hint -->
     <div id="pairHint">Double-tap for menu to pair a phone</div>
 
-    <!-- MF-19: empty library -->
+    <!-- MF-19 / #98 W1 (Wren 16c): paired, empty library -->
     <div id="emptyOverlay" class="overlay">
+        <button id="emptyClose" class="mf-btn mf-btn-secondary" type="button">Close</button>
         <div class="emptyText">
-            <div class="emptyTitle">No photos yet</div>
-            <div>Open <b id="emptyUrl">10.42.0.1</b> on your paired phone and tap "Upload photos".</div>
-            <button id="emptyClose" class="mf-btn mf-btn-secondary" type="button">Close</button>
+            <span class="welcomeTick"><svg class="mf-tick w1-tick" viewBox="0 0 24 24" aria-hidden="true"><polyline points="5,12.5 10,17.5 19,7" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            <div class="emptyTitle">You're connected</div>
+            <div>Open <b id="emptyUrl">http://10.42.0.1</b> on your phone and tap <b>Upload</b>.</div>
         </div>
     </div>
 
@@ -142,6 +147,7 @@
                 <div class="menuStore">
                     <div class="menuStoreVal"><span>Free storage</span><b id="menuFree">-</b></div>
                     <div class="menuTrack" role="meter" aria-label="Storage used" aria-valuemin="0" aria-valuemax="100" id="menuMeter"><div id="menuUsed"></div></div>
+                    <p class="stepText" id="menuFull" hidden>Almost full</p>
                 </div>
             </div>
             <div class="menuSide">
@@ -155,6 +161,63 @@
         </div>
     </div>
 
+
+    <!-- #99: Frame tools (3 s hold anywhere). Close is the default; works offline (localhost only). -->
+    <div id="toolsOverlay" class="overlay">
+        <div id="toolsBox">
+            <div id="toolsMenu" class="toolsPanel">
+                <div class="confirmTitle">Frame tools</div>
+                <div class="toolsList">
+                    <button id="toolsReset" class="mf-btn mf-btn-secondary" type="button">Reset the frame…</button>
+                    <button id="toolsDev" class="mf-btn mf-btn-secondary" type="button">Join developer Wi-Fi…</button>
+                    <button id="toolsClose" class="mf-btn mf-btn-secondary mf-btn-default" type="button">Close</button>
+                </div>
+            </div>
+            <div id="resetChoose" class="toolsPanel" hidden>
+                <div class="confirmTitle">Reset the frame</div>
+                <div class="toolsList">
+                    <button id="resetKeep" class="mf-btn mf-btn-secondary mf-btn-default" type="button">Keep my photos</button>
+                    <button id="resetErase" class="mf-btn mf-btn-danger" type="button">Erase everything</button>
+                    <button id="resetChooseCancel" class="mf-btn mf-btn-secondary" type="button">Cancel</button>
+                </div>
+            </div>
+            <div id="resetKeepAsk" class="toolsPanel" hidden>
+                <div class="confirmTitle">Keep my photos?</div>
+                <div class="confirmBody">Phones sign out and settings reset. Photos stay.</div>
+                <div class="shutdownButtons">
+                    <button id="resetKeepCancel" class="resetCancel" type="button">Cancel</button>
+                    <button id="resetKeepConfirm" type="button">Reset</button>
+                </div>
+            </div>
+            <div id="resetEraseAsk" class="toolsPanel" hidden>
+                <div class="confirmTitle">Erase everything?</div>
+                <div class="confirmBody">This deletes all photos and signs out all phones. The Wi-Fi name and password stay the same. This can't be undone.</div>
+                <div class="shutdownButtons">
+                    <button id="resetEraseCancel" class="resetCancel" type="button">Cancel</button>
+                    <button id="resetEraseHold" type="button"><span class="holdFill" aria-hidden="true"></span><span class="holdLabel">Hold to erase</span></button>
+                </div>
+            </div>
+            <div id="resetFail" class="toolsPanel" hidden>
+                <div class="confirmTitle">Couldn't reset</div>
+                <div class="confirmBody" id="resetFailReason"></div>
+                <div class="shutdownButtons">
+                    <button id="resetFailOk" class="mf-btn mf-btn-secondary" type="button">OK</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- #99: reset in progress (not dismissable); reloads into the welcome screen (#98) when done. -->
+    <div id="resetCover" role="status" hidden>
+        <!-- Wren nit: static brass plug mark like the shutdown screen (no animation) -->
+        <svg class="resetPlug" viewBox="0 0 168 168" aria-hidden="true" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="84" cy="84" r="78" stroke-width="6"/>
+            <path d="M70 40v20M98 40v20" stroke-width="8"/>
+            <path d="M58 60h52v18a26 26 0 0 1-52 0z" fill="currentColor" stroke-width="6"/>
+            <path d="M84 104v14a12 12 0 0 0 12 12h6" stroke-width="7"/>
+        </svg>
+        <div class="resetTitle">Resetting…</div>
+        <div class="resetSub">Don't unplug</div>
+    </div>
 
     <!-- MF-51: Dev mode until reboot (confirm) -->
     <div id="devModeOverlay" class="overlay">
@@ -288,6 +351,18 @@
             <p class="hotspot-error-foot">Still not working? Restart the frame once. If this screen comes back, ask for help.</p>
         </div>
     </div>
+</div>
+<!-- #68 (Wren 17a-17c): home Wi-Fi test overlay (not dismissable) and 10 s result -->
+<div id="homeWifiTesting" class="wifi-overlay hw-frame" role="status" hidden>
+    <div class="hw-frame-card">
+        <div class="hw-frame-ring" aria-hidden="true"></div>
+        <h2>Testing home <span class="nw">Wi-Fi</span>...</h2>
+        <p>Phones may disconnect for up to 90 seconds.</p>
+    </div>
+</div>
+<div id="homeWifiToast" class="dev-toast hw-toast" role="status" hidden>
+    <span class="hw-tick" id="homeWifiTick" aria-hidden="true"><svg class="hw-svg" viewBox="0 0 24 24" aria-hidden="true"><polyline points="5,12.5 10,17.5 19,7" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg><b>!</b></span>
+    <div><div class="dev-toast-title" id="homeWifiTitle"></div><div class="dev-toast-sub" id="homeWifiSub"></div></div>
 </div>
 <!-- MF-18: hotspot change (rejoin countdown, updated, cancelled) -->
 <div id="wifiRejoin" class="wifi-overlay" hidden>

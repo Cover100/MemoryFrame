@@ -104,7 +104,9 @@ def default_config():
         "MAX_IMAGE_PIXELS": _env_int("MEMORYFRAME_MAX_MEGAPIXELS", 150, MAX_CAP_MP) * 1_000_000,
         # HEIC/PNG/WebP can't be decoded at reduced size, so they have their own, lower cap (#82).
         "MAX_NONJPEG_PIXELS": _env_int("MEMORYFRAME_MAX_NONJPEG_MEGAPIXELS", 50, MAX_CAP_MP) * 1_000_000,
-        "MIN_FREE_BYTES": int(os.environ.get("MEMORYFRAME_MIN_FREE_MB", "500")) * 1024 * 1024,
+        # #96: None = max(500 MB, 2% of the card) (Rowan's decision); MEMORYFRAME_MIN_FREE_MB overrides it
+        "MIN_FREE_BYTES": (int(os.environ["MEMORYFRAME_MIN_FREE_MB"]) * 1024 * 1024
+                           if os.environ.get("MEMORYFRAME_MIN_FREE_MB") else None),
         "AVG_PHOTO_BYTES": 1024 * 1024,   # #82: ~0.5 MB stored copy + ~0.25 MB display copy + thumb, rounded up
         "DISPLAY_SIZE": os.environ.get("MEMORYFRAME_DISPLAY_SIZE", "1000x600"),
     }
@@ -117,3 +119,20 @@ def ensure_layout(data_dir):
 
 def path(app, sub, name=""):
     return os.path.join(app.config["DATA_DIR"], sub, name)
+
+
+MIN_FREE_FLOOR = 500 * 1024 * 1024
+MIN_FREE_PCT = 0.02
+
+
+def min_free(config, data_dir=None):
+    """#96: the upload reserve. The configured value if set, else max(500 MB, 2% of the card)."""
+    v = config.get("MIN_FREE_BYTES")
+    if v is not None:
+        return v
+    import shutil
+    try:
+        total = shutil.disk_usage(data_dir or config["DATA_DIR"]).total
+    except OSError:
+        return MIN_FREE_FLOOR
+    return max(MIN_FREE_FLOOR, int(total * MIN_FREE_PCT))

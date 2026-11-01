@@ -1,0 +1,16 @@
+# #69: undo the mfapp migration without SSH or Pi Connect. Put memoryframe-rollback.txt on the SD card's
+# bootfs drive with one line: "rollback" (real) or "dry-run" (only logs the plan). The file is renamed to
+# memoryframe-rollback.done-<time>.txt first, so it runs once. Log: journalctl -b -u memoryframe-rollback
+[Unit]
+Description=Memory Frame: roll back the mfapp migration (boot flag)
+DefaultDependencies=no
+After=local-fs.target
+Before=memoryframe.service
+ConditionPathExists=/boot/firmware/memoryframe-rollback.txt
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/memoryframe-migrate boot-flag
+
+[Install]
+WantedBy=multi-user.target

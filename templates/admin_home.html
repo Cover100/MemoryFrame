@@ -24,6 +24,7 @@
 {% endif %}
 <ul class="rows">
   <li><a class="row-link" href="/admin/wifi"><span class="ico" aria-hidden="true">⌁</span><span class="t">Frame <span class="nw">Wi-Fi</span>{% if ssid %}<small>{{ ssid }}</small>{% endif %}</span><span class="chev" aria-hidden="true">›</span></a></li>
+  {% if home_wifi %}<li><a class="row-link" href="/admin/home-wifi"><span class="ico" aria-hidden="true">⌁</span><span class="t">Developer <span class="nw">Wi-Fi</span></span><span class="chev" aria-hidden="true">›</span></a></li>{% endif %}
   <li><a class="row-link" href="/admin/settings"><span class="ico" aria-hidden="true">⚙</span><span class="t">Settings<small>{{ slide_label(s.slide_seconds) }} · {{ "Fade" if s.transition == "fade" else "No fade" }} · Shuffle {{ "on" if s.shuffle else "off" }}</small></span><span class="chev" aria-hidden="true">›</span></a></li>
   <li><form method="post" action="/admin/sign-out-all" id="signOutForm">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

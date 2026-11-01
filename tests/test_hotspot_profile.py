@@ -227,7 +227,7 @@ def test_join_line_markup_is_csp_safe():
     root = Path(__file__).resolve().parents[1]
     html = (root / "templates" / "index.html").read_text()
     line = next(l for l in html.splitlines() if 'id="wifiJoin"' in l)
-    assert "style=" not in line and 'class="stepText"' in line and "with its password" in line
+    assert "style=" not in line and 'class="stepText stepText--inline"' in line and "with its password" in line
     js = (root / "static" / "pairing.js").read_text()
     assert '$("wifiJoinName").textContent' in js and "wifi_join_name" in js
 

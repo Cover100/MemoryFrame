@@ -11,6 +11,8 @@
 #                              # MemoryFrame-AP-pending keyfile and switches to it; old profile kept
 #   netmode.sh wifi-commit     # pending becomes the hotspot profile, old profile deleted
 #   netmode.sh wifi-rollback   # old hotspot back up, pending profile deleted
+#   netmode.sh home-wifi --request   # #68: dev fallback only: test + save the developer (home) Wi-Fi from
+#                              # the app's request file as MemoryFrame-home; hotspot always restored
 #
 # Boot-partition files (editable from any PC, drive "bootfs"):
 #   memoryframe-mode.txt      one word: product | dev. Missing/empty/other -> PRODUCT (hotspot)
@@ -49,6 +51,9 @@
 # rollback, mode changes, reset), so the app shows what is really broadcast (#89).
 # Test hooks: NMCLI, MEMORYFRAME_BOOT_DIR, MEMORYFRAME_STATE_DIR, MEMORYFRAME_HOTSPOT_SH,
 # MEMORYFRAME_DEV_WAIT, MEMORYFRAME_BOOT_ID_FILE.
+# #68 dev-only test hook (root may use it): the file $STATE_DIR/force-dev-fallback (tmpfs, so gone after a
+# reboot) makes dev mode act as if no developer Wi-Fi connected: hotspot for now, dev_fallback=true.
+# No profile is edited. Product mode never looks at it.
 # As root (boot unit, the app's polkit-started units, sudo by hand) every hook above is IGNORED and
 # PATH is fixed, so an inherited environment can never point root at other code or directories.
 # MEMORYFRAME_AS_ROOT_TEST=1 only makes a non-root test run behave as root (it can't do the reverse).
@@ -82,6 +87,11 @@ PENDING="$STATE_DIR/wifi-change-pending"     # written by the MF-18 helper while
 PENDING_CON="${MEMORYFRAME_PENDING_CON:-MemoryFrame-AP-pending}"
 OLD_CON="${MEMORYFRAME_OLD_CON:-MemoryFrame-hotspot-old}"   # only during wifi-commit
 NM_DIR="${MEMORYFRAME_NM_DIR:-/etc/NetworkManager/system-connections}"
+HOME_CON="MemoryFrame-home"                   # #68: the developer Wi-Fi saved from the phone
+HOME_PENDING="MemoryFrame-home-pending"
+HOME_OLD="MemoryFrame-home-old"
+HOME_STATE="$STATE_DIR/home-wifi.json"
+FORCE_FALLBACK="$STATE_DIR/force-dev-fallback"
 RESET_DONE=false
 COMMIT_RECOVERED=false
 
@@ -90,7 +100,7 @@ log() {
     logger -t memoryframe-netmode -- "$*" 2>/dev/null || true
 }
 
-usage() { echo "usage: $0 product|dev|dev-temp|status|boot|wifi-apply|wifi-commit|wifi-rollback" >&2; exit 2; }
+usage() { echo "usage: $0 product|dev|dev-temp|status|boot|wifi-apply|wifi-commit|wifi-rollback|home-wifi" >&2; exit 2; }
 
 trim() { local s="${1//$'\r'/}"; s="${s#"${s%%[![:space:]]*}"}"; printf '%s' "${s%"${s##*[![:space:]]}"}"; }
 
@@ -163,7 +173,9 @@ client_profiles() {
     local n
     while IFS= read -r n; do
         if [ -z "$n" ] || [ "$n" = "$HOTSPOT_CON" ]; then continue; fi
-        case "$n" in MemoryFrame-*) continue ;; esac      # pending/old hotspot profiles are not clients
+        if [ "$n" != "$HOME_CON" ]; then
+            case "$n" in MemoryFrame-*) continue ;; esac  # pending/old profiles are not clients (#68: except MemoryFrame-home)
+        fi
         [ "$(prop "$n" connection.type)" = 802-11-wireless ] || continue
         local ifn; ifn="$(prop "$n" connection.interface-name)"
         if [ -n "$ifn" ] && [ "$ifn" != "$IFACE" ]; then continue; fi   # saved for another interface
@@ -256,6 +268,9 @@ left_by_product() {
 dev_profile() {
     # ssid= given: the profile for that SSID. Otherwise the most recently used client profile.
     local ssid="$1" n best="" best_ts=-1 ts
+    # #68: the Wi-Fi saved from the phone wins (the later intent; open decision recorded in the PR)
+    local all; all="$(client_profiles)"        # (not piped into grep -q: SIGPIPE + pipefail)
+    if [[ $'\n'"$all"$'\n' == *$'\n'"$HOME_CON"$'\n'* ]]; then printf '%s\n' "$HOME_CON"; return 0; fi
     while IFS= read -r n; do
         if [ -n "$ssid" ]; then
             if [ "$(prop "$n" 802-11-wireless.ssid)" = "$ssid" ]; then printf '%s\n' "$n"; return 0; fi
@@ -272,6 +287,11 @@ apply_dev() {   # [temp]: MF-51 menu "Dev mode" until reboot (hotspot profile le
     local ssid p temp="${1:-}" req=dev
     if [ "$temp" = temp ]; then req=dev-temp; fi
     ssid="$(dev_ssid)"
+    if [ -e "$FORCE_FALLBACK" ]; then
+        log "dev: test hook force-dev-fallback present: starting the hotspot (no profile changed)"
+        apply_product "$req" true fallback || true
+        return 1
+    fi
     if ! p="$(dev_profile "$ssid")"; then
         log "dev: no matching NetworkManager Wi-Fi profile${ssid:+ for the configured ssid}; starting the hotspot"
         apply_product "$req" true fallback || true
@@ -476,11 +496,137 @@ wifi_commit() {
     log "wifi change kept"
 }
 
+# ---------- #68: developer (home) Wi-Fi from the phone, dev fallback only ----------
+
+HOME_REQ="${MEMORYFRAME_HOME_REQ:-/run/memoryframe-app/home-wifi}"
+HOME_TEST_WAIT="${MEMORYFRAME_HOME_WAIT:-25}"
+
+home_state() {   # state reason ssid_hex (never a password)
+    mkdir -p "$STATE_DIR"
+    printf '{"state": %s, "reason": %s, "ssid_hex": %s, "ts": %s}\n' "$(json_str "$1")" "$(json_str "$2")" \
+        "$(json_str "$3")" "$(date +%s)" > "$HOME_STATE.tmp"
+    chmod 0644 "$HOME_STATE.tmp"
+    mv "$HOME_STATE.tmp" "$HOME_STATE"
+}
+
+in_dev_fallback() {
+    [ -f "$STATE" ] && grep -q '"mode": "product"' "$STATE" && grep -q '"dev_fallback": true' "$STATE" \
+        && grep -qE '"requested": "dev(-temp)?"' "$STATE"
+}
+
+valid_home_psk() { printf '%s' "$1" | LC_ALL=C grep -qxE '[ -~]{8,63}|[0-9A-Fa-f]{64}'; }
+
+hex_to_bytes() {   # even-length lowercase/uppercase hex -> raw bytes on stdout
+    local h="$1" i
+    [[ "$h" =~ ^([0-9A-Fa-f]{2}){1,32}$ ]] || return 1
+    for ((i = 0; i < ${#h}; i += 2)); do printf '%b' "\\x${h:i:2}"; done
+}
+
+delete_home_pending() {
+    if profiles | grep -qxF "$HOME_PENDING"; then "$NMCLI" connection delete "$HOME_PENDING" >/dev/null 2>&1 || true; fi
+    rm -f "$NM_DIR/$HOME_PENDING.nmconnection"
+}
+
+recover_home() {   # boot: never trust an untested profile; finish an interrupted rename
+    delete_home_pending
+    if profiles | grep -qxF "$HOME_OLD"; then
+        if profiles | grep -qxF "$HOME_CON"; then "$NMCLI" connection delete "$HOME_OLD" >/dev/null 2>&1 || true
+        else "$NMCLI" connection modify "$HOME_OLD" connection.id "$HOME_CON" >/dev/null 2>&1 || true; fi
+    fi
+}
+
+HOME_RESTORE_ARMED=false
+home_restore() {   # always: pending down + deleted unless promoted, hotspot back (2 tries)
+    [ "$HOME_RESTORE_ARMED" = true ] || return 0
+    HOME_RESTORE_ARMED=false
+    set +e
+    if [ "$(active)" = "$HOME_PENDING" ]; then "$NMCLI" connection down "$HOME_PENDING" >/dev/null 2>&1; fi
+    delete_home_pending
+    if [ "$(active)" != "$HOTSPOT_CON" ]; then apply_product "$HOME_REQUESTED" true fallback >/dev/null 2>&1; fi
+}
+
+home_wifi() {
+    local req ver hex ssid psk f r=connect_failed
+    [ "${1:-}" = --request ] || { log "home-wifi: --request required"; exit 2; }
+    req="$(APPLY_REQ="$HOME_REQ" read_request)" || { rm -f "$HOME_REQ"; home_state failed busy ""; exit 2; }
+    rm -f "$HOME_REQ"
+    { IFS= read -r ver || true; IFS= read -r hex || true; IFS= read -r psk || true; } <<< "$req"
+    req=""
+    if ! in_dev_fallback || [ "$(active)" != "$HOTSPOT_CON" ]; then
+        log "home-wifi refused: only while developer mode fell back to the hotspot"; home_state failed busy ""; exit 3
+    fi
+    if [ "$ver" != v1 ] || ! ssid="$(hex_to_bytes "$hex")" \
+            || [ "$(printf '%s' "$ssid" | LC_ALL=C wc -c)" -ne "$((${#hex} / 2))" ] || ! valid_ssid "$ssid" || ! valid_home_psk "$psk" \
+            || [ "$ssid" = "$(hotspot_ssid)" ]; then
+        log "home-wifi refused: invalid name or password"; home_state failed invalid ""; exit 2
+    fi
+    HOME_REQUESTED="$(sed -n 's/.*"requested": "\([a-z-]*\)".*/\1/p' "$STATE")"
+    home_state testing "" "$hex"
+    delete_home_pending
+    f="$NM_DIR/$HOME_PENDING.nmconnection"
+    mkdir -p "$NM_DIR"
+    (
+        umask 077
+        {
+            printf '[connection]\nid=%s\ntype=wifi\ninterface-name=%s\nautoconnect=false\n\n' "$HOME_PENDING" "$IFACE"
+            printf '[wifi]\nmode=infrastructure\nssid=%s\n\n' "$(ssid_bytes "$ssid")"
+            printf '[wifi-security]\nkey-mgmt=wpa-psk\npsk=%s\n\n' "$(keyfile_escape "$psk")"
+            printf '[ipv4]\nmethod=auto\n\n[ipv6]\nmethod=auto\n'
+        } > "$f.tmp"
+        chmod 0600 "$f.tmp"
+        mv "$f.tmp" "$f"
+    )
+    psk=""
+    HOME_RESTORE_ARMED=true
+    trap 'home_restore' EXIT
+    trap 'exit 143' TERM
+    trap 'exit 130' INT
+    if ! "$NMCLI" connection load "$f" >/dev/null 2>&1; then
+        log "home-wifi: could not load the profile"; home_state failed connect_failed "$hex"; exit 4
+    fi
+    "$NMCLI" connection down "$HOTSPOT_CON" >/dev/null 2>&1 || true
+    if timeout "$((HOME_TEST_WAIT + 5))" "$NMCLI" --wait "$HOME_TEST_WAIT" connection up "$HOME_PENDING" >/dev/null 2>&1 \
+            && [ "$(active)" = "$HOME_PENDING" ]; then
+        local i
+        r=timeout
+        for i in 1 2 3 4 5; do
+            if [ -n "$("$NMCLI" -g IP4.ADDRESS device show "$IFACE" 2>/dev/null)" ]; then r=ok; break; fi
+            sleep 1
+        done
+    fi
+    "$NMCLI" connection down "$HOME_PENDING" >/dev/null 2>&1 || true
+    if [ "$r" = ok ]; then
+        # power-cut safe: old -> -old, pending -> home, then delete -old (recover_home finishes it)
+        if profiles | grep -qxF "$HOME_CON"; then "$NMCLI" connection modify "$HOME_CON" connection.id "$HOME_OLD" >/dev/null 2>&1; fi
+        "$NMCLI" connection modify "$HOME_PENDING" connection.id "$HOME_CON" >/dev/null 2>&1
+        if profiles | grep -qxF "$HOME_OLD"; then "$NMCLI" connection delete "$HOME_OLD" >/dev/null 2>&1 || true; fi
+        home_state saved ok "$hex"
+        log "home-wifi: saved (ssid length ${#ssid})"
+    else
+        home_state failed "$r" "$hex"
+        log "home-wifi: test failed ($r); previous developer Wi-Fi kept"
+    fi
+    home_restore
+    trap - EXIT
+    [ "$r" = ok ]
+}
+
+home_wifi_restore() {   # ExecStopPost: after a kill/timeout, the hotspot is back and the result is recorded
+    if [ -f "$HOME_STATE" ] && grep -q '"state": "testing"' "$HOME_STATE"; then
+        HOME_REQUESTED="$(sed -n 's/.*"requested": "\([a-z-]*\)".*/\1/p' "$STATE" 2>/dev/null)"
+        HOME_RESTORE_ARMED=true; home_restore
+        home_state failed timeout "$(sed -n 's/.*"ssid_hex": "\([0-9a-fA-F]*\)".*/\1/p' "$HOME_STATE")"
+        log "home-wifi: stopped before it finished; hotspot restored"
+    fi
+}
+
 case "${1:-}" in
     status) status ;;
     wifi-apply) take_lock; wifi_apply "${2:-}" ;;   # stdout (/run/memoryframe/*.out, 0644): uuid only, never the password
     wifi-commit) take_lock nopending; wifi_commit ;;
     wifi-rollback) take_lock nopending; wifi_rollback ;;
+    home-wifi) take_lock; home_wifi "${2:-}" ;;
+    home-wifi-restore) take_lock nopending; home_wifi_restore ;;   # stdout: nothing secret; result in home-wifi.json
     product|dev)
         take_lock
         write_mode_file "$1"
@@ -501,6 +647,7 @@ case "${1:-}" in
             fi
         fi
         recover_commit
+        recover_home
         if [ -e "$PENDING" ] || profiles | grep -qxF "$PENDING_CON"; then
             log "unconfirmed Wi-Fi change found at boot: rolling back"
             delete_pending_profile; rm -f "$PENDING"

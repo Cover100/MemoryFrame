@@ -134,6 +134,7 @@ def write_atomic(dst, data):
         if not ok:
             raise OSError(errno.ENOSPC, "short write: the copy on disk is incomplete", tmp)
         os.replace(tmp, dst)
+        fsync_dir(os.path.dirname(dst) or ".")      # the rename itself survives a power cut
     except BaseException:
         try:
             os.remove(tmp)
@@ -395,10 +396,13 @@ def backfill(conn, data_dir, target, force=False, pause=0):
             failed += 1
             if err is not None and transient_failure(err):
                 prev = failures.get(name)
-                tries = prev.get("tries", 0) + 1 if isinstance(prev, dict) and prev.get("key") == key else 1
+                tries = prev.get("tries", 0) if isinstance(prev, dict) and prev.get("key") == key else 0
+                full = isinstance(err, OSError) and err.errno == errno.ENOSPC
+                if not full:
+                    tries += 1   # #104 N1: a full disk is not the photo's fault and never uses up its tries
                 # not the photo's fault: retried on the next runs, but only a bounded number of times
                 failures[name] = key if tries >= MAX_TRANSIENT_TRIES else {"key": key, "tries": tries}
-                if isinstance(err, OSError) and err.errno == errno.ENOSPC:
+                if full:
                     log.warning("display copies: disk full, stopping this run (%s)", err)
                     break
             else:

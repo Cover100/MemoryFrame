@@ -40,7 +40,8 @@ def run_install(tmp_path, envd, sudo=SUDO, tweak=None, active=True, **popen_kw):
     bin_ = tmp_path / "bin"
     bin_.mkdir(exist_ok=True)
     for name, body in (("sudo", sudo), ("systemctl", SYSTEMCTL), ("python3", PY3), ("chromium", STUB + "exit 0\n"),
-                       ("crontab", STUB + "exit 1\n"), ("nmcli", STUB + "exit 0\n"), ("pkaction", STUB + "exit 0\n")):
+                       ("crontab", STUB + "exit 1\n"), ("nmcli", STUB + "exit 0\n"), ("pkaction", STUB + "exit 0\n"),
+                       ("curl", STUB + 'exit "${STUB_CURL:-0}"\n')):
         (bin_ / name).write_text(body)
         (bin_ / name).chmod(0o755)
     home = tmp_path / "home"
@@ -48,7 +49,8 @@ def run_install(tmp_path, envd, sudo=SUDO, tweak=None, active=True, **popen_kw):
     log = tmp_path / "install.log"
     e = dict(envd["env"], PATH=f"{bin_}:/usr/bin:/bin", HOME=str(home), INSTALL_LOG=str(log),
              AUDIT_HOME=str(home), AUDIT_ROOT=str(tmp_path / "root"), SUDO="", CRONTAB=str(bin_ / "crontab"),
-             USER="pi", XDG_SESSION_TYPE="wayland", STUB_ACTIVE="0" if active else "3")
+             USER="pi", XDG_SESSION_TYPE="wayland", STUB_ACTIVE="0" if active else "3",
+             MEMORYFRAME_HEALTH_WAIT="2")
     e.pop("SUDO_USER", None)
     popen_kw.setdefault("stderr", subprocess.PIPE)
     r = subprocess.run(["bash", str(app / "deploy" / "install.sh")], env=e, stdout=subprocess.PIPE,

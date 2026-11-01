@@ -29,7 +29,7 @@ def static(filename):
 
 
 def no_cache_html(resp):
-    if resp.mimetype == "text/html":
+    if resp.mimetype == "text/html" and resp.headers.get("Cache-Control") != "no-store":   # #68 keeps no-store
         resp.headers["Cache-Control"] = "no-cache"
     return resp
 

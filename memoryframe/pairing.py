@@ -8,6 +8,7 @@
   GET  /frame/status           frame (localhost): IP, SSID, free storage, version (MF-19 menu)
 """
 import os
+import time
 
 from flask import Blueprint, current_app, jsonify, make_response, redirect, render_template, request
 
@@ -68,6 +69,10 @@ def _state():
     out["netmode"] = {"dev": nm["mode"] == "dev", "lan_ip": lan_ip if isinstance(lan_ip, str) and lan_ip else None,
                       "dev_fallback": nm["dev_fallback"], "hotspot_error": nm["hotspot_error"],
                       "boot_id": nm["boot_id"], "temp": nm.get("temp", False)}
+    # #68: home Wi-Fi test state for the frame overlay (17a) and 10 s result (17b/17c); no SSID or password.
+    from . import homewifi
+    hw = homewifi.read_status()
+    out["home_wifi"] = {"state": hw["state"], "ts": hw["ts"]}
     # MF-55 G3: in temporary Developer Wi-Fi phones can't reach the frame's site; pairing shows
     # "Restart the frame to pair a phone" and the state carries no address, QR or code.
     if nm.get("temp"):
@@ -82,7 +87,18 @@ def _state():
 @bp.route("/pairing/state")
 @localhost_only
 def state():
+    current_app.extensions["mf_kiosk_seen"] = time.monotonic()   # #95: kiosk heartbeat (2 s poll)
     return jsonify(_state())
+
+
+@bp.route("/frame/liveness")
+@localhost_only
+def liveness():
+    """#95: kiosk.sh restarts a frozen Chromium when the page stops polling /pairing/state."""
+    seen = current_app.extensions.get("mf_kiosk_seen")
+    st = current_app.extensions.get("mf_shutdown") or {}
+    return jsonify({"kiosk_age_s": None if seen is None else round(time.monotonic() - seen, 1),
+                    "shutting_down": bool(st.get("synced"))})
 
 
 @bp.route("/pairing/start", methods=["POST"])
@@ -136,5 +152,7 @@ def frame_status():
     return jsonify({"ips": frameinfo.own_ips(), "ssid": name, "version": frameinfo.version(),
                     "network": urls["mode"], "site": urls["primary"] + "/", "site_fallback":
                     urls["fallback"] + "/" if urls["fallback"] else None,
-                    "storage": frameinfo.free_storage(current_app.config["DATA_DIR"]),
+                    "storage": frameinfo.free_storage(current_app.config["DATA_DIR"],
+                                                      storage.min_free(current_app.config)),
+                    "orphans": current_app.config.get("ORPHANS_REPORTED", 0),     # #96: files kept, not deleted
                     "paired": auth.paired_count(get_db())})

@@ -2,6 +2,7 @@
 stop, a new launcher starts with the desktop session's environment, and the browser comes back on the tmpfs."""
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -168,3 +169,63 @@ def test_browser_not_up_after_restart_is_an_error(leaky):
 def test_kiosk_never_gives_the_lock_fd_to_its_children():
     s = (ROOT / "deploy" / "kiosk.sh").read_text()
     assert '"$BROWSER" "$@" 9>&- &' in s and 'watch_liveness "$bpid" 9>&- &' in s
+
+
+# ---- #119 follow-up (Sage nits): /proc stat parsing and a literal lock-path match ----
+
+def lib(script, tmp_path):
+    """Run bash with deploy/kiosk-restart.sh's helpers sourced (KIOSK_RESTART_LIB=1: restarts nothing)."""
+    env = {"PATH": os.environ["PATH"], "HOME": str(tmp_path), "KIOSK_RESTART_LIB": "1"}
+    return subprocess.run([BASH, "-c", f'set -- /nonexistent/kiosk.sh; source "{RESTART}"; {script}'],
+                          env=env, capture_output=True, text=True, timeout=30)
+
+
+@pytest.fixture
+def spawn():
+    procs = []
+
+    def start(argv, **kw):
+        p = subprocess.Popen(argv, start_new_session=True, **kw)
+        procs.append(p)
+        return p
+    yield start
+    for p in procs:
+        try:
+            os.killpg(p.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        p.wait(timeout=5)
+
+
+def test_state_parsed_after_the_last_paren_when_comm_has_space_and_paren(tmp_path, spawn):
+    exe = tmp_path / "x) T (y z"                                  # comm "x) T (y z": a naive split sees "T"
+    shutil.copy(shutil.which("sleep"), exe)
+    p = spawn([str(exe), "300"])
+    assert _wait_for(lambda: "x) T (y z" in Path(f"/proc/{p.pid}/stat").read_text())
+    r = lib(f"proc_state {p.pid}; alive {p.pid}", tmp_path)
+    assert r.stdout.split() == ["S", str(p.pid)], r.stdout + r.stderr
+    os.kill(p.pid, signal.SIGSTOP)
+    assert _wait_for(lambda: lib(f"proc_state {p.pid}", tmp_path).stdout.strip() == "T")
+    os.kill(p.pid, signal.SIGKILL)
+    assert _wait_for(lambda: lib(f"proc_state {p.pid}", tmp_path).stdout.strip() == "Z")   # unreaped child
+    assert lib(f"alive {p.pid}", tmp_path).stdout.strip() == ""
+
+
+def test_lock_holders_match_the_lock_path_literally(tmp_path, spawn):
+    lock = tmp_path / "lk[1]*.lock"
+    other = tmp_path / "lk1-x.lock"                               # the glob lk[1]*.lock would match this one
+    holders = {}
+    for f in (lock, other):
+        f.write_text("")
+        holders[f] = spawn([BASH, "-c", 'exec 9>"$0"; exec sleep 300', str(f)])
+    assert _wait_for(lambda: all(os.path.exists(f"/proc/{p.pid}/fd/9") and
+                                 os.readlink(f"/proc/{p.pid}/fd/9") == str(f) for f, p in holders.items()))
+    r = lib(f'uid="$(id -u)"; LOCK="{lock}"; lock_holders', tmp_path)
+    assert r.stdout.split() == [str(holders[lock].pid)], r.stdout + r.stderr
+    r = lib(f'uid="$(id -u)"; LOCK="{tmp_path}/lk?-x.lock"; lock_holders', tmp_path)
+    assert r.stdout.strip() == ""                                 # a glob-looking path matches nothing else
+
+
+def test_sourcing_as_a_library_restarts_nothing(tmp_path):
+    r = lib("echo sourced", tmp_path)
+    assert r.returncode == 0 and r.stdout.strip() == "sourced" and "kiosk:" not in r.stdout

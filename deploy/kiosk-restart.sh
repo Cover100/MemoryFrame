@@ -35,16 +35,26 @@ descendants() {  # all processes of ours below the given pids (Chromium helpers 
 }
 lock_holders() {  # our processes with the launcher's lock file open (the lock outlives whoever holds fd 9)
     [ -n "$LOCK" ] || return 0
-    find /proc/[0-9]*/fd -maxdepth 1 -user "$uid" -lname "$LOCK" 2>/dev/null | cut -d/ -f3 | sort -u
+    # Compare each fd's target with the lock path literally (find -lname would treat [ * ? as a glob).
+    find /proc/[0-9]*/fd -maxdepth 1 -user "$uid" -type l -printf '%h\t%l\n' 2>/dev/null |
+        LOCK="$LOCK" awk -F'\t' '$2 == ENVIRON["LOCK"] { split($1, a, "/"); print a[3] }' | sort -u
+}
+proc_state() {  # one-letter state from /proc/PID/stat; comm (field 2) may hold spaces and ')', so take
+    local st      # the text after the LAST ')' ("<state> <ppid> ...")
+    st="$(cat "/proc/$1/stat" 2>/dev/null)" || return 1
+    st="${st##*) }"
+    printf '%s\n' "${st%% *}"
 }
 alive() {  # still running (a zombie has exited; it only waits for its parent to reap it)
     local p st out=""
     for p in "$@"; do
-        st="$(cut -d' ' -f3 "/proc/$p/stat" 2>/dev/null)" || continue
+        st="$(proc_state "$p")" || continue
         [ -n "$st" ] && [ "$st" != Z ] && [ "$st" != X ] && out="$out $p"
     done
     echo "$out"
 }
+# Tests source this file with KIOSK_RESTART_LIB=1 to use the helpers above without restarting anything.
+if [ "${KIOSK_RESTART_LIB:-}" = 1 ]; then return 0 2>/dev/null || exit 0; fi
 
 pids="$(launchers | tr '\n' ' ')"
 if [ -z "${pids// /}" ]; then

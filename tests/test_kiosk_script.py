@@ -5,6 +5,7 @@ import re
 import signal
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -458,16 +459,24 @@ def test_stopped_kill_shares_the_rate_limit(env):
     os.kill(pid, signal.SIGCONT)
 
 
+# A process with the given comm, blocked (state S) on a pipe read. Copying `sleep` under that name does not
+# work everywhere: on Ubuntu 26.04 (CI) `sleep` is the multicall uutils binary, which dispatches on argv[0]
+# and exits at once on an unknown name.
+COMM_CHILD = (
+    "import sys\n"
+    "open('/proc/self/comm', 'w').write(sys.argv[1])\n"
+    "sys.stdout.write('ready\\n'); sys.stdout.flush()\n"
+    "sys.stdin.read()\n"
+)
+
+
 @pytest.mark.parametrize("comm,state", [("a b", "S"), ("x) T (y", "S"), ("plain", "S")])
-def test_proc_state_parses_after_the_last_paren(tmp_path, comm, state):
-    exe = tmp_path / comm
-    shutil.copy(shutil.which("sleep"), exe)
-    p = subprocess.Popen([str(exe), "300"], start_new_session=True)
+def test_proc_state_parses_after_the_last_paren(comm, state):
+    p = subprocess.Popen([sys.executable, "-c", COMM_CHILD, comm], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                         text=True, start_new_session=True)
     try:
-        deadline = time.monotonic() + 5
-        while f"({comm})" not in Path(f"/proc/{p.pid}/stat").read_text():
-            assert time.monotonic() < deadline
-            time.sleep(0.02)
+        assert p.stdout.readline() == "ready\n"
+        assert f"({comm})" in Path(f"/proc/{p.pid}/stat").read_text()
         fn = re.search(r"^proc_state\(\) \{.*?^\}", SCRIPT.read_text(), re.S | re.M).group(0)
         got = lambda: subprocess.run([BASH, "-c", f"{fn}\nproc_state {p.pid}"], capture_output=True,
                                      text=True).stdout.strip()

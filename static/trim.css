@@ -33,5 +33,6 @@
 .mf-phone .trim .err { background: var(--mf-red-50); color: var(--mf-brick-text); border-radius: 10px; padding: 10px 12px; margin: 0 0 12px; }
 .mf-phone .trim .err[hidden] { display: none; }
 .mf-phone .trim #trimUse { min-height: 56px; margin-bottom: 10px; }
+.mf-phone .trim .tbody > p.small { margin-top: 14px; }
 .mf-phone .trim .tcancel { background: transparent; border: 1.5px solid var(--mf-oat); color: var(--mf-linen); }
 .mf-phone .trim button:focus-visible { outline: 3px solid var(--mf-brass); outline-offset: 2px; }

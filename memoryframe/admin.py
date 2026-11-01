@@ -111,8 +111,14 @@ def upload_page():
     from flask import current_app
     from . import imaging
     store = imaging.stored_size(current_app.config["DISPLAY_TARGET"])      # #82: the browser shrinks to this
-    return render_template("upload.html", st=phone_storage(), store_w=store[0], store_h=store[1],
-                           videos=_videos())
+    from flask import make_response
+    from . import websec
+    resp = make_response(render_template("upload.html", st=phone_storage(), store_w=store[0], store_h=store[1],
+                                         videos=_videos()))
+    # #103: the trim screen previews the picked video from the phone's own memory (a blob: URL, never uploaded
+    # first). Only this page allows blob: media; everything else keeps the site-wide policy.
+    resp.headers["Content-Security-Policy"] = websec.CSP.replace("media-src 'self'", "media-src 'self' blob:")
+    return resp
 
 
 def _videos():

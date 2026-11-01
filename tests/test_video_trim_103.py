@@ -332,3 +332,11 @@ def test_retry_reuses_trim_and_resets_progress(vapp, paired, ff, killpg):
     fp = FakePopen()
     work(vapp, fp)
     assert fp.cmds[0][fp.cmds[0].index("-ss") + 1] == "6.000" and rows(vapp)[0]["state"] == "ready"
+
+
+def test_only_upload_page_allows_blob_media(vapp, paired):
+    up = paired.get("/admin/upload", environ_base=PHONE)
+    assert "media-src 'self' blob:;" in up.headers["Content-Security-Policy"]
+    assert 'id="trim"' in up.get_data(as_text=True) and "trim.js" in up.get_data(as_text=True)
+    lib = paired.get("/admin/library", environ_base=PHONE)
+    assert "blob:" not in lib.headers["Content-Security-Policy"]

@@ -221,9 +221,9 @@ function mfAddedSummary(photos, videos){
         const acts = document.createElement("span"); acts.className = "vacts";
         ui.msg.replaceWith(head); head.append(ui.msg, pct);
         const note = ui.li.querySelector(".slow");
-        let last = 0, timer = null, state = "";
+        let last = 0, timer = null;
         function show(s){
-            state = s.state;
+            ui.li.className = "prep";              // plain text while preparing (no "Added" tick)
             const prep = s.state === "processing", wait = s.state === "queued";
             ui.li.classList.toggle("muted", s.state === "cancelling");
             bar.hidden = !prep; pct.textContent = prep ? s.progress + "%" : "";
@@ -278,7 +278,7 @@ function mfAddedSummary(photos, videos){
                 const r = button("Retry", "vcancel"), x = button("Remove", "vcancel vrm");
                 r.addEventListener("click", async ()=>{
                     try{ await api(id + "/retry", "POST"); }catch(e){ /* next poll */ }
-                    ui.li.className = "ok"; last = 0; tick();
+                    last = 0; tick();
                 });
                 x.addEventListener("click", async ()=>{
                     try{ const q = await api(String(id), "DELETE"); if(q.ok){ ui.li.remove(); return; } }catch(e){ /* stays */ }
@@ -331,7 +331,7 @@ function mfAddedSummary(photos, videos){
                 stopped = true;
                 break;
             }
-            if(r){ good++; if(rows[i].li.className === "ok"){ added++; if(rows[i].kind === "video"){ addedVideos++; } } }
+            if(r){ good++; if(rows[i].li.className === "ok" || rows[i].li.className === "prep"){ added++; if(rows[i].kind === "video"){ addedVideos++; } } }
             done++;
             summary.textContent = done + " of " + files.length + " done (" + good + " added or already there).";
         }

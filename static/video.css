@@ -39,7 +39,7 @@
 .mf-phone #list .vbar[hidden] { display: none; }
 .mf-phone #list .vbar > span { display: block; height: 100%; background: var(--mf-leaf); transform: scaleX(0); transform-origin: left;
   transition: transform .3s ease-out; }
-.mf-phone #list .vacts { display: flex; gap: 8px; margin-top: 8px; }
+.mf-phone #list .vacts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .mf-phone #list .vcancel { min-height: 48px; padding: 0 18px; background: transparent; border: 1.5px solid var(--mf-oat); color: var(--mf-linen); }
 .mf-phone #list .vcancel.vrm { color: var(--mf-brick-text); }
 .mf-phone #list .vcancel:disabled { opacity: .6; border-color: var(--mf-forest-700); }

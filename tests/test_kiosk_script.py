@@ -304,7 +304,9 @@ def test_liveness_kills_frozen_browser_then_rate_limits(env):
                                   '{"kiosk_age_s": 500, "shutting_down": true}'])
 def test_liveness_no_kill_when_fresh_or_shutting_down(env, body):
     tmp_path, e = _liveness_env(env, body)
-    run_until(e, lambda: "liveness" in log_text(tmp_path) or (len(launches(tmp_path)) >= 1 and time.sleep(1) is None))
+    # "liveness:" (the watcher's log prefix), not "liveness": the launch line logs the browser path, which
+    # contains this test's tmp dir name (test_liveness_...), so the bare word matched before the stub ran.
+    run_until(e, lambda: "liveness:" in log_text(tmp_path) or (len(launches(tmp_path)) >= 1 and time.sleep(1) is None))
     assert "killing" not in log_text(tmp_path) and len(launches(tmp_path)) == 1
 
 

@@ -25,13 +25,11 @@ def test_tail_of_overlong_line_is_never_parsed():
     assert 777.0 not in seen
 
 
-def test_overlong_line_split_across_many_reads_is_skipped_to_its_newline():
+def test_tail_after_dropped_partial_is_skipped_to_its_newline():
     emit = (r"""
 import os, time
-os.write(1, b"z" * 1100); time.sleep(0.15)
-for _ in range(3):
-    os.write(1, b"out_time_us=555000000"); time.sleep(0.15)
-os.write(1, b"\nout_time_us=3000000\n")
+os.write(1, b"z" * 1100); time.sleep(0.3)                  # over the cap, no newline: dropped
+os.write(1, b"out_time_us=555000000\nout_time_us=3000000\n")   # its tail looks like a whole progress line
 """)
     seen = []
     video._run_progress([sys.executable, "-c", emit], 30, subprocess.Popen, on_time=seen.append)

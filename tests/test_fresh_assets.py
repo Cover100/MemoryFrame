@@ -1,5 +1,5 @@
 """Deploys must not leave the kiosk on stale JS: content-hashed static URLs, no-cache HTML, and install.sh
-restarts the kiosk Chromium (kiosk.sh relaunches it) only when one is running and never on CI."""
+restarts the kiosk launcher (#97: kiosk-restart.sh) and never on CI."""
 import os
 import re
 import time
@@ -45,26 +45,23 @@ def test_version_changes_when_file_changes(mf_app, tmp_path):
         assert assets.static("missing.js") == "/static/missing.js"
 
 
-def _stubs(tmp_path, running):
+def _stubs(tmp_path):
     b = tmp_path / "kbin"; b.mkdir(exist_ok=True)
-    (b / "pgrep").write_text(f'#!/bin/bash\necho "pgrep $*" >> "$INSTALL_LOG"\nexit {0 if running else 1}\n')
-    (b / "pkill").write_text('#!/bin/bash\necho "pkill $*" >> "$INSTALL_LOG"\n')
-    for n in ("pgrep", "pkill"):
-        (b / n).chmod(0o755)
-    return {"PGREP": str(b / "pgrep"), "PKILL": str(b / "pkill"), "CI": ""}
+    (b / "kiosk-restart").write_text('#!/bin/bash\necho "kiosk-restart $*" >> "$INSTALL_LOG"\n')
+    (b / "kiosk-restart").chmod(0o755)
+    return {"KIOSK_RESTART": str(b / "kiosk-restart"), "CI": ""}
 
 
-@pytest.mark.parametrize("running", [True, False])
-def test_install_reloads_kiosk_only_if_running(env, tmp_path, running):
-    env["env"].update(_stubs(tmp_path, running))
+def test_install_restarts_the_kiosk_launcher(env, tmp_path):
+    """#97: the launcher itself is restarted (deploy/kiosk-restart.sh), not only Chromium."""
+    env["env"].update(_stubs(tmp_path))
     log = install(tmp_path, env)
-    assert "pgrep -u" in log and "--user-data-dir=" in log and "chromium-profile" in log
-    assert ("pkill -u" in log) is running
+    assert "kiosk-restart " in log and log.split("kiosk-restart ", 1)[1].split()[0].endswith("/deploy/kiosk.sh")
 
 
 @pytest.mark.parametrize("var", [{"CI": "true"}, {"MEMORYFRAME_NO_KIOSK_RELOAD": "1"}])
 def test_install_never_reloads_on_ci(env, tmp_path, var):
-    env["env"].update(_stubs(tmp_path, True))
+    env["env"].update(_stubs(tmp_path))
     env["env"].update(var)
     log = install(tmp_path, env)
-    assert "pgrep" not in log and "pkill" not in log
+    assert "kiosk-restart" not in log

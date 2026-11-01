@@ -287,20 +287,15 @@ sed -e "s#@APP_DIR@#$APP_DIR#g" "$SRC_DIR/deploy/memoryframe-kiosk.desktop" \
     > "$HOME/.config/autostart/memoryframe-kiosk.desktop"
 
 echo "== Session type: ${XDG_SESSION_TYPE:-unknown} (record this in the MF-04 PR)"
-echo "== Kiosk reload (new JS/CSS)"
-# The kiosk page never reloads by itself, so after a deploy it would keep running the old JS. If the kiosk
-# Chromium is running (matched by its own profile dir), end it; kiosk.sh's loop relaunches it and it loads
-# the new page (asset URLs carry a content hash, see memoryframe/assets.py). Skipped on CI / headless runs.
-KIOSK_PROFILE="${MEMORYFRAME_STATE_DIR:-$HOME/.cache/memoryframe}/chromium-profile"
-[ -z "${MEMORYFRAME_STATE_DIR:-}" ] && "${PGREP:-pgrep}" -u "$DESKTOP_USER" -f -- "--user-data-dir=/run/mfkiosk/chromium-profile" \
-    >/dev/null 2>&1 && KIOSK_PROFILE=/run/mfkiosk/chromium-profile   # #97 tmpfs profile
+echo "== Kiosk restart (new launcher, profile and JS/CSS)"
+# The kiosk page never reloads by itself, and killing only Chromium would let the OLD kiosk.sh loop relaunch it
+# with the old profile and flags (#97). So the launcher itself is restarted in the desktop session
+# (deploy/kiosk-restart.sh); the new one starts Chromium on the /run/mfkiosk tmpfs with the new assets
+# (asset URLs carry a content hash, see memoryframe/assets.py). Skipped on CI / headless runs.
 if [ -n "${CI:-}" ] || [ "${MEMORYFRAME_NO_KIOSK_RELOAD:-}" = 1 ]; then
     echo "skipped (CI or MEMORYFRAME_NO_KIOSK_RELOAD=1)"
-elif "${PGREP:-pgrep}" -u "$DESKTOP_USER" -f -- "--user-data-dir=$KIOSK_PROFILE" >/dev/null 2>&1; then
-    "${PKILL:-pkill}" -u "$DESKTOP_USER" -f -- "--user-data-dir=$KIOSK_PROFILE" || true
-    echo "kiosk browser restarted by kiosk.sh with the new assets"
 else
-    echo "no kiosk running; nothing to reload"
+    "${KIOSK_RESTART:-$SRC_DIR/deploy/kiosk-restart.sh}" "$APP_DIR/deploy/kiosk.sh" || echo "WARNING: kiosk restart failed"
 fi
 
 echo "Done. Reboot to verify: sudo reboot"

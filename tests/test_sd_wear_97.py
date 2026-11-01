@@ -155,10 +155,12 @@ def test_fstab_already_noatime_untouched_no_backup(tmp_path):
     assert f.read_text() == txt and not (tmp_path / "fstab.memoryframe-97.bak").exists()
 
 
-def test_fstab_without_root_line_fails_unchanged(tmp_path):
+def test_fstab_without_root_line_warns_and_continues(tmp_path):
     f = tmp_path / "fstab"
     f.write_text("proc /proc proc defaults 0 0\n")
-    assert run_fstab(f).returncode == 2 and f.read_text() == "proc /proc proc defaults 0 0\n"
+    r = run_fstab(f)
+    assert r.returncode == 0 and "WARNING: no / entry" in r.stdout
+    assert f.read_text() == "proc /proc proc defaults 0 0\n" and not (tmp_path / "fstab.memoryframe-97.bak").exists()
 
 
 def test_install_fstab_step_is_guarded_and_never_touches_commit_or_cmdline():
@@ -175,7 +177,7 @@ def _install_fstab_snippet():
     return INSTALL[a:INSTALL.index("\nfi\n", a)]
 
 
-def test_install_continues_with_warning_when_script_exits_2(tmp_path):
+def test_install_continues_with_warning_when_script_fails(tmp_path):
     (tmp_path / "deploy").mkdir()
     fake = tmp_path / "deploy" / "fstab-noatime.sh"
     fake.write_text("#!/bin/bash\necho 'fstab-noatime: no / entry' >&2\nexit 2\n")
@@ -186,11 +188,18 @@ def test_install_continues_with_warning_when_script_exits_2(tmp_path):
     assert "WARNING: fstab-noatime.sh exited 2" in r.stdout and r.stdout.rstrip().endswith("AFTER")
 
 
-def run_apply(tmp_path, f, verify_ok):
+def run_apply(tmp_path, f, verify_ok, before=2):
+    """findmnt stub: `before` "[E]" lines for the unedited file (a healthy Pi already has some, e.g. PARTUUID=),
+    the same after the edit when verify_ok, one more when not."""
     bin_ = tmp_path / "bin"
     bin_.mkdir(exist_ok=True)
     calls = tmp_path / "calls.log"
-    (bin_ / "findmnt").write_text(f'#!/bin/bash\necho "findmnt $*" >> "{calls}"\nexit {0 if verify_ok else 1}\n')
+    after = before if verify_ok else before + 1
+    (bin_ / "findmnt").write_text(
+        f'#!/bin/bash\necho "findmnt $*" >> "{calls}"\nfor a in "$@"; do f="$a"; done\n'
+        f'n={before}; grep -q noatime "$f" && n={after}\n'
+        'echo "0 parse errors, $n errors, 0 warnings"\nfor i in $(seq 1 $n); do echo "   [E] unreachable source"; done\n'
+        '[ "$n" -eq 0 ]\n')
     (bin_ / "mount").write_text(f'#!/bin/bash\necho "mount $*" >> "{calls}"\n')
     for x in bin_.iterdir():
         x.chmod(0o755)
@@ -216,13 +225,14 @@ def test_apply_changed_run_verify_fails_restores_this_runs_copy(tmp_path):
     r, calls = run_apply(tmp_path, f, verify_ok=False)
     assert r.returncode == 3 and "restored this run's copy" in r.stderr
     assert f.read_text() == PI_FSTAB                                     # this run's copy, not the old .bak
-    assert "findmnt --verify" in calls and "mount" not in calls.replace("findmnt", "")
+    assert calls.count("findmnt --verify") == 2 and "mount" not in calls.replace("findmnt", "")
+    assert "from 2 to 3" in r.stderr
     assert sorted(p.name for p in tmp_path.iterdir() if p.name.startswith(".fstab")) == []   # no temp left
 
 
 def test_apply_changed_run_verify_ok_remounts(tmp_path):
     f = tmp_path / "fstab"
     f.write_text(PI_FSTAB)
-    r, calls = run_apply(tmp_path, f, verify_ok=True)
+    r, calls = run_apply(tmp_path, f, verify_ok=True)       # verify reports 2 errors before and after: not worse
     assert r.returncode == 0 and "defaults,noatime" in f.read_text()
     assert "mount -o remount,noatime /" in calls

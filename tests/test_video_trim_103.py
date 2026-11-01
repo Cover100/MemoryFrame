@@ -3,6 +3,8 @@ ffprobe, FakePopen plays ffmpeg's -progress output); the real-ffmpeg trim check 
 import io
 import os
 import signal
+import subprocess
+import time
 
 import pytest
 
@@ -40,19 +42,24 @@ class FakePopen:
         with open(cmd[-1][len("file:"):], "wb") as f:
             f.write(b"\0\0\0\x18ftypisom converted")
         outer = self
+        r, w = os.pipe()
+        lines = iter(enumerate(self.lines))
 
-        class Out(io.BytesIO):
-            i = 0
-
-            def readline(self, n=-1):
-                if outer.on_line:
-                    outer.on_line(Out.i)
-                Out.i += 1
-                return super().readline(n)
+        def feed():                    # called from the reader's select(): one -progress line per poll
+            nxt = next(lines, None)
+            if nxt is None:
+                if not FEEDERS[-1][1]:
+                    os.close(w)
+                    FEEDERS[-1][1] = True
+                return
+            if self.on_line:
+                self.on_line(nxt[0])
+            os.write(w, nxt[1])
+        FEEDERS.append([feed, False])
 
         class P:
             pid = 4242
-            stdout = Out(b"".join(self.lines))
+            stdout = os.fdopen(r, "rb")
             returncode = None
 
             def wait(self, timeout=None):
@@ -62,6 +69,24 @@ class FakePopen:
             def poll(self):
                 return self.returncode
         return P()
+
+
+FEEDERS = []
+
+
+@pytest.fixture(autouse=True)
+def fed_select(monkeypatch):
+    """The fake ffmpeg writes its next line when the reader polls: deterministic, no threads."""
+    import select
+    real = select.select
+
+    def sel(r, w, x, timeout=None):
+        if FEEDERS:
+            FEEDERS[-1][0]()
+        return real(r, w, x, timeout)
+    monkeypatch.setattr(select, "select", sel)
+    yield
+    FEEDERS.clear()
 
 
 @pytest.fixture
@@ -340,3 +365,25 @@ def test_only_upload_page_allows_blob_media(vapp, paired):
     assert 'id="trim"' in up.get_data(as_text=True) and "trim.js" in up.get_data(as_text=True)
     lib = paired.get("/admin/library", environ_base=PHONE)
     assert "blob:" not in lib.headers["Content-Security-Policy"]
+
+
+def test_cancel_while_ffmpeg_prints_nothing_is_prompt(tmp_path, monkeypatch):
+    """Sage: a stall before the first frame must not wait for the full timeout; Cancel stops it within ~1 s."""
+    from tests.test_video_102 import FakeFF
+    d = str(tmp_path)
+    name = "f" * 32 + ".mp4"
+    for p in (video.input_path(d, name), video.part_path(d, name), os.path.join(d, "originals", "x")):
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+    open(video.input_path(d, name), "wb").write(MP4)
+    procs = []
+
+    def silent(cmd, **kw):                     # stands in for ffmpeg: alive, prints nothing
+        procs.append(subprocess.Popen(["sleep", "60"], **kw))
+        return procs[-1]
+    asked = []
+    t0 = time.monotonic()
+    with pytest.raises(video.Cancelled):
+        video.convert(d, name, runner=FakeFF(), popen=silent, cancelled=lambda: asked.append(1) or len(asked) > 1)
+    assert time.monotonic() - t0 < 5
+    assert procs[0].poll() is not None                          # killed (its whole session)
+    assert not os.path.exists(video.part_path(d, name)) and os.listdir(os.path.join(d, "originals")) == []

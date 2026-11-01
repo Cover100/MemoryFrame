@@ -384,28 +384,38 @@ def _stop(p):
 
 def _run_progress(cmd, timeout_s, popen, on_time=None, cancelled=None):
     """#103: run the convert like _run (same timeout/nice/prlimit prefix), reading ffmpeg's -progress lines.
-    Only out_time_us=<int> is used (clamped, passed to on_time); every other key is ignored. cancelled() is
-    asked on each line: if true, ffmpeg is stopped and Cancelled raised. stderr goes to an unlinked temp
-    file (no pipe that could fill up and stall ffmpeg); only its last 300 bytes are ever read."""
+    Only out_time_us=<int> is used (clamped, passed to on_time); every other key is ignored. The pipe is
+    polled with a 1 s timeout, so cancelled() and the deadline are checked even while ffmpeg prints nothing
+    (e.g. stalled before its first frame). stderr goes to an unlinked temp file (no pipe that could fill up
+    and stall ffmpeg); only its last 300 bytes are ever read."""
+    import select
     import tempfile
     with tempfile.TemporaryFile() as err:
         p = popen(_prefix(timeout_s) + _limit() + cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                   stderr=err, start_new_session=True)
         deadline = time.monotonic() + timeout_s + 30
+        fd, buf = p.stdout.fileno(), b""
         try:
             while True:
-                line = p.stdout.readline(MAX_PROGRESS_LINE)
-                if not line:
-                    break
+                ready = select.select([fd], [], [], 1.0)[0]
                 if cancelled is not None and cancelled():
                     _stop(p)
                     raise Cancelled()
                 if time.monotonic() > deadline:           # belt and braces: `timeout` should have fired
                     _stop(p)
                     raise VideoError("ffmpeg timed out")
-                k, _, v = line.strip().partition(b"=")
-                if k == b"out_time_us" and on_time is not None and v.isdigit():
-                    on_time(min(int(v), 10**12) / 1e6)
+                if not ready:
+                    continue
+                chunk = os.read(fd, 4096)
+                if not chunk:
+                    break
+                *lines, buf = (buf + chunk).split(b"\n")
+                if len(buf) > MAX_PROGRESS_LINE:          # an overlong line is dropped, never buffered
+                    buf = b""
+                for line in lines:
+                    k, _, v = line[:MAX_PROGRESS_LINE].strip().partition(b"=")
+                    if k == b"out_time_us" and on_time is not None and v.isdigit():
+                        on_time(min(int(v), 10**12) / 1e6)
             rc = p.wait(timeout=max(1, deadline - time.monotonic()))
         except BaseException:
             if p.poll() is None:

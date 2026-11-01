@@ -30,13 +30,18 @@
 @media (max-width: 340px) {
   .mf-phone .lib li[data-state="failed"] { grid-column: span 2; aspect-ratio: auto; height: calc((100vw - 6px) / 3); }
 }
+/* #103 (Wren): the same rule when the grid itself is that narrow at large text (browser zoom / text scaling
+   leaves the viewport width unchanged, so the media query alone misses it). */
+.mf-phone .lib { container-type: inline-size; }
+@container (max-width: 340px) {
+  .mf-phone .lib li[data-state="failed"] { grid-column: span 2; aspect-ratio: auto; height: calc((100cqw - 6px) / 3); }
+}
 .mf-phone #list .slow { display: block; font-size: var(--mf-p-small); color: var(--mf-text-2); margin-top: 2px; line-height: 1.35; }
 /* #103 conversion progress (13c upload row, 13d Library tile). The bar steps to each polled value (scaleX). */
-.mf-phone #list .vhead { display: flex; justify-content: space-between; gap: 8px; }
-.mf-phone #list .vhead .msg { flex: 1; min-width: 0; }
-.mf-phone #list .pct { font-size: var(--mf-p-small); font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 2px; }
-.mf-phone #list .vbar { display: block; height: 8px; border-radius: 4px; background: var(--mf-forest-700); overflow: hidden; margin-top: 6px; }
-.mf-phone #list .vbar[hidden] { display: none; }
+.mf-phone #list .vrow { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.mf-phone #list .vrow[hidden] { display: none; }
+.mf-phone #list .pct { flex: none; font-size: var(--mf-p-small); font-weight: 700; font-variant-numeric: tabular-nums; }
+.mf-phone #list .vbar { display: block; flex: 1; height: 8px; border-radius: 4px; background: var(--mf-forest-700); overflow: hidden; }
 .mf-phone #list .vbar > span { display: block; height: 100%; background: var(--mf-leaf); transform: scaleX(0); transform-origin: left;
   transition: transform .3s ease-out; }
 .mf-phone #list .vacts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
@@ -46,7 +51,9 @@
 .mf-phone #list .vcancel:focus-visible { outline: 3px solid var(--mf-brass); outline-offset: 2px; }
 .mf-phone #list li.muted .name, .mf-phone #list li.muted .msg { color: var(--mf-oat); opacity: .6; }
 .mf-phone #list .slow[hidden] { display: none; }
-.mf-phone .tile .ring { width: 40px; height: 40px; }
+.mf-phone .tile .ring { width: 40px; height: 40px; flex: none; aspect-ratio: 1; }
+@container (max-width: 340px) { .mf-phone .tile .ring { width: 32px; height: 32px; } }   /* ring shrinks before the label wraps */
+.mf-phone .lib li[data-state="queued"] .state, .mf-phone .lib li[data-state="cancelling"] .state { padding: 48px 6px 4px; justify-content: flex-start; }    /* clear of the 48 px × */
 .mf-phone .tile .ring circle { fill: none; stroke-width: 4; }
 .mf-phone .tile .ring .bg { stroke: var(--mf-forest-700); }
 .mf-phone .tile .ring .fg { stroke: var(--mf-leaf); stroke-linecap: round; }

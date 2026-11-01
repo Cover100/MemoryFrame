@@ -211,7 +211,6 @@ function mfAddedSummary(photos, videos){
     function watch(ui, id){
         const name = ui.name.textContent.replace(/ \(.*$/, "");
         ui.bar.remove();
-        const head = document.createElement("span"); head.className = "vhead";
         const pct = document.createElement("span"); pct.className = "pct";
         const bar = document.createElement("span"); bar.className = "vbar"; bar.setAttribute("role", "progressbar");
         bar.setAttribute("aria-valuemin", "0"); bar.setAttribute("aria-valuemax", "100");
@@ -219,14 +218,15 @@ function mfAddedSummary(photos, videos){
         const fill = document.createElement("span"); bar.append(fill);
         const resumed = document.createElement("span"); resumed.className = "slow"; resumed.textContent = "Resumed after restart";
         const acts = document.createElement("span"); acts.className = "vacts";
-        ui.msg.replaceWith(head); head.append(ui.msg, pct);
+        const row = document.createElement("span"); row.className = "vrow";   // bar + % at its end (Wren)
+        row.append(bar, pct);
         const note = ui.li.querySelector(".slow");
         let last = 0, timer = null;
         function show(s){
             ui.li.className = "prep";              // plain text while preparing (no "Added" tick)
             const prep = s.state === "processing", wait = s.state === "queued";
             ui.li.classList.toggle("muted", s.state === "cancelling");
-            bar.hidden = !prep; pct.textContent = prep ? s.progress + "%" : "";
+            row.hidden = !prep; pct.textContent = prep ? s.progress + "%" : "";
             if(prep){
                 fill.style.transform = "scaleX(" + (s.progress / 100) + ")";
                 bar.setAttribute("aria-valuenow", String(s.progress)); bar.setAttribute("aria-valuetext", s.progress + "%");
@@ -262,7 +262,7 @@ function mfAddedSummary(photos, videos){
                 s = await r.json();
             }catch(e){ timer = setTimeout(tick, 2000); return; }       // offline for a moment: keep trying
             if(s.state === "ready"){
-                acts.remove(); bar.remove(); resumed.remove(); pct.textContent = "";
+                acts.remove(); row.remove(); resumed.remove(); pct.textContent = "";
                 ui.li.className = "ok";
                 ui.msg.textContent = "Added";
                 const img = document.createElement("img");
@@ -273,7 +273,7 @@ function mfAddedSummary(photos, videos){
                 return;
             }
             if(s.state === "failed"){
-                ui.li.className = "bad"; bar.hidden = true; pct.textContent = ""; resumed.hidden = true;
+                ui.li.className = "bad"; row.hidden = true; pct.textContent = ""; resumed.hidden = true;
                 ui.msg.textContent = "Couldn't add this video.";
                 const r = button("Retry", "vcancel"), x = button("Remove", "vcancel vrm");
                 r.addEventListener("click", async ()=>{
@@ -289,8 +289,8 @@ function mfAddedSummary(photos, videos){
             show(s);
             timer = setTimeout(tick, 2000);
         }
-        head.after(bar);                       // name / status + % / bar / hi-res note / resumed / Cancel
-        (note || bar).after(resumed);
+        ui.msg.after(row);                     // name / status / bar + % / hi-res note / resumed / Cancel
+        (note || row).after(resumed);
         resumed.after(acts);
         show({state: "queued", progress: 0, queue_pos: 1});
         tick();

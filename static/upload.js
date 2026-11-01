@@ -1,4 +1,14 @@
 // MF-14 phone upload page: one request per file, in order, with per-file progress.
+
+// #96/#102 (Wren): "N photos were added; ..." counted videos as photos. Counts each kind, singular/plural.
+function mfAddedSummary(photos, videos){
+    const part = (n, w)=> n + " " + w + (n === 1 ? "" : "s");
+    const items = [];
+    if(photos || !videos){ items.push(part(photos, "photo")); }
+    if(videos){ items.push(part(videos, "video")); }
+    return items.join(" and ") + (photos + videos === 1 ? " was" : " were") + " added; the frame is almost full.";
+}
+
 (function(){
     const CSRF = document.querySelector('meta[name="csrf-token"]').content;
     const input = document.getElementById("files");
@@ -162,6 +172,7 @@
                     note.textContent = "This video is very high resolution and may take about " + n + " minute" + (n === 1 ? "" : "s") + " to prepare.";
                     ui.msg.after(note);
                 }
+                ui.kind = body.kind === "video" ? "video" : "photo";
                 if(xhr.status === 401){ location.href = "/pair"; }
                 if(xhr.status === 507){ resolve("full"); return; }
                 resolve(ok);
@@ -196,18 +207,18 @@
         pickLabel.textContent = "Uploading...";
         list.textContent = "";
         const rows = files.map(row);
-        let done = 0, good = 0, added = 0, stopped = false;
+        let done = 0, good = 0, added = 0, addedVideos = 0, stopped = false;
         const word = input.dataset.videos ? " file" : " photo";
         summary.textContent = "Sending " + files.length + word + (files.length === 1 ? "" : "s") + "...";
         for(let i = 0; i < files.length; i++){
             const r = await send(files[i], rows[i]);
             if(r === "full"){                        // #96: stop the batch at the first refusal
                 for(let j = i + 1; j < files.length; j++){ rows[j].li.className = "bad"; mfSetText(rows[j].msg, "Not sent"); }
-                summary.textContent = added + " photo" + (added === 1 ? " was" : "s were") + " added; the frame is almost full.";
+                summary.textContent = mfAddedSummary(added - addedVideos, addedVideos);
                 stopped = true;
                 break;
             }
-            if(r){ good++; if(rows[i].li.className === "ok"){ added++; } }
+            if(r){ good++; if(rows[i].li.className === "ok"){ added++; if(rows[i].kind === "video"){ addedVideos++; } } }
             done++;
             summary.textContent = done + " of " + files.length + " done (" + good + " added or already there).";
         }

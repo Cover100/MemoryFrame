@@ -153,14 +153,31 @@ def test_prefix_is_low_priority(monkeypatch):
 @pytest.mark.parametrize("streams", [
     [],                                                              # no video
     [stream(), stream()],                                            # two video streams
-    [stream(), {"codec_type": "subtitle", "codec_name": "mov_text"}],
-    [stream(), {"codec_type": "data", "codec_name": "bin_data"}],
+    [stream(), {"codec_type": "subtitle", "codec_name": "subrip"}],   # only mov_text subtitles (Sage)
+    [stream(), {"codec_type": "subtitle", "codec_name": "ass"}],
+    [stream(), {"codec_type": "attachment", "codec_name": "ttf"}],
+    [stream(), {"codec_type": "weird", "codec_name": "x"}],
+    [stream()] + [{"codec_type": "data", "codec_name": "tmcd"}] * 8,   # 9 streams > MAX_STREAMS
     [stream(9000, 5000)],                                            # beyond 8K (HEVC level 6.2)
     [stream(fps="240/1")],
     [stream(codec="prores")],
     [stream(duration="0")],
 ])
 def test_probe_refuses(tmp_path, streams):
+    """(see the list)"""
+    _refuse(tmp_path, streams)
+
+
+@pytest.mark.parametrize("streams", [
+    [stream(), {"codec_type": "data", "codec_name": "tmcd"}, {"codec_type": "data", "codec_name": "bin_data"}],
+    [stream(), {"codec_type": "subtitle", "codec_name": "mov_text"}, {"codec_type": "audio", "codec_name": "aac"}],
+    [stream()] + [{"codec_type": "data", "codec_name": "tmcd"}] * 7,   # exactly MAX_STREAMS
+])
+def test_probe_accepts_data_and_mov_text(tmp_path, streams):
+    assert video.probe(str(tmp_path / "x"), runner=FakeFF(streams))["codec"] == "h264"
+
+
+def _refuse(tmp_path, streams):
     with pytest.raises(video.VideoError):
         video.probe(str(tmp_path / "x"), runner=FakeFF(streams))
 
@@ -563,6 +580,48 @@ def test_hevc_falls_back_to_software_when_drm_device_missing(tmp_path):
     ff = [c for c in fake.calls if "ffmpeg" in c and "-filter_complex" in c]
     assert len(ff) == 2 and "-hwaccel" in ff[0] and "-hwaccel" not in ff[1]
     assert os.path.exists(os.path.join(d, "originals", "a" * 32 + ".mp4"))
+
+
+def _hevc_setup(tmp_path, name):
+    d = str(tmp_path)
+    for p in (video.input_path(d, name), video.part_path(d, name), video.poster_path(d, name)):
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+    for sub in ("originals", "thumbs", "display"):
+        os.makedirs(os.path.join(d, sub), exist_ok=True)
+    open(video.input_path(d, name), "wb").write(b"x")
+    return d
+
+
+def test_hevc_retry_uses_remaining_time_and_same_limits(tmp_path, monkeypatch):
+    clock = iter([1000.0, 1100.0])                      # the hw attempt "took" 100 s
+    monkeypatch.setattr(video.time, "monotonic", lambda: next(clock))
+    seen = []
+
+    class NoDrm(FakeFF):
+        def __call__(self, cmd, **kw):
+            if "-filter_complex" in cmd:
+                seen.append((cmd, kw["timeout"]))
+                if "-hwaccel" in cmd:
+                    return subprocess.CompletedProcess(cmd, 1, b"", b"Hardware device setup failed for decoder")
+            return super().__call__(cmd, **kw)
+    d = _hevc_setup(tmp_path, "f" * 32 + ".mp4")
+    info = {"streams": [stream(1920, 1080, "hevc")], "format": {"duration": "12.5"}}
+    fake = NoDrm([stream(1920, 1080, "hevc")])
+    fake.info = info
+    video.convert(d, "f" * 32 + ".mp4", runner=fake)
+    (hw, t1), (sw, t2) = seen
+    budget = video.timeout_for(video.probe("x", runner=FakeFF([stream(1920, 1080, "hevc")])))
+    assert t1 == budget + 30 and t2 == budget - 100 + 30
+    assert [c for c in hw if c not in ("-hwaccel", "drm")][len(video._prefix(budget)):] == \
+        sw[len(video._prefix(budget - 100)):]           # same limits, whitelists and filters
+
+
+def test_hevc_other_failure_is_not_retried(tmp_path):
+    d = _hevc_setup(tmp_path, "9" * 32 + ".mp4")
+    fake = FakeFF([stream(1920, 1080, "hevc")], fail_convert=True)
+    with pytest.raises(video.VideoError):
+        video.convert(d, "9" * 32 + ".mp4", runner=fake)
+    assert len([c for c in fake.calls if "-filter_complex" in c]) == 1
 
 
 def test_h264_failure_is_not_retried(tmp_path):

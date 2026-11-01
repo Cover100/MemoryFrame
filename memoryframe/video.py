@@ -51,8 +51,12 @@ FORMAT_WHITELIST = "mov,mp4,m4a,3gp,3g2,mj2,matroska,webm"
 CODECS = {"h264", "hevc", "vp8", "vp9", "av1", "mpeg4"}
 CODEC_WHITELIST = "h264,hevc,vp8,vp9,av1,libdav1d,mpeg4"   # decoders ffmpeg may open (Sage: enforced, not just probed)
 # ffprobe opens a decoder for EVERY stream and exits 1 if one is not whitelisted, so phone clips with sound were
-# all refused (Hale, Pi). Probe only (never convert: it runs -an) may also open these common phone audio decoders.
-AUDIO_WHITELIST = "aac,mp3,opus,pcm_s16le,pcm_s16be,pcm_s24le,pcm_f32le,alac,ac3,eac3,amr_nb,amr_wb,vorbis,flac"
+# all refused (Hale, Pi). Probe only (never convert: it runs -an) may also open these phone audio decoders (Sage's
+# list; AMR because 3gp/3g2 are in FORMAT_WHITELIST). Any other audio codec -> ffprobe fails -> 415.
+# -codec_whitelist matches DECODER names: MP3 is decoded by "mp3float" (ffmpeg's first choice) or "mp3",
+# AMR by "amrnb"/"amrwb" (the codec ids amr_nb/amr_wb would never match).
+AUDIO_WHITELIST = "aac,mp3float,mp3,opus,pcm_s16le,pcm_s16be,pcm_s24le,pcm_f32le,amrnb,amrwb"
+MAX_STREAMS = 8
 PROBE_WHITELIST = CODEC_WHITELIST + "," + AUDIO_WHITELIST
 MAX_PENDING = 5                          # queued + preparing + failed clips (each keeps up to 350 MB on the card)
 OUT_MAX_SECONDS = MAX_SECONDS + 0.5
@@ -138,43 +142,22 @@ def _ffprobe(path, runner, whitelist):
         return None, b""
 
 
-def _video_only_info(path, runner):
-    """Fallback when ffprobe refused a stream that is not on the whitelist (e.g. pcm_alaw audio): ffmpeg (which
-    tolerates an unopenable extra stream) stream-copies only the video into a temp .mov, which is probed with the
-    VIDEO-only whitelist. No decoder outside CODEC_WHITELIST is ever allowed; nothing is decoded at all."""
-    tmp = path + ".probe.mov"
-    try:
-        cmd = (_prefix(60) + _limit() + ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
-               "-format_whitelist", FORMAT_WHITELIST, "-protocol_whitelist", "file", "-codec_whitelist", CODEC_WHITELIST,
-               "-i", "file:" + path, "-map", "0:v", "-c", "copy", "-an", "-sn", "-dn", "-f", "mov", "file:" + tmp])
-        try:
-            r = runner(cmd, capture_output=True, timeout=90, check=False)
-        except (OSError, subprocess.TimeoutExpired):
-            return None
-        if r.returncode != 0 or not os.path.exists(tmp):
-            return None
-        return _ffprobe(tmp, runner, CODEC_WHITELIST)[0]
-    finally:
-        try:
-            os.remove(tmp)
-        except OSError:
-            pass
-
-
 def probe(path, runner=None):
     """ffprobe the upload. Returns {codec, width, height, rotation, duration, fps} (width/height as
     displayed, i.e. after rotation). Raises VideoError(message for the phone) if it must be refused."""
     runner = runner or subprocess.run
-    info, err = _ffprobe(path, runner, PROBE_WHITELIST)
-    if not info and b"not on whitelist" in err:
-        info = _video_only_info(path, runner)
+    info = _ffprobe(path, runner, PROBE_WHITELIST)[0]
     if not info:
         raise VideoError(NOT_A_VIDEO)
     streams = info.get("streams") or []
     video = [s for s in streams if s.get("codec_type") == "video"
              and not (s.get("disposition") or {}).get("attached_pic")]
-    other = [s for s in streams if s.get("codec_type") in ("data", "attachment", "subtitle")]
-    if len(video) != 1 or other:
+    # Sage: data tracks (iPhone tmcd/mebx) are fine by type, no decoder needed, convert drops them (-dn). Subtitles
+    # only as mov_text (no decoder added, dropped with -sn); any other subtitle, any attachment, or an unknown
+    # stream type -> 415. At most MAX_STREAMS streams in all.
+    bad = [s for s in streams if s.get("codec_type") not in ("video", "audio", "data", "subtitle")
+           or (s.get("codec_type") == "subtitle" and s.get("codec_name") != "mov_text")]
+    if len(video) != 1 or bad or len(streams) > MAX_STREAMS:
         raise VideoError(NOT_A_VIDEO)
     v = video[0]
     if v.get("codec_name") not in CODECS:
@@ -307,6 +290,13 @@ def _limit():
     return (["prlimit", "--as=%d" % RLIMIT_AS, "--"] + env) if shutil.which("prlimit") else env
 
 
+HW_OPEN_ERRORS = ("Device creation failed", "Hardware device setup failed", "No device available for decoder")
+
+
+def _hw_open_failed(msg):
+    return any(m in msg for m in HW_OPEN_ERRORS)
+
+
 def _run(cmd, timeout_s, runner):
     r = runner(_prefix(timeout_s) + _limit() + cmd, capture_output=True, timeout=timeout_s + 30, check=False)
     if r.returncode != 0:
@@ -322,14 +312,18 @@ def convert(data_dir, stored_name, runner=None):
     final = os.path.join(data_dir, "originals", stored_name)
     info = probe(src, runner)
     try:
+        budget, t0 = timeout_for(info), time.monotonic()
         try:
-            _run(convert_cmd(src, part, info), timeout_for(info), runner)
-        except VideoError:
-            # Under User=mfapp the DRM device may be unavailable (no render group, no /dev/dri): ffmpeg then
-            # fails at once with "Device creation failed". Retry once in software rather than fail the clip.
-            if not _uses_hw(info):
+            _run(convert_cmd(src, part, info), budget, runner)
+        except VideoError as e:
+            # Under User=mfapp the DRM device may be unusable (no render group, no /dev/dri): ffmpeg then fails at
+            # once opening the hwaccel. Only THAT failure is retried, once, in software, with the same command
+            # otherwise (limits, whitelists, filters) and only the time left of the original budget (Sage).
+            left = int(budget - (time.monotonic() - t0))
+            if not (_uses_hw(info) and _hw_open_failed(str(e))) or left < 1:
                 raise
-            _run(convert_cmd(src, part, info, hwaccel=False), timeout_for(info), runner)
+            log.warning("video: DRM hwaccel unavailable, decoding %s in software", stored_name)
+            _run(convert_cmd(src, part, info, hwaccel=False), left, runner)
         if not os.path.exists(part) or os.path.getsize(part) == 0:
             raise VideoError("ffmpeg made no output")
         out_s = check_output(part, runner, min(info["duration"], MAX_SECONDS))

@@ -171,6 +171,27 @@ def test_kiosk_never_gives_the_lock_fd_to_its_children():
     assert '"$BROWSER" "$@" 9>&- &' in s and 'watch_liveness "$bpid" 9>&- &' in s
 
 
+# A process whose comm is set to an awkward name, blocked (state S) on a pipe read until teardown. Copying
+# `sleep` under that name does not work everywhere: on Ubuntu 26.04 (CI) `sleep` is the multicall uutils
+# binary, which dispatches on argv[0], fails on an unknown name and exits at once (seen as a zombie).
+COMM_CHILD = (
+    "import sys\n"
+    "open('/proc/self/comm', 'w').write(sys.argv[1])\n"
+    "sys.stdout.write('ready\\n'); sys.stdout.flush()\n"
+    "sys.stdin.read()\n"
+)
+
+
+def start_comm_child(comm, start=None):
+    argv = [sys.executable, "-c", COMM_CHILD, comm]
+    kw = dict(stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+    p = start(argv, **kw) if start else subprocess.Popen(argv, start_new_session=True, **kw)
+    assert p.stdout.readline() == "ready\n"
+    stat = Path(f"/proc/{p.pid}/stat").read_text()
+    assert f"({comm})" in stat, stat
+    return p
+
+
 # ---- #119 follow-up (Sage nits): /proc stat parsing and a literal lock-path match ----
 
 def lib(script, tmp_path):
@@ -198,10 +219,7 @@ def spawn():
 
 
 def test_state_parsed_after_the_last_paren_when_comm_has_space_and_paren(tmp_path, spawn):
-    exe = tmp_path / "x) T (y z"                                  # comm "x) T (y z": a naive split sees "T"
-    shutil.copy(shutil.which("sleep"), exe)
-    p = spawn([str(exe), "300"])
-    assert _wait_for(lambda: "x) T (y z" in Path(f"/proc/{p.pid}/stat").read_text())
+    p = start_comm_child("x) T (y z", spawn)                      # comm "x) T (y z": a naive split sees "T"
     r = lib(f"proc_state {p.pid}; alive {p.pid}", tmp_path)
     assert r.stdout.split() == ["S", str(p.pid)], r.stdout + r.stderr
     os.kill(p.pid, signal.SIGSTOP)

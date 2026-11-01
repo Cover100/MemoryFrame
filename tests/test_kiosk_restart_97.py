@@ -247,3 +247,21 @@ def test_lock_holders_match_the_lock_path_literally(tmp_path, spawn):
 def test_sourcing_as_a_library_restarts_nothing(tmp_path):
     r = lib("echo sourced", tmp_path)
     assert r.returncode == 0 and r.stdout.strip() == "sourced" and "kiosk:" not in r.stdout
+
+
+def test_leaked_lib_env_is_ignored_when_executed(box):
+    """Sage (#123): KIOSK_RESTART_LIB=1 only applies when sourced; executed with it set, the script still
+    restarts the launcher (it must never silently exit 0 from install.sh)."""
+    tmp_path, tmpfs, starts, k, procs = box
+    sess = {"PATH": os.environ["PATH"], "HOME": str(tmp_path), "WAYLAND_DISPLAY": "wayland-7",
+            "XDG_RUNTIME_DIR": str(tmp_path)}
+    old = subprocess.Popen(["bash", str(k)], env=sess)
+    procs.append(old)
+    assert _wait_for(lambda: starts.exists() and starts.read_text().strip())
+    env = {"PATH": os.environ["PATH"], "HOME": str(tmp_path), "MEMORYFRAME_KIOSK_TMPFS": str(tmpfs),
+           "MEMORYFRAME_KIOSK_RESTART_WAIT": "10", "KIOSK_RESTART_LIB": "1"}
+    r = subprocess.run([BASH, str(RESTART), str(k)], env=env, capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    assert "launcher restarted" in r.stdout
+    old.wait(timeout=10)
+    assert len(starts.read_text().splitlines()) == 2

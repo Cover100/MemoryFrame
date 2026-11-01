@@ -53,8 +53,9 @@ alive() {  # still running (a zombie has exited; it only waits for its parent to
     done
     echo "$out"
 }
-# Tests source this file with KIOSK_RESTART_LIB=1 to use the helpers above without restarting anything.
-if [ "${KIOSK_RESTART_LIB:-}" = 1 ]; then return 0 2>/dev/null || exit 0; fi
+# Tests SOURCE this file with KIOSK_RESTART_LIB=1 to use the helpers above without restarting anything.
+# Only honoured when sourced: an executed script (install.sh) ignores a leaked KIOSK_RESTART_LIB.
+if [ "${KIOSK_RESTART_LIB:-}" = 1 ] && [ "${BASH_SOURCE[0]}" != "$0" ]; then return 0; fi
 
 pids="$(launchers | tr '\n' ' ')"
 if [ -z "${pids// /}" ]; then

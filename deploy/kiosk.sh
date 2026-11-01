@@ -4,14 +4,15 @@
 #  - waits until the app answers /healthz (no "connection refused" page)
 #  - runs exactly one Chromium kiosk, restarting it if it exits
 #  - uses a dedicated Chromium profile and never touches the OS keyring
-#  - logs to ~/.cache/memoryframe-kiosk.log (launcher + Chromium stdout/stderr, rotated at 1 MB)
+#  - logs launcher + Chromium stdout/stderr (rotated at 1 MB) to the tmpfs (/run/mfkiosk/memoryframe-kiosk.log, #97),
+#    or to ~/.cache/memoryframe-kiosk.log when MEMORYFRAME_STATE_DIR is set or the tmpfs is missing
 #
 # Environment overrides:
 #   MEMORYFRAME_URL             default http://localhost:5000
 #   MEMORYFRAME_CHROMIUM_FLAGS  extra flags, e.g. "--ozone-platform=wayland" or "--disable-gpu"
 #   MEMORYFRAME_STATE_DIR       Chromium profile + cache parent, default /run/mfkiosk (#97: the RAM-only tmpfs
 #                               from run-mfkiosk.mount, 192M, 0700, kiosk user); ~/.cache/memoryframe if it is missing
-#   MEMORYFRAME_KIOSK_LOG       default ~/.cache/memoryframe-kiosk.log
+#   MEMORYFRAME_KIOSK_LOG       default: see above
 #   MEMORYFRAME_KIOSK_DEBUG=1   adds DevTools on 127.0.0.1:9222 only + verbose Chromium logging
 set -u
 
@@ -24,7 +25,10 @@ elif [ -d "$KIOSK_TMPFS" ] && [ -w "$KIOSK_TMPFS" ]; then STATE_DIR="$KIOSK_TMPF
 else STATE_DIR="$HOME/.cache/memoryframe"; STATE_FALLBACK=1; fi
 PROFILE_DIR="$STATE_DIR/chromium-profile"
 CACHE_DIR="$STATE_DIR/cache"
-LOG="${MEMORYFRAME_KIOSK_LOG:-$HOME/.cache/memoryframe-kiosk.log}"
+# #97: on the tmpfs the log lives there too (no card writes, journald stays at 0); lost on reboot.
+if [ -z "${MEMORYFRAME_STATE_DIR:-}" ] && [ -z "$STATE_FALLBACK" ]; then LOG_DEFAULT="$STATE_DIR/memoryframe-kiosk.log"
+else LOG_DEFAULT="$HOME/.cache/memoryframe-kiosk.log"; fi
+LOG="${MEMORYFRAME_KIOSK_LOG:-$LOG_DEFAULT}"
 # Sage (#113): never /tmp; the user's own state dir if there is no runtime dir.
 LOCK="${XDG_RUNTIME_DIR:-$STATE_DIR}/memoryframe-kiosk.lock"
 # #113: while a factory reset runs (marker present) the kiosk neither relaunches Chromium nor polls the app.
@@ -70,6 +74,13 @@ if [ -z "$BROWSER" ]; then
     exit 1
 fi
 
+# #97: the pre-tmpfs profile on the card (~/.cache/memoryframe/chromium-profile, ~200M of Chromium cache and
+# state the frame doesn't use) is removed once we run from the tmpfs. Safe here: this launcher holds the
+# single-instance lock, so no Chromium of ours is using it. Only that one directory; nothing else is touched.
+LEGACY_PROFILE="$HOME/.cache/memoryframe/chromium-profile"
+if [ -z "${MEMORYFRAME_STATE_DIR:-}" ] && [ -z "$STATE_FALLBACK" ] && [ -d "$LEGACY_PROFILE" ] && [ ! -L "$LEGACY_PROFILE" ]; then
+    rm -rf --one-file-system "$LEGACY_PROFILE" && log "removed the old on-card profile $LEGACY_PROFILE"
+fi
 [ -n "$STATE_FALLBACK" ] && log "WARNING: $KIOSK_TMPFS missing or not writable; profile on the SD card ($STATE_DIR)"
 log "start: browser=$BROWSER url=$URL session=${XDG_SESSION_TYPE:-?} wayland=${WAYLAND_DISPLAY:-} display=${DISPLAY:-}"
 

@@ -48,6 +48,37 @@ def test_default_state_dir_is_the_tmpfs(env):  # noqa: F811
     args = first_launch(tmp_path, e)
     assert f"--user-data-dir={tmpfs}/chromium-profile" in args and f"--disk-cache-dir={tmpfs}/cache" in args
     assert not (tmp_path / ".cache" / "memoryframe").exists()          # nothing on the card
+    assert "launch:" in (tmpfs / "memoryframe-kiosk.log").read_text()  # log on the tmpfs too
+    assert not (tmp_path / ".cache" / "memoryframe-kiosk.log").exists()
+
+
+def test_old_on_card_profile_removed_only_from_tmpfs_run(env):  # noqa: F811
+    tmp_path, _, _, e = env
+    old = tmp_path / ".cache" / "memoryframe"
+    (old / "chromium-profile" / "Default").mkdir(parents=True)
+    (old / "chromium-profile" / "Default" / "Cache").write_text("x" * 100)
+    (old / "keep.txt").write_text("not ours")
+    oldlog = tmp_path / ".cache" / "memoryframe-kiosk.log"
+    oldlog.write_text("history\n")
+    tmpfs = tmp_path / "run-mfkiosk"
+    tmpfs.mkdir(mode=0o700)
+    del e["MEMORYFRAME_STATE_DIR"]
+    e["MEMORYFRAME_KIOSK_TMPFS"] = str(tmpfs)
+    first_launch(tmp_path, e)
+    assert not (old / "chromium-profile").exists()
+    assert (old / "keep.txt").read_text() == "not ours" and oldlog.read_text() == "history\n"
+    assert "removed the old on-card profile" in (tmpfs / "memoryframe-kiosk.log").read_text()
+
+
+def test_old_profile_kept_when_tmpfs_missing(env):  # noqa: F811
+    tmp_path, _, _, e = env
+    prof = tmp_path / ".cache" / "memoryframe" / "chromium-profile"
+    prof.mkdir(parents=True)
+    (prof / "marker").write_text("1")
+    del e["MEMORYFRAME_STATE_DIR"]
+    e["MEMORYFRAME_KIOSK_TMPFS"] = str(tmp_path / "absent")
+    first_launch(tmp_path, e)
+    assert (prof / "marker").exists()
 
 
 def test_missing_tmpfs_falls_back_and_warns(env):  # noqa: F811

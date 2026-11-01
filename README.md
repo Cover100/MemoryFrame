@@ -110,7 +110,9 @@ What it does:
   192M, 0700, kiosk user, empty every boot; #97 SD wear), caches capped at 32 MiB,
   `--password-store=basic` (no keyring prompt), no first-run/restore bubbles, and
   `--ozone-platform=wayland` when a Wayland session is detected (`WAYLAND_DISPLAY` or `XDG_SESSION_TYPE=wayland`; the exact command line is logged as `launch: ...`). The launcher and Chromium's
-  stdout/stderr go to `~/.cache/memoryframe-kiosk.log` (rotated at 1 MB). Extra flags:
+  stdout/stderr go to `/run/mfkiosk/memoryframe-kiosk.log` (tmpfs, lost on reboot; `~/.cache/memoryframe-kiosk.log` only
+  if the tmpfs is missing), rotated at 1 MB. The old on-card profile `~/.cache/memoryframe/chromium-profile` is removed
+  by the launcher once it runs from the tmpfs. Extra flags:
   `MEMORYFRAME_CHROMIUM_FLAGS` (a `--disable-features=` there is merged into the launcher's single one); browser override: `MEMORYFRAME_BROWSER`.
   Debugging: `MEMORYFRAME_KIOSK_DEBUG=1` adds DevTools on **127.0.0.1:9222 only** plus Chromium
   logging; `python3 deploy/kiosk-console.py [--seconds N] [--screenshot file.png]` then prints the

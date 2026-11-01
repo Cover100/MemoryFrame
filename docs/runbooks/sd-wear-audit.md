@@ -34,11 +34,11 @@ MB/h = (t1 `card_bytes_written` - t0) / 1048576 / hours. Do the same per process
 - settings are intact
 
 ## Thresholds
-Reed agreed the idle limits (S1). The rest are Sage's proposal, to be agreed.
+All limits are agreed (Reed: S1 on 2026-11-01, the rest on 2026-11-02 as pass criteria for the at-frame session).
 - S1: at most 20 MB/h total, no process over 5 MB/h (agreed)
-- S2: at most 40 MB/h
-- S3: at most 4x amplification
-- Journal: at most 1 MB/h idle, at most 50 MB total
+- S2: at most 40 MB/h (agreed)
+- S3: at most 4x amplification (agreed)
+- Journal: at most 1 MB/h idle, at most 50 MB total (agreed)
 
 ## Results
 | Scenario | Card MB/h before | Top process (MB/h) | Journal growth | Amplification | Card MB/h after | Pass |

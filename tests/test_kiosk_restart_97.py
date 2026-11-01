@@ -2,6 +2,7 @@
 stop, a new launcher starts with the desktop session's environment, and the browser comes back on the tmpfs."""
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -168,3 +169,99 @@ def test_browser_not_up_after_restart_is_an_error(leaky):
 def test_kiosk_never_gives_the_lock_fd_to_its_children():
     s = (ROOT / "deploy" / "kiosk.sh").read_text()
     assert '"$BROWSER" "$@" 9>&- &' in s and 'watch_liveness "$bpid" 9>&- &' in s
+
+
+# A process whose comm is set to an awkward name, blocked (state S) on a pipe read until teardown. Copying
+# `sleep` under that name does not work everywhere: on Ubuntu 26.04 (CI) `sleep` is the multicall uutils
+# binary, which dispatches on argv[0], fails on an unknown name and exits at once (seen as a zombie).
+COMM_CHILD = (
+    "import sys\n"
+    "open('/proc/self/comm', 'w').write(sys.argv[1])\n"
+    "sys.stdout.write('ready\\n'); sys.stdout.flush()\n"
+    "sys.stdin.read()\n"
+)
+
+
+def start_comm_child(comm, start=None):
+    argv = [sys.executable, "-c", COMM_CHILD, comm]
+    kw = dict(stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+    p = start(argv, **kw) if start else subprocess.Popen(argv, start_new_session=True, **kw)
+    assert p.stdout.readline() == "ready\n"
+    stat = Path(f"/proc/{p.pid}/stat").read_text()
+    assert f"({comm})" in stat, stat
+    return p
+
+
+# ---- #119 follow-up (Sage nits): /proc stat parsing and a literal lock-path match ----
+
+def lib(script, tmp_path):
+    """Run bash with deploy/kiosk-restart.sh's helpers sourced (KIOSK_RESTART_LIB=1: restarts nothing)."""
+    env = {"PATH": os.environ["PATH"], "HOME": str(tmp_path), "KIOSK_RESTART_LIB": "1"}
+    return subprocess.run([BASH, "-c", f'set -- /nonexistent/kiosk.sh; source "{RESTART}"; {script}'],
+                          env=env, capture_output=True, text=True, timeout=30)
+
+
+@pytest.fixture
+def spawn():
+    procs = []
+
+    def start(argv, **kw):
+        p = subprocess.Popen(argv, start_new_session=True, **kw)
+        procs.append(p)
+        return p
+    yield start
+    for p in procs:
+        try:
+            os.killpg(p.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        p.wait(timeout=5)
+
+
+def test_state_parsed_after_the_last_paren_when_comm_has_space_and_paren(tmp_path, spawn):
+    p = start_comm_child("x) T (y z", spawn)                      # comm "x) T (y z": a naive split sees "T"
+    r = lib(f"proc_state {p.pid}; alive {p.pid}", tmp_path)
+    assert r.stdout.split() == ["S", str(p.pid)], r.stdout + r.stderr
+    os.kill(p.pid, signal.SIGSTOP)
+    assert _wait_for(lambda: lib(f"proc_state {p.pid}", tmp_path).stdout.strip() == "T")
+    os.kill(p.pid, signal.SIGKILL)
+    assert _wait_for(lambda: lib(f"proc_state {p.pid}", tmp_path).stdout.strip() == "Z")   # unreaped child
+    assert lib(f"alive {p.pid}", tmp_path).stdout.strip() == ""
+
+
+def test_lock_holders_match_the_lock_path_literally(tmp_path, spawn):
+    lock = tmp_path / "lk[1]*.lock"
+    other = tmp_path / "lk1-x.lock"                               # the glob lk[1]*.lock would match this one
+    holders = {}
+    for f in (lock, other):
+        f.write_text("")
+        holders[f] = spawn([BASH, "-c", 'exec 9>"$0"; exec sleep 300', str(f)])
+    assert _wait_for(lambda: all(os.path.exists(f"/proc/{p.pid}/fd/9") and
+                                 os.readlink(f"/proc/{p.pid}/fd/9") == str(f) for f, p in holders.items()))
+    r = lib(f'uid="$(id -u)"; LOCK="{lock}"; lock_holders', tmp_path)
+    assert r.stdout.split() == [str(holders[lock].pid)], r.stdout + r.stderr
+    r = lib(f'uid="$(id -u)"; LOCK="{tmp_path}/lk?-x.lock"; lock_holders', tmp_path)
+    assert r.stdout.strip() == ""                                 # a glob-looking path matches nothing else
+
+
+def test_sourcing_as_a_library_restarts_nothing(tmp_path):
+    r = lib("echo sourced", tmp_path)
+    assert r.returncode == 0 and r.stdout.strip() == "sourced" and "kiosk:" not in r.stdout
+
+
+def test_leaked_lib_env_is_ignored_when_executed(box):
+    """Sage (#123): KIOSK_RESTART_LIB=1 only applies when sourced; executed with it set, the script still
+    restarts the launcher (it must never silently exit 0 from install.sh)."""
+    tmp_path, tmpfs, starts, k, procs = box
+    sess = {"PATH": os.environ["PATH"], "HOME": str(tmp_path), "WAYLAND_DISPLAY": "wayland-7",
+            "XDG_RUNTIME_DIR": str(tmp_path)}
+    old = subprocess.Popen(["bash", str(k)], env=sess)
+    procs.append(old)
+    assert _wait_for(lambda: starts.exists() and starts.read_text().strip())
+    env = {"PATH": os.environ["PATH"], "HOME": str(tmp_path), "MEMORYFRAME_KIOSK_TMPFS": str(tmpfs),
+           "MEMORYFRAME_KIOSK_RESTART_WAIT": "10", "KIOSK_RESTART_LIB": "1"}
+    r = subprocess.run([BASH, str(RESTART), str(k)], env=env, capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    assert "launcher restarted" in r.stdout
+    old.wait(timeout=10)
+    assert len(starts.read_text().splitlines()) == 2

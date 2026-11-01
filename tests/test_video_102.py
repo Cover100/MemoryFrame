@@ -339,7 +339,8 @@ def test_migration_from_schema_1(tmp_path):
     conn = mfdb.connect(p)
     r = dict(conn.execute("SELECT * FROM media").fetchone())
     assert r["state"] == "ready" and r["duration_ms"] is None
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 2
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == mfdb.SCHEMA_VERSION
+    assert r["trim_start_ms"] is None and r["progress_pct"] == 0 and r["cancel_requested"] == 0
 
 
 def test_photo_media_json_unchanged(mf_app, lib, client):
@@ -644,3 +645,31 @@ def test_probe_whitelist_adds_audio_only_and_convert_stays_video_only(tmp_path):
     assert video.CODEC_WHITELIST == "h264,hevc,vp8,vp9,av1,libdav1d,mpeg4"
     c = video.convert_cmd("a", "b", video.probe(str(tmp_path / "x"), runner=fake))
     assert c[c.index("-codec_whitelist") + 1] == video.CODEC_WHITELIST and "-an" in c
+
+
+@pytest.mark.parametrize("err,retry", [
+    ("Device creation failed: -14.", True),
+    ("[dec:hevc] Hardware device setup failed for decoder: Bad address", True),
+    ("No device available for decoder: device type drm needed for codec hevc.", True),
+    ("Invalid data found when processing input", False),
+    ("Conversion failed!", False),
+])
+def test_hw_open_error_strings_pin_the_one_retry(tmp_path, err, retry):
+    calls = []
+
+    class Fake(FakeFF):
+        def __call__(self, cmd, **kw):
+            if "-filter_complex" in cmd:
+                calls.append(cmd)
+                if "-hwaccel" in cmd:
+                    return subprocess.CompletedProcess(cmd, 1, b"", err.encode())
+            return super().__call__(cmd, **kw)
+    d = _hevc_setup(tmp_path, "7" * 32 + ".mp4")
+    fake = Fake([stream(1920, 1080, "hevc")])
+    if retry:
+        video.convert(d, "7" * 32 + ".mp4", runner=fake)
+        assert len(calls) == 2 and "-hwaccel" not in calls[1]
+    else:
+        with pytest.raises(video.VideoError):
+            video.convert(d, "7" * 32 + ".mp4", runner=fake)
+        assert len(calls) == 1

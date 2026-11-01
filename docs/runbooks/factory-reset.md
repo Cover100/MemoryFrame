@@ -17,10 +17,12 @@
 The root helper is `deploy/factory-reset.sh`. It is installed as `/usr/local/sbin/memoryframe-factory-reset` and run by `memoryframe-factory-reset.service`.
 
 1. The app writes `/run/memoryframe-app/factory-reset` (`erase`) and starts the unit with `--no-block`. The helper rejects symlinks, non-regular files, files with the wrong owner, and any other contents.
-2. The helper stops the app first, then writes the marker `/var/lib/memoryframe/.factory-reset` (via a temp file and `mv`) and syncs it.
+2. The helper stops the app first, then writes the marker `/var/lib/memoryframe/.factory-reset` (via a temp file and `mv`) and syncs it, then stops the app a second time (in case something restarted it before the marker existed).
 3. It moves the targets into a fresh root-owned 0700 `.erasing-<id>` (atomic renames; a planted link or folder there is removed first) and syncs.
 4. It deletes `.erasing-*`, runs `fstrim` where supported, and recreates the empty folders (data dir owner, 0750).
 5. It removes the marker **last**, syncs, and starts the app.
+
+While the marker exists (even as a dangling link), `memoryframe.service` refuses to start (`ExecCondition`). **A reset that fails part-way leaves the marker, so the app stays stopped until the next reboot**, when the boot run finishes the reset.
 
 The unit also runs at every boot, before the app. If the marker is there, it finishes the reset (roll forward, never back). With no marker, it does nothing.
 

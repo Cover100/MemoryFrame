@@ -131,7 +131,7 @@ function mfAddedSummary(photos, videos){
         return {li, bar, msg, th, name};
     }
 
-    async function send(file, ui){
+    async function send(file, ui, trim){
         if(file.size >= SHRINK_MIN_BYTES && !/^video\//i.test(file.type)){      // #102: videos go as they are
             ui.li.className = "sending";
             ui.msg.textContent = "Making it smaller...";
@@ -173,6 +173,7 @@ function mfAddedSummary(photos, videos){
                     ui.msg.after(note);
                 }
                 ui.kind = body.kind === "video" ? "video" : "photo";
+                if(queued && Number.isInteger(body.media_id)){ watch(ui, body.media_id); }   // #103
                 if(xhr.status === 401){ location.href = "/pair"; }
                 if(xhr.status === 507){ resolve("full"); return; }
                 resolve(ok);
@@ -187,10 +188,112 @@ function mfAddedSummary(photos, videos){
             };
             const form = new FormData();
             form.append("file", file, file.name);
+            if(trim){                                            // #103: the part picked on the trim screen
+                form.append("trim_start_ms", String(trim.start));
+                form.append("trim_end_ms", String(trim.end));
+            }
             ui.msg.textContent = "Uploading 0%";
             ui.li.className = "sending";
             xhr.send(form);
         });
+    }
+
+    // ----- #103: after upload, follow the frame preparing the video (13c) -----
+    // Polls /media/<id>/status every 2 s: % bar (99 at most until ready), queue position, Cancel, "Resumed after
+    // restart", and Couldn't add + Retry / Remove. Screen readers hear 25/50/75 % and "ready" only.
+    const live = document.getElementById("vlive");
+    function say(t){ if(live){ live.textContent = t; } }
+    function api(path, method){
+        return fetch("/api/v1/media/" + path, {method: method || "GET", credentials: "same-origin", cache: "no-store",
+                                               headers: method ? {"X-CSRF-Token": CSRF} : {}});
+    }
+    function button(text, cls){ const b = document.createElement("button"); b.type = "button"; b.className = cls; b.textContent = text; return b; }
+    function watch(ui, id){
+        const name = ui.name.textContent.replace(/ \(.*$/, "");
+        ui.bar.remove();
+        const pct = document.createElement("span"); pct.className = "pct";
+        const bar = document.createElement("span"); bar.className = "vbar"; bar.setAttribute("role", "progressbar");
+        bar.setAttribute("aria-valuemin", "0"); bar.setAttribute("aria-valuemax", "100");
+        bar.setAttribute("aria-label", "Preparing " + name);
+        const fill = document.createElement("span"); bar.append(fill);
+        const resumed = document.createElement("span"); resumed.className = "slow"; resumed.textContent = "Resumed after restart";
+        const acts = document.createElement("span"); acts.className = "vacts";
+        const row = document.createElement("span"); row.className = "vrow";   // bar + % at its end (Wren)
+        row.append(bar, pct);
+        const note = ui.li.querySelector(".slow");
+        let last = 0, timer = null;
+        function show(s){
+            ui.li.className = "prep";              // plain text while preparing (no "Added" tick)
+            const prep = s.state === "processing", wait = s.state === "queued";
+            ui.li.classList.toggle("muted", s.state === "cancelling");
+            row.hidden = !prep; pct.textContent = prep ? s.progress + "%" : "";
+            if(prep){
+                fill.style.transform = "scaleX(" + (s.progress / 100) + ")";
+                bar.setAttribute("aria-valuenow", String(s.progress)); bar.setAttribute("aria-valuetext", s.progress + "%");
+                const m = mfMilestone(last, s.progress);
+                if(m){ say(name + ": " + m + "% prepared."); }
+                last = s.progress;
+            }
+            ui.msg.textContent = prep ? "Added. The frame is preparing it."
+                : wait ? "Waiting to prepare · " + (s.queue_pos === 1 ? "next in line" : s.queue_pos + " in line")
+                : s.state === "cancelling" ? "Cancelling…" : ui.msg.textContent;
+            resumed.hidden = !s.resumed;
+            acts.replaceChildren();
+            if(prep || wait || s.state === "cancelling"){
+                const c = button("Cancel", "vcancel");
+                c.disabled = s.state === "cancelling";
+                c.setAttribute("aria-label", "Cancel preparing " + name);
+                c.addEventListener("click", cancel);
+                acts.append(c);
+            }
+        }
+        async function cancel(){
+            show({state: "cancelling", progress: last});
+            try{ await api(id + "/cancel", "POST"); }catch(e){ /* the next poll tells */ }
+            tick();
+        }
+        async function tick(){
+            clearTimeout(timer); timer = null;
+            let s;
+            try{
+                const r = await api(id + "/status");
+                if(r.status === 404){ ui.li.remove(); return; }            // cancelled: the row goes
+                if(!r.ok){ throw new Error(r.status); }
+                s = await r.json();
+            }catch(e){ timer = setTimeout(tick, 2000); return; }       // offline for a moment: keep trying
+            if(s.state === "ready"){
+                acts.remove(); row.remove(); resumed.remove(); pct.textContent = "";
+                ui.li.className = "ok";
+                ui.msg.textContent = "Added";
+                const img = document.createElement("img");
+                img.className = "th"; img.alt = ""; img.width = 52; img.height = 52; img.decoding = "async";
+                img.src = "/api/v1/media/" + id + "/thumb";
+                ui.th.replaceWith(img); ui.th = img;
+                say(name + " is ready on the frame.");
+                return;
+            }
+            if(s.state === "failed"){
+                ui.li.className = "bad"; row.hidden = true; pct.textContent = ""; resumed.hidden = true;
+                ui.msg.textContent = "Couldn't add this video.";
+                const r = button("Retry", "vcancel"), x = button("Remove", "vcancel vrm");
+                r.addEventListener("click", async ()=>{
+                    try{ await api(id + "/retry", "POST"); }catch(e){ /* next poll */ }
+                    last = 0; tick();
+                });
+                x.addEventListener("click", async ()=>{
+                    try{ const q = await api(String(id), "DELETE"); if(q.ok){ ui.li.remove(); return; } }catch(e){ /* stays */ }
+                });
+                acts.replaceChildren(r, x);
+                return;
+            }
+            show(s);
+            timer = setTimeout(tick, 2000);
+        }
+        ui.msg.after(row);                     // name / status / bar + % / hi-res note / resumed / Cancel
+        (note || row).after(resumed);
+        resumed.after(acts);
+        show({state: "queued", progress: 0, queue_pos: 1});
+        tick();
     }
 
     const drop = document.getElementById("drop");
@@ -211,14 +314,24 @@ function mfAddedSummary(photos, videos){
         const word = input.dataset.videos ? " file" : " photo";
         summary.textContent = "Sending " + files.length + word + (files.length === 1 ? "" : "s") + "...";
         for(let i = 0; i < files.length; i++){
-            const r = await send(files[i], rows[i]);
+            let trim = null;
+            if(window.mfTrimPick && /^video\//i.test(files[i].type)){        // #103: over 30 s, pick the part first
+                rows[i].msg.textContent = "Checking length...";
+                const dur = await mfVideoDuration(files[i]);
+                if(dur && dur > MF_TRIM_MAX){
+                    trim = await mfTrimPick(files[i], dur);
+                    if(!trim){ rows[i].li.className = "bad"; mfSetText(rows[i].msg, "Not added"); done++; continue; }
+                    rows[i].name.textContent = files[i].name + " (" + mfMmss(trim.end - trim.start) + ")";
+                }
+            }
+            const r = await send(files[i], rows[i], trim);
             if(r === "full"){                        // #96: stop the batch at the first refusal
                 for(let j = i + 1; j < files.length; j++){ rows[j].li.className = "bad"; mfSetText(rows[j].msg, "Not sent"); }
                 summary.textContent = mfAddedSummary(added - addedVideos, addedVideos);
                 stopped = true;
                 break;
             }
-            if(r){ good++; if(rows[i].li.className === "ok"){ added++; if(rows[i].kind === "video"){ addedVideos++; } } }
+            if(r){ good++; if(rows[i].li.className === "ok" || rows[i].li.className === "prep"){ added++; if(rows[i].kind === "video"){ addedVideos++; } } }
             done++;
             summary.textContent = done + " of " + files.length + " done (" + good + " added or already there).";
         }

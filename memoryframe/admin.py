@@ -111,8 +111,14 @@ def upload_page():
     from flask import current_app
     from . import imaging
     store = imaging.stored_size(current_app.config["DISPLAY_TARGET"])      # #82: the browser shrinks to this
-    return render_template("upload.html", st=phone_storage(), store_w=store[0], store_h=store[1],
-                           videos=_videos())
+    from flask import make_response
+    from . import websec
+    resp = make_response(render_template("upload.html", st=phone_storage(), store_w=store[0], store_h=store[1],
+                                         videos=_videos()))
+    # #103: the trim screen previews the picked video from the phone's own memory (a blob: URL, never uploaded
+    # first). Only this page allows blob: media; everything else keeps the site-wide policy.
+    resp.headers["Content-Security-Policy"] = websec.CSP.replace("media-src 'self'", "media-src 'self' blob:")
+    return resp
 
 
 def _videos():
@@ -126,7 +132,7 @@ def _videos():
 def library_page():
     """#80 (phone/09-LIBRARY.md): one grid, newest first, rendered here so it shows without a second request.
     Only ids and kinds go to the page (tile labels are "Photo 4 of 128", never file names)."""
-    items = get_db().execute("SELECT id, kind, state, duration_ms FROM media "
+    items = get_db().execute("SELECT id, kind, state, duration_ms, progress_pct, cancel_requested, resumed FROM media "
                              "ORDER BY created_at DESC, id DESC").fetchall()
     nv = sum(1 for m in items if m["kind"] == "video")
     return render_template("library.html", items=items, n=len(items), nv=nv, np=len(items) - nv, st=phone_storage(),

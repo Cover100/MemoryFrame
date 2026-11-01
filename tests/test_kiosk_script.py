@@ -311,12 +311,18 @@ def test_service_never_starts_during_factory_reset():
     import re
     unit = (ROOT / "deploy" / "memoryframe.service").read_text()
     reset = (ROOT / "deploy" / "factory-reset.sh").read_text()
-    assert "ExecCondition=/usr/bin/test ! -e /var/lib/memoryframe/.factory-reset" in unit
+    cond = ("ExecCondition=/usr/bin/test ! -e /var/lib/memoryframe/.factory-reset"
+            " -a ! -L /var/lib/memoryframe/.factory-reset")
+    assert cond in unit
     assert re.search(r'^DATA="\$\{MEMORYFRAME_DATA_DIR:-/var/lib/memoryframe\}"', reset, re.M)
     assert 'MARKER="$DATA/.factory-reset"' in reset
-    for code, cond in ((0, False), (1, True)):                 # the condition command itself
+    for code, kind in ((0, None), (1, "file"), (1, "dangling")):   # the condition command itself
         m = Path(subprocess.run(["mktemp", "-d"], capture_output=True, text=True).stdout.strip())
-        if cond:
-            (m / ".factory-reset").write_text("x")
-        assert subprocess.run(["test", "!", "-e", str(m / ".factory-reset")]).returncode == code
+        p = m / ".factory-reset"
+        if kind == "file":
+            p.write_text("x")
+        elif kind == "dangling":
+            p.symlink_to(m / "nowhere")
+        argv = cond.split("=", 1)[1].replace("/var/lib/memoryframe/.factory-reset", str(p)).split()
+        assert subprocess.run(argv).returncode == code
         shutil.rmtree(m)

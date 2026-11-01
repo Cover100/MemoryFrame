@@ -95,6 +95,10 @@ def upload_media():
     if f is None or not f.filename:
         return jsonify({"error": "No file in the request (field 'file')."}), 400
     meta = {}
+    try:      # #103: the part of a video to keep (ms, picked on the phone); checked again after the probe
+        trim = video.parse_trim(request.form.get("trim_start_ms"), request.form.get("trim_end_ms"))
+    except video.TrimError as e:
+        return jsonify({"error": str(e)}), 400
     try:
         stored, name = upload.save_upload(get_db(), current_app.config["DATA_DIR"], f, min_free,
                                           current_app.config["DISPLAY_TARGET"],
@@ -103,7 +107,7 @@ def upload_media():
                                           videos=videos,
                                           max_photo_bytes=current_app.config["MAX_CONTENT_LENGTH"] if videos else None,
                                           meta=meta,
-                                          incoming=request.content_length or 0)
+                                          incoming=request.content_length or 0, trim=trim)
     except upload.UploadError as e:
         return jsonify({"error": e.message}), e.status
     is_video = name.endswith(".mp4")              # photo labels never end in .mp4
@@ -190,13 +194,40 @@ def retry(media_id):
     import os
     if not os.path.exists(video.input_path(data_dir, row["stored_name"])):
         return jsonify({"error": "The frame no longer has this video. Please remove it and upload it again."}), 410
-    get_db().execute("UPDATE media SET state = 'queued' WHERE id = ? AND state = 'failed'", (media_id,))
+    get_db().execute("UPDATE media SET state = 'queued', progress_pct = 0, resumed = 0"
+                     " WHERE id = ? AND state = 'failed'", (media_id,))      # #103: same stored trim
     get_db().commit()
     video.wake()
     return jsonify({"id": media_id, "state": "queued"})
 
 
 # #80: the Hide feature is gone (PUT /media/<id>/hidden removed); db.init_db clears old flags.
+
+
+@bp.route("/media/<int:media_id>/status")
+def media_status(media_id):
+    """#103: polled by the phone (~2 s) for a clip being prepared: state, progress %, queue position."""
+    return jsonify(video.status(get_db(), _item(media_id)))
+
+
+@bp.route("/media/<int:media_id>/cancel", methods=["POST"])
+def cancel(media_id):
+    """#103: stop preparing a video. Queued (or already ready/failed): removed like a delete. Processing:
+    flagged; the worker stops ffmpeg within about a second and removes the clip ("cancelling" until then)."""
+    row = _item(media_id)
+    if row["kind"] != "video":
+        return jsonify({"error": "Only a video can be cancelled."}), 409
+    db = get_db()
+    if row["state"] == "processing":
+        if db.execute("UPDATE media SET cancel_requested = 1 WHERE id = ? AND state = 'processing'",
+                      (media_id,)).rowcount == 1:
+            db.commit()
+            return jsonify({"id": media_id, "state": "cancelling"}), 202
+        db.commit()                               # it just finished or failed: fall through to a delete
+    found, _ = _delete_one(media_id)
+    if found:
+        bump_media_rev(current_app)
+    return jsonify({"id": media_id, "state": "cancelled"})
 
 
 @bp.route("/media/<int:media_id>", methods=["DELETE"])

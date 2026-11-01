@@ -51,7 +51,9 @@ exec >>"$LOG" 2>&1
 
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') memoryframe-kiosk: $*"; }
 
-# Single instance of this launcher.
+# Single instance of this launcher. Only the launcher itself may hold fd 9: the browser and the liveness
+# watcher are started with it closed (9>&-), so a Chromium helper (zygote, GPU, renderer...) that outlives
+# the launcher can never keep the lock and block the next launcher (#97, seen on the Pi).
 exec 9>"$LOCK"
 if ! flock -n 9; then
     log "already running, exiting"
@@ -205,7 +207,7 @@ while true; do
     started="$(date +%s)"
     "$BROWSER" "$@" 9>&- &
     bpid=$!
-    watch_liveness "$bpid" &
+    watch_liveness "$bpid" 9>&- &
     wpid=$!
     wait "$bpid"
     rc=$?

@@ -90,3 +90,81 @@ def test_restart_script_shape():
     s = RESTART.read_text()
     assert 'env -i "${vars[@]}" setsid -f "$K"' in s and "/proc/$first/environ" in s
     assert "WAYLAND_DISPLAY" in s and "DBUS_SESSION_BUS_ADDRESS" in s
+
+
+# ---- #97 (Hale, Pi): a Chromium helper that keeps the launcher's lock fd must not leave the frame blank ----
+
+LEAKY = r'''#!/usr/bin/env bash
+# fake kiosk.sh: same single-instance lock as the real one, but its "browser" LEAKS fd 9 into a helper
+exec 9>"$XDG_RUNTIME_DIR/kiosk.lock"
+if ! flock -n 9; then echo "already-running $$" >> "@T@/starts"; exit 0; fi
+echo "started $$" >> "@T@/starts"
+if [ ! -e "@T@/nobrowser" ]; then
+  "@PY@" -c '
+import subprocess, time
+# helper (zygote-like): no --user-data-dir, keeps fd 9, double-forked so it is re-parented at once
+subprocess.Popen(["bash", "-c", "sleep @SLEEP@ & disown"], pass_fds=(9,), start_new_session=True)
+time.sleep(300)' --user-data-dir=@TMPFS@/chromium-profile &
+fi
+while true; do sleep 0.2; done
+'''
+
+
+@pytest.fixture
+def leaky(tmp_path):
+    tmpfs = tmp_path / "run-mfkiosk"; tmpfs.mkdir(mode=0o700)
+    rt = tmp_path / "rt"; rt.mkdir(mode=0o700)
+    sleep_s = f"{3000 + os.getpid() % 997}.{abs(hash(str(tmp_path))) % 9973}"
+    k = tmp_path / "deploy" / "kiosk.sh"; k.parent.mkdir()
+    k.write_text(LEAKY.replace("@T@", str(tmp_path)).replace("@PY@", sys.executable)
+                 .replace("@TMPFS@", str(tmpfs)).replace("@SLEEP@", sleep_s))
+    k.chmod(0o755)
+    sess = {"PATH": os.environ["PATH"], "HOME": str(tmp_path), "XDG_RUNTIME_DIR": str(rt),
+            "WAYLAND_DISPLAY": "wayland-9"}
+    old = subprocess.Popen(["bash", str(k)], env=sess, start_new_session=True)
+    yield tmp_path, tmpfs, k, old, sleep_s
+    if old.poll() is None:
+        old.kill()
+    for pat in [str(k), f"sleep {sleep_s}", f"--user-data-dir={tmpfs}/chromium-profile"]:
+        subprocess.run(["pkill", "-f", "--", pat])
+
+
+def _wait_for(pred, t=10):
+    end = time.monotonic() + t
+    while time.monotonic() < end:
+        if pred():
+            return True
+        time.sleep(0.05)
+    return False
+
+
+def _helper_up(sleep_s):
+    return subprocess.run(["pgrep", "-f", f"^sleep {sleep_s}$"], capture_output=True).returncode == 0
+
+
+def test_helper_holding_the_lock_is_stopped_and_new_launcher_comes_up(leaky):
+    tmp_path, tmpfs, k, old, sleep_s = leaky
+    assert _wait_for(lambda: _helper_up(sleep_s))                    # the leaked lock holder exists
+    r = run_restart(tmp_path, tmpfs, k)
+    assert r.returncode == 0, r.stdout + r.stderr
+    old.wait(timeout=10)
+    starts = (tmp_path / "starts").read_text().split()
+    assert "already-running" not in starts, starts                   # Hale's Pi bug: new launcher refused
+    assert starts.count("started") == 2
+    assert f"browser running with --user-data-dir={tmpfs}/chromium-profile" in r.stdout
+
+
+def test_browser_not_up_after_restart_is_an_error(leaky):
+    tmp_path, tmpfs, k, old, sleep_s = leaky
+    assert _wait_for(lambda: _helper_up(sleep_s))
+    (tmp_path / "nobrowser").write_text("")                           # the new launcher starts no browser
+    env_wait = {"MEMORYFRAME_KIOSK_RESTART_WAIT": "1"}
+    r = subprocess.run([BASH, str(RESTART), str(k)], capture_output=True, text=True, timeout=60,
+                       env={"PATH": os.environ["PATH"], "HOME": str(tmp_path),
+                            "MEMORYFRAME_KIOSK_TMPFS": str(tmpfs), **env_wait})
+    assert r.returncode != 0 and "ERROR: kiosk browser not running" in r.stderr
+
+
+def test_kiosk_never_gives_the_lock_fd_to_its_children():
+    s = (ROOT / "deploy" / "kiosk.sh").read_text()
+    assert '"$BROWSER" "$@" 9>&- &' in s and 'watch_liveness "$bpid" 9>&- &' in s

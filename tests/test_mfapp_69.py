@@ -115,12 +115,13 @@ def test_kiosk_runs_from_opt_and_stays_the_desktop_user():
     # (no sudo, so it is not root and not mfapp)...
     call = [l.strip() for l in src.splitlines() if "kiosk-restart.sh}" in l]
     assert call == ['"${KIOSK_RESTART:-$SRC_DIR/deploy/kiosk-restart.sh}" "$APP_DIR/deploy/kiosk.sh" '
-                    '|| echo "WARNING: kiosk restart failed"']
+                    '|| kiosk_rc=$?']
     # ...and that script only finds, stops and relaunches launchers/browsers owned by that same user.
     rs = (ROOT / "deploy" / "kiosk-restart.sh").read_text()
     assert 'me="$(id -un)"' in rs
     assert '"$PGREP" -u "$me" -f -- "^(/usr/bin/|/bin/)?bash $re_k\\$"' in rs
-    assert 'pkill -u "$me"' in rs and "sudo" not in rs
+    assert '"$PGREP" -u "$me" -f -- "--user-data-dir=$prof( |\\$)"' in rs
+    assert 'ps -u "$uid"' in rs and '-user "$uid"' in rs and "sudo" not in rs
     assert "--exclude=/deploy/hotspot.conf" in src and "--exclude=/.git" in src
 
 

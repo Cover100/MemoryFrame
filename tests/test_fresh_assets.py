@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from test_install_never_arms_product import install
+from test_install_never_arms_product import install, run_install
 from test_netmode_script import env  # noqa: F401  (fixture)
 
 LOCAL = {"REMOTE_ADDR": "127.0.0.1"}
@@ -65,3 +65,14 @@ def test_install_never_reloads_on_ci(env, tmp_path, var):
     env["env"].update(var)
     log = install(tmp_path, env)
     assert "kiosk-restart" not in log
+
+
+def test_install_fails_at_the_end_when_the_kiosk_does_not_come_back(env, tmp_path):
+    """#97 (Hale): a frame left with no browser must not be reported as a successful install."""
+    env["env"].update(_stubs(tmp_path))
+    stub = tmp_path / "kbin" / "kiosk-restart"
+    stub.write_text('#!/bin/bash\necho "kiosk-restart $*" >> "$INSTALL_LOG"\nexit 1\n')
+    r, log = run_install(tmp_path, env)
+    assert r.returncode != 0
+    assert "ERROR: kiosk restart failed" in r.stderr
+    assert "Done. Reboot to verify" in r.stdout                  # every other step ran first

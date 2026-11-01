@@ -295,7 +295,13 @@ echo "== Kiosk restart (new launcher, profile and JS/CSS)"
 if [ -n "${CI:-}" ] || [ "${MEMORYFRAME_NO_KIOSK_RELOAD:-}" = 1 ]; then
     echo "skipped (CI or MEMORYFRAME_NO_KIOSK_RELOAD=1)"
 else
-    "${KIOSK_RESTART:-$SRC_DIR/deploy/kiosk-restart.sh}" "$APP_DIR/deploy/kiosk.sh" || echo "WARNING: kiosk restart failed"
+    "${KIOSK_RESTART:-$SRC_DIR/deploy/kiosk-restart.sh}" "$APP_DIR/deploy/kiosk.sh" || kiosk_rc=$?
 fi
 
 echo "Done. Reboot to verify: sudo reboot"
+if [ "${kiosk_rc:-0}" -ne 0 ]; then
+    # #97: every other step has run; the frame has no browser, so the install must not report success.
+    echo "ERROR: kiosk restart failed (rc=$kiosk_rc): no browser on the /run/mfkiosk profile. The frame shows" \
+         "nothing until the kiosk launcher runs: log out and in, or reboot. See /run/mfkiosk/memoryframe-kiosk.log." >&2
+    exit 1
+fi

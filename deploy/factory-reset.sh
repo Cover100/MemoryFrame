@@ -124,7 +124,12 @@ if [ "$rc" = 0 ]; then
     "$SYNC" || true
     # Stop again now the marker is there: a start that raced in between the first stop and the marker (Restart=,
     # watchdog, a manual start) passed ExecCondition; every start from here on is refused by it.
-    "$SYSTEMCTL" stop memoryframe.service || log "could not stop the app (second stop)"
+    # Sage (#117): if this stop fails the app may still be running, so don't erase under it. The marker stays: the
+    # app is refused by ExecCondition from its next start, and the boot run of this helper finishes the reset.
+    if ! "$SYSTEMCTL" stop memoryframe.service; then
+        log "ERROR: could not stop the app (second stop); not erasing now. The reset finishes at the next boot."
+        exit 1
+    fi
     erase "$id" on-demand
     exit 0
 fi

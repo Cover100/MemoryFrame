@@ -1,5 +1,7 @@
 {% extends "_phone.html" %}
 {% from "_storage.html" import storage_meter %}
+{% from "_video_tile.html" import video_state, video_li_state %}
+{% block styles %}{% if videos %}<link rel="stylesheet" href="{{ static('video.css') }}">{% endif %}{% endblock %}
 {% block back %}{% endblock %}
 {% block icon %}<a class="icon" href="/admin/settings" aria-label="Settings">⚙</a>{% endblock %}
 {% block strip %}<div class="strip{% if st %} has-store{% endif %}"><p class="conn"><span class="ok" aria-hidden="true"></span>Connected to the frame</p>{% if st %}{{ storage_meter(st, "on-dark") }}{% endif %}</div>{% endblock %}
@@ -15,9 +17,11 @@
 <a class="btn big block primary" href="/admin/upload">＋&nbsp; Upload photos</a>
 <div class="sec"><h2>Library</h2></div>
 {% if preview %}
-<a class="btn btn-neutral block see-all" href="/admin/library"><span>See all {{ total }} photo{{ "s" if total != 1 }}</span><span aria-hidden="true">›</span></a>
-<ul class="grid" aria-label="Newest photos">
-  {% for m in preview %}<li><a href="/admin/library" aria-label="Photo {{ loop.index }}"><img src="/api/v1/media/{{ m.id }}/thumb" alt="" width="240" height="240" loading="lazy" decoding="async"></a></li>{% endfor %}
+<a class="btn btn-neutral block see-all" href="/admin/library"><span>{{ see_all }}</span><span aria-hidden="true">›</span></a>
+<ul class="grid" id="homeGrid" aria-label="Newest photos">
+  {% for m in preview %}{% if m.kind == 'video' and m.state != 'ready' %}{# #126: not ready yet: the Photos tile without the ×; tapping opens Photos #}<li data-id="{{ m.id }}" data-kind="video" data-state="{{ video_li_state(m) }}">{{ video_state(m, actions=False, href="/admin/library") }}</li>
+  {%- elif m.kind == 'video' %}<li><a href="/admin/library" aria-label="Video {{ loop.index }}"><img src="/api/v1/media/{{ m.id }}/thumb" alt="" width="240" height="240" loading="lazy" decoding="async"></a></li>
+  {%- else %}<li><a href="/admin/library" aria-label="Photo {{ loop.index }}"><img src="/api/v1/media/{{ m.id }}/thumb" alt="" width="240" height="240" loading="lazy" decoding="async"></a></li>{% endif %}{% endfor %}
 </ul>
 {% else %}
 <div class="card empty-lib"><p class="muted flush">No photos yet. Tap <b>Upload photos</b> to send some to the frame.</p></div>
@@ -32,4 +36,4 @@
   </form></li>
 </ul>
 {% endblock %}
-{% block scripts %}<script src="{{ static('admin.js') }}"></script>{% endblock %}
+{% block scripts %}<script src="{{ static('admin.js') }}"></script>{% if videos %}<script src="{{ static('vtile.js') }}"></script><script src="{{ static('home.js') }}"></script>{% endif %}{% endblock %}

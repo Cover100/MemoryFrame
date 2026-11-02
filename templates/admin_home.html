@@ -1,6 +1,5 @@
 {% extends "_phone.html" %}
 {% from "_storage.html" import storage_meter %}
-{% from "_upload_button.html" import upload_button %}
 {% block back %}{% endblock %}
 {% block icon %}<a class="icon" href="/admin/settings" aria-label="Settings">⚙</a>{% endblock %}
 {% block strip %}<div class="strip{% if st %} has-store{% endif %}"><p class="conn"><span class="ok" aria-hidden="true"></span>Connected to the frame</p>{% if st %}{{ storage_meter(st, "on-dark") }}{% endif %}</div>{% endblock %}
@@ -13,7 +12,7 @@
 </div>
 {% endif %}
 <p class="sr-only">This phone is paired.</p>
-{{ upload_button(upload_videos) }}
+{% from "_upload_button.html" import upload_button %}{{ upload_button(upload_videos) }}
 <div class="sec"><h2>Library</h2></div>
 {% if preview %}
 <a class="btn btn-neutral block see-all" href="/admin/library"><span>See all {{ total }} photo{{ "s" if total != 1 }}</span><span aria-hidden="true">›</span></a>

@@ -430,7 +430,7 @@ def test_wifi_sheet_buttons_keep_wi_fi_whole_at_360(page, server, mf_app, monkey
 
 TEMPLATES = ROOT / "templates"
 FRAME_ONLY = {"index.html"}                         # the frame's own screen (dark slideshow), not a phone page
-PARTIALS = {"_phone.html", "_storage.html", "_upload_button.html"}
+PARTIALS = {"_phone.html", "_storage.html"}
 LINK_CLASSES = {"btn", "row-link", "back", "icon"}  # buttons, row cards, the header chevron and gear
 PHONE_JS = ["admin.js", "library.js", "upload.js", "settings.js", "wifi.js", "phone.js"]
 
@@ -798,3 +798,6 @@ def test_home_storage_meter_is_8px_on_a_forest_700_track():
     flat = re.sub(r"/\*.*?\*/", "", CSS, flags=re.S)
     assert not re.search(r"\.on-dark \.track \{[^}]*(height|background)", flat)
     assert "--mf-line: var(--mf-forest-700)" in (ROOT / "static" / "tokens.css").read_text()
+
+
+PARTIALS |= {"_upload_button.html"}                # the shared Upload button macro (Photos and home)

@@ -2,7 +2,6 @@
 {# #80 Library (phone/09-LIBRARY.md, dark): one grid, newest first. Tap or long press a photo, or Select, to
    start selecting; Delete (N) asks on a bottom sheet and sends one bulk request. No Show now, Hide or names. #}
 {% from "_storage.html" import storage_meter %}
-{% from "_upload_button.html" import upload_button %}
 {% block title %}Photos - Memory Frame{% endblock %}
 {% block back %}<a class="back" href="/admin/" aria-label="Back to home">‹</a>{% endblock %}
 {% block heading %}Photos{% endblock %}
@@ -10,7 +9,7 @@
 {% block strip %}<div class="strip{% if st %} has-store{% endif %}"><p class="conn"><span class="ok" aria-hidden="true"></span>Connected to the frame</p>{% if st %}{{ storage_meter(st, "on-dark") }}{% endif %}</div>
 <header class="bar selbar" id="selbar"><p class="name" id="selCount" aria-live="polite">0 selected</p><button type="button" class="btn-onbar" id="selAll">Select all</button></header>{% endblock %}
 {% block styles %}{% if videos %}<link rel="stylesheet" href="{{ static('video.css') }}">{% endif %}{% endblock %}
-{% block content %}
+{% block content %}{% from "_upload_button.html" import upload_button %}
 <div class="normal-only">
   {% if videos %}{# #102 (phone/11-VIDEO.md) #}
   {{ upload_button(videos, "upBtn") }}

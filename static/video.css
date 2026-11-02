@@ -78,3 +78,12 @@
 .mf-phone .lib .vx:disabled { opacity: .4; cursor: default; }
 .mf-phone .lib .vx:focus-visible { outline: 3px solid var(--mf-brass); outline-offset: -3px; }
 .mf-phone li[data-state="cancelling"] .state { color: var(--mf-oat); opacity: .6; }
+/* #126 (Wren): the home preview reuses the not-ready tile without the ×; a square 32 px ring, and when the
+   tiles are too small for the label (360 px at 130 % text) the ring alone (the tile keeps its aria-label). */
+.mf-phone .grid { container-type: inline-size; }
+.mf-phone .grid .tile .ring { width: 32px; height: 32px; border: 0; margin: 0; }   /* not the 07 Wi-Fi ring's border */
+.mf-phone .grid .tile .ring::before { content: none; }
+.mf-phone .grid .tile .state { padding: 4px; line-height: 1.2; }
+@container (max-width: 340px) {
+  .mf-phone .grid li[data-state="processing"] .state .lbl, .mf-phone .grid .state .resumed { display: none; }
+}

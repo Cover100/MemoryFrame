@@ -1,0 +1,17 @@
+{# #126: one markup for a video that isn't ready yet (Photos 13d tile and the home preview).
+   Waiting, Preparing NN % (ring), Cancelling…, or Couldn't add. static/vtile.js rebuilds the same DOM per poll.
+   actions=True (Photos): the × cancel and the Retry / Remove buttons; the tile is a div (buttons are not nested).
+   href (home, Wren): no buttons; the whole tile is a link to that page. #}
+{% macro video_state(m, actions=True, href=None) -%}
+{%- set c = m.cancel_requested -%}
+{%- set tag = 'a' if href else 'div' -%}
+{%- if m.state == 'failed' -%}
+<{{ tag }} class="tile vtile"{% if href %} href="{{ href }}" aria-label="Video couldn't be added"{% endif %}><div class="state fail"><span>Couldn't add</span>{% if actions %}<div class="acts"><button type="button" class="vretry" data-id="{{ m.id }}" aria-label="Retry video"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M19 12a7 7 0 1 1-2.05-4.95M19 4v4h-4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button type="button" class="vremove" data-id="{{ m.id }}" aria-label="Remove video"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg></button></div>{% endif %}</div></{{ tag }}>
+{%- else -%}
+{%- set pct = m.progress_pct or 0 -%}
+<{{ tag }} class="tile vtile"{% if href %} href="{{ href }}"{% else %} role="img"{% endif %} aria-label="{% if c %}Video cancelling{% elif m.state == 'processing' %}Video preparing, {{ pct }}%{% else %}Video waiting{% endif %}"><div class="state">{% if c %}<span class="lbl">Cancelling…</span>{% elif m.state == 'processing' %}<svg class="ring" viewBox="0 0 40 40" aria-hidden="true"><circle class="bg" cx="20" cy="20" r="17"/><circle class="fg" cx="20" cy="20" r="17" stroke-dasharray="106.8" stroke-dashoffset="{{ '%.1f' % (106.8 * (100 - pct) / 100) }}" transform="rotate(-90 20 20)"/></svg><span class="lbl">Preparing {{ pct }}%</span>{% else %}<span class="lbl">Waiting</span>{% endif %}{% if m.resumed and not c %}<span class="resumed">Resumed after restart</span>{% endif %}</div></{{ tag }}>
+{%- if actions %}<button type="button" class="vx" data-id="{{ m.id }}" aria-label="Cancel preparing video"{% if c %} disabled{% endif %}><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg></button>{% endif %}
+{%- endif -%}
+{%- endmacro %}
+{# data-state for the li: a cancel request shows as "cancelling" until the video is gone or ready #}
+{% macro video_li_state(m) %}{{ 'cancelling' if m.cancel_requested and m.state != 'ready' else m.state }}{% endmacro %}

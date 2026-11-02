@@ -81,6 +81,17 @@ for _code in _PHONE_ERRORS:
     bp.app_errorhandler(_code)(_phone_error)
 
 
+def see_all_label(photos, videos):
+    """#126 (Wren): the home "See all" link text, kept here only. None when the library is empty (no link)."""
+    n = photos + videos
+    if n == 0:
+        return None
+    what = "photos and videos" if photos and videos else "videos" if videos else "photos"
+    if n == 1:
+        return "See 1 video" if videos else "See 1 photo"
+    return f"See all {n} {what}"
+
+
 @bp.route("/")
 def home():
     from . import wifi
@@ -89,13 +100,15 @@ def home():
         return redirect("/admin/wifi/keep", code=302)
     from . import settings
     # Restyle PR C (#70 mock 02): home and library on one page (Upload, 3x3 preview, rows).
-    preview = conn.execute("SELECT id, original_name FROM media ORDER BY created_at DESC, id DESC "
-                           "LIMIT ?", (PREVIEW,)).fetchall()
+    preview = conn.execute("SELECT id, kind, state, duration_ms, progress_pct, cancel_requested, resumed FROM media "
+                           "ORDER BY created_at DESC, id DESC LIMIT ?", (PREVIEW,)).fetchall()
+    nv = conn.execute("SELECT COUNT(*) FROM media WHERE kind = 'video'").fetchone()[0]
     total = conn.execute("SELECT COUNT(*) FROM media").fetchone()[0]
     # #92: the Wi-Fi row names the configured frame Wi-Fi to a PAIRED phone, in dev mode too (the Wi-Fi page shows
     # the same name). Only the offline panel (phone_wifi) hides it in dev: there it says which network to rejoin.
     return render_template("admin_home.html", wifi_notice=wifi.admin_notice(conn),
                            just_paired=request.args.get("paired") == "1", preview=preview, total=total,
+                           see_all=see_all_label(total - nv, nv), videos=any(m["kind"] == "video" for m in preview),
                            st=phone_storage(), s=settings.get_all(conn), ssid=wifi.current_wifi(conn)[0] or "",
                            home_wifi=_home_wifi_link(), upload_videos=videos_on())
 

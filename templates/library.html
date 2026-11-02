@@ -2,6 +2,7 @@
 {# #80 Library (phone/09-LIBRARY.md, dark): one grid, newest first. Tap or long press a photo, or Select, to
    start selecting; Delete (N) asks on a bottom sheet and sends one bulk request. No Show now, Hide or names. #}
 {% from "_storage.html" import storage_meter %}
+{% from "_upload_button.html" import upload_button %}
 {% block title %}Photos - Memory Frame{% endblock %}
 {% block back %}<a class="back" href="/admin/" aria-label="Back to home">‹</a>{% endblock %}
 {% block heading %}Photos{% endblock %}
@@ -12,9 +13,9 @@
 {% block content %}
 <div class="normal-only">
   {% if videos %}{# #102 (phone/11-VIDEO.md) #}
-  <a class="btn big block primary" id="upBtn" href="/admin/upload">＋&nbsp; Upload</a>
+  {{ upload_button(videos, "upBtn") }}
   <p class="upnote">Photos and videos. Videos play silently, up to 30 seconds. The frame keeps its own copy, not your original.</p>
-  {% else %}<a class="btn big block primary" id="upBtn" href="/admin/upload">＋&nbsp; Upload photos</a>{% endif %}
+  {% else %}{{ upload_button(videos, "upBtn") }}{% endif %}
   <div class="libhead">
     {% if videos %}<h1>Library<small id="count" data-photos="{{ np }}" data-videos="{{ nv }}">{{ np }} photo{{ "s" if np != 1 }} · {{ nv }} video{{ "s" if nv != 1 }}</small></h1>
     {% else %}<h1>Library<small id="count">{{ n }} photo{{ "s" if n != 1 }} on the frame</small></h1>{% endif %}

@@ -97,7 +97,7 @@ def home():
     return render_template("admin_home.html", wifi_notice=wifi.admin_notice(conn),
                            just_paired=request.args.get("paired") == "1", preview=preview, total=total,
                            st=phone_storage(), s=settings.get_all(conn), ssid=wifi.current_wifi(conn)[0] or "",
-                           home_wifi=_home_wifi_link())
+                           home_wifi=_home_wifi_link(), upload_videos=videos_on())
 
 
 @bp.route("/sign-out-all", methods=["POST"])
@@ -128,6 +128,14 @@ def _videos():
     return video.available() if v is None else bool(v)
 
 
+def videos_on(nv=None):
+    """Photos and home: video features show when videos are enabled or any video is already in the Library.
+    One rule for both pages' Upload button label (templates/_upload_button.html)."""
+    if nv is None:
+        nv = get_db().execute("SELECT COUNT(*) FROM media WHERE kind = 'video'").fetchone()[0]
+    return _videos() or nv > 0
+
+
 @bp.route("/library")
 def library_page():
     """#80 (phone/09-LIBRARY.md): one grid, newest first, rendered here so it shows without a second request.
@@ -136,7 +144,7 @@ def library_page():
                              "ORDER BY created_at DESC, id DESC").fetchall()
     nv = sum(1 for m in items if m["kind"] == "video")
     return render_template("library.html", items=items, n=len(items), nv=nv, np=len(items) - nv, st=phone_storage(),
-                           videos=_videos() or nv > 0)
+                           videos=videos_on(nv))
 
 
 @bp.route("/settings")

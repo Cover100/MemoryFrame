@@ -144,29 +144,59 @@ KILLS_FILE="${XDG_RUNTIME_DIR:-$STATE_DIR}/memoryframe-kiosk.kills"
 BACKOFF_BASE="${MEMORYFRAME_KIOSK_BACKOFF:-2}"
 BACKOFF_MAX=60
 
+# #122: a stopped main browser process (state T: SIGSTOP or traced) leaves a frozen screen while the
+# renderer keeps the heartbeat going (Hale's spike), so the watcher also relaunches when the browser pid has
+# been in state T for STOPPED_MAX s or more IN A ROW (checked on the same LIVE_EVERY poll; any other state
+# resets the timer). Same kill limits and relaunch path as a stale heartbeat. v1 residual risk (accepted):
+# a real deadlock of the main process with a healthy renderer is not detected.
+STOPPED_MAX="${MEMORYFRAME_STOPPED_MAX:-60}"
+proc_state() {  # one-letter state from /proc/PID/stat; comm may hold spaces and ')', so take the text
+    local st      # after the LAST ')' ("<state> <ppid> ...")
+    st="$(cat "/proc/$1/stat" 2>/dev/null)" || return 1
+    st="${st##*) }"
+    printf '%s\n' "${st%% *}"
+}
+
+kill_for_liveness() {  # $1 = browser pid, $2 = reason for the log. Returns 0 if it killed the browser.
+    local now recent=0 t
+    now="$(date +%s)"
+    if [ -f "$KILLS_FILE" ]; then
+        while read -r t; do [ $((now - t)) -lt "$LIVE_WINDOW" ] && recent=$((recent + 1)); done < "$KILLS_FILE"
+    fi
+    if [ "$recent" -ge "$LIVE_KILLS" ]; then
+        log "liveness: $2, but $recent kills in 10 min; not killing"
+        return 1
+    fi
+    echo "$now" >> "$KILLS_FILE"
+    log "liveness: $2; killing browser $1"
+    kill "$1" 2>/dev/null
+    kill -CONT "$1" 2>/dev/null     # a stopped process only acts on the TERM once it is continued
+    return 0
+}
+
 watch_liveness() {  # $1 = browser pid
-    local pid="$1" body age now recent
+    local pid="$1" body age st stopped_since=""
     while kill -0 "$pid" 2>/dev/null; do
         sleep "$LIVE_EVERY"
-        resetting && continue
+        resetting && { stopped_since=""; continue; }
+        st="$(proc_state "$pid")" || st=""
+        if [ "$st" = T ]; then
+            # Timed in ms from the poll that first saw T, so with the defaults (20 s poll, 60 s) the relaunch
+            # comes 60-80 s after the stop: >= STOPPED_MAX, at most one poll later.
+            [ -n "$stopped_since" ] || stopped_since="$(date +%s%3N)"
+            if [ $(( $(date +%s%3N) - stopped_since )) -ge $(( STOPPED_MAX * 1000 )) ]; then
+                kill_for_liveness "$pid" "browser stopped (state T) for ${STOPPED_MAX} s or more" && return 0
+                stopped_since=""                 # rate-limited: start a new 60 s window
+            fi
+            continue
+        fi
+        stopped_since=""
         body="$(curl -fsS --max-time 5 "$URL/frame/liveness" 2>/dev/null)" || continue
         case "$body" in *'"shutting_down":true'*|*'"shutting_down": true'*) continue ;; esac
         age="$(printf '%s' "$body" | sed -n 's/.*"kiosk_age_s": *\([0-9]*\).*/\1/p')"
         [ -n "$age" ] && [ "$age" -gt "$LIVE_MAX_AGE" ] || continue
         curl -fsS --max-time 5 "$HEALTH" >/dev/null 2>&1 || continue
-        now="$(date +%s)"
-        recent=0
-        if [ -f "$KILLS_FILE" ]; then
-            while read -r t; do [ $((now - t)) -lt "$LIVE_WINDOW" ] && recent=$((recent + 1)); done < "$KILLS_FILE"
-        fi
-        if [ "$recent" -ge "$LIVE_KILLS" ]; then
-            log "liveness: no heartbeat for ${age} s, but $recent kills in 10 min; not killing"
-            continue
-        fi
-        echo "$now" >> "$KILLS_FILE"
-        log "liveness: no heartbeat for ${age} s; killing browser $pid"
-        kill "$pid" 2>/dev/null
-        return 0
+        kill_for_liveness "$pid" "no heartbeat for ${age} s" && return 0
     done
 }
 

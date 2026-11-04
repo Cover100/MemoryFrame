@@ -1,0 +1,5 @@
+{# One Upload button for Photos and home, so the label can't drift: "Upload" when videos are on, else "Upload photos".
+   videos: admin.videos_on() (the same value both pages pass). #}
+{% macro upload_button(videos, id=None) -%}
+<a class="btn big block primary"{% if id %} id="{{ id }}"{% endif %} href="/admin/upload">＋&nbsp; {{ "Upload" if videos else "Upload photos" }}</a>
+{%- endmacro %}

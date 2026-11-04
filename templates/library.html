@@ -10,12 +10,12 @@
 {% block strip %}<div class="strip{% if st %} has-store{% endif %}"><p class="conn"><span class="ok" aria-hidden="true"></span>Connected to the frame</p>{% if st %}{{ storage_meter(st, "on-dark") }}{% endif %}</div>
 <header class="bar selbar" id="selbar"><p class="name" id="selCount" aria-live="polite">0 selected</p><button type="button" class="btn-onbar" id="selAll">Select all</button></header>{% endblock %}
 {% block styles %}{% if videos %}<link rel="stylesheet" href="{{ static('video.css') }}">{% endif %}{% endblock %}
-{% block content %}
+{% block content %}{% from "_upload_button.html" import upload_button %}
 <div class="normal-only">
   {% if videos %}{# #102 (phone/11-VIDEO.md) #}
-  <a class="btn big block primary" id="upBtn" href="/admin/upload">＋&nbsp; Upload</a>
+  {{ upload_button(videos, "upBtn") }}
   <p class="upnote">Photos and videos. Videos play silently, up to 30 seconds. The frame keeps its own copy, not your original.</p>
-  {% else %}<a class="btn big block primary" id="upBtn" href="/admin/upload">＋&nbsp; Upload photos</a>{% endif %}
+  {% else %}{{ upload_button(videos, "upBtn") }}{% endif %}
   <div class="libhead">
     {% if videos %}<h1>Library<small id="count" data-photos="{{ np }}" data-videos="{{ nv }}">{{ np }} photo{{ "s" if np != 1 }} · {{ nv }} video{{ "s" if nv != 1 }}</small></h1>
     {% else %}<h1>Library<small id="count">{{ n }} photo{{ "s" if n != 1 }} on the frame</small></h1>{% endif %}

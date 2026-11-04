@@ -14,7 +14,7 @@
 </div>
 {% endif %}
 <p class="sr-only">This phone is paired.</p>
-<a class="btn big block primary" href="/admin/upload">＋&nbsp; Upload photos</a>
+{% from "_upload_button.html" import upload_button %}{{ upload_button(upload_videos) }}
 <div class="sec"><h2>Library</h2></div>
 {% if preview %}
 <a class="btn btn-neutral block see-all" href="/admin/library"><span>{{ see_all }}</span><span aria-hidden="true">›</span></a>

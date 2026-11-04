@@ -798,3 +798,6 @@ def test_home_storage_meter_is_8px_on_a_forest_700_track():
     flat = re.sub(r"/\*.*?\*/", "", CSS, flags=re.S)
     assert not re.search(r"\.on-dark \.track \{[^}]*(height|background)", flat)
     assert "--mf-line: var(--mf-forest-700)" in (ROOT / "static" / "tokens.css").read_text()
+
+
+PARTIALS |= {"_upload_button.html"}                # the shared Upload button macro (Photos and home)

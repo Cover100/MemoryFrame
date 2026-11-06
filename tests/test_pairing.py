@@ -278,6 +278,8 @@ def test_last_seen_no_write_txn_within_throttle(paired, mf_app, monkeypatch):
         return conn
 
     monkeypatch.setattr(mdb, "connect", wrapping_connect)
+    # Pairing already opened a worker connection; drop it so polls use the tracer.
+    mdb.dispose_worker_connection()
 
     n = 20
     for _ in range(n):
@@ -291,3 +293,89 @@ def test_last_seen_no_write_txn_within_throttle(paired, mf_app, monkeypatch):
     assert paired.get("/api/v1/status", environ_base=PHONE).status_code == 200
     assert counts["update"] == 1
     assert rows(mf_app, "SELECT last_seen FROM devices")[0][0] == t["now"]
+
+
+def test_wal_close_write_reuses_connection(paired, mf_app):
+    """N authenticated admin/status polls must not CLOSE_WRITE the WAL N times (#132).
+
+    #131 stopped last_seen UPDATEs inside the throttle, but get_db→close_db still
+    opened/closed a WAL connection every request (~2.2 IN_CLOSE_WRITE per S2 loop).
+    One thread-local connection reused across polls should produce ≪ N closes.
+
+    Watch the data directory (not the WAL inode): when the last connection closes,
+    SQLite checkpoints and may unlink/recreate *-wal, which drops a file watch.
+    """
+    # Opt into production reuse: TESTING teardown otherwise closes every request
+    # so Werkzeug live_server threads do not leak FDs across the suite.
+    mf_app.config["DB_REUSE_IN_TESTS"] = True
+    import ctypes
+    import ctypes.util
+    import os
+    import struct
+    import time
+
+    db_path = mf_app.config["DB_PATH"]
+    data_dir = os.path.dirname(db_path) or "."
+    wal_name = os.path.basename(db_path) + "-wal"
+    wal_path = db_path + "-wal"
+
+    # Warm the worker connection and ensure the WAL file exists (PRAGMA journal_mode=WAL).
+    assert paired.get("/api/v1/status", environ_base=PHONE).status_code == 200
+    assert os.path.exists(wal_path), wal_path
+
+    libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
+    IN_CLOSE_WRITE = 0x00000008
+    inotify_init1 = libc.inotify_init1
+    inotify_init1.restype = ctypes.c_int
+    inotify_add_watch = libc.inotify_add_watch
+    inotify_add_watch.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_uint32]
+    inotify_add_watch.restype = ctypes.c_int
+
+    fd = inotify_init1(os.O_NONBLOCK)
+    assert fd >= 0, ctypes.get_errno()
+    try:
+        wd = inotify_add_watch(fd, data_dir.encode(), IN_CLOSE_WRITE)
+        assert wd >= 0, ctypes.get_errno()
+
+        def drain():
+            n_events = 0
+            while True:
+                try:
+                    data = os.read(fd, 65536)
+                except BlockingIOError:
+                    break
+                if not data:
+                    break
+                i = 0
+                while i + 16 <= len(data):
+                    _wd, mask, _cookie, name_len = struct.unpack_from("iIII", data, i)
+                    name = b""
+                    if name_len:
+                        name = data[i + 16:i + 16 + name_len].split(b"\x00", 1)[0]
+                    i += 16 + name_len
+                    if (mask & IN_CLOSE_WRITE) and name.decode(errors="replace") == wal_name:
+                        n_events += 1
+            return n_events
+
+        drain()  # discard warm-up / setup closes
+        n = 40
+        for _ in range(n):
+            assert paired.get("/api/v1/status", environ_base=PHONE).status_code == 200
+            assert paired.get("/admin/", environ_base=PHONE).status_code == 200
+        # Brief settle so any deferred close would show up; reuse should still be ~0.
+        time.sleep(0.05)
+        closes = drain()
+    finally:
+        os.close(fd)
+
+    total = 2 * n
+    # Pre-#132 this was ~total CLOSE_WRITE events (one connect/close per request).
+    # With per-thread reuse, request teardown must not close the WAL connection.
+    assert closes * 10 < total, (
+        f"WAL CLOSE_WRITE={closes} for {total} authenticated polls "
+        f"(expected ≪ {total}; connection is being closed per request)"
+    )
+    assert closes <= 2, (
+        f"unexpected WAL CLOSE_WRITE count during reuse window: {closes} "
+        f"(N requests={total})"
+    )

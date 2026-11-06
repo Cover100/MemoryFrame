@@ -35,16 +35,32 @@ Also note:
 
 ### Pi usage (Hale)
 
+**Do not `git checkout` the runner branch on the Pi.** That changes `HEAD` and fights the script’s `HEAD==6711333` product-code guard. Leave the device checkout on **main / the 6711333 deploy HEAD**, and install a **copy** of the runner outside the tree (same pattern as Hale’s live run).
+
 ```bash
-# from MemoryFrame checkout on the Pi
-git fetch origin && git checkout hale/s2s3-runner-6711333   # or the PR head
-sha256sum deploy/qa/run-s2-s3-repaired.sh
-bash deploy/qa/run-s2-s3-repaired.sh
+# On the Pi: stay on 6711333 product HEAD
+cd ~/Documents/GitHub/MemoryFrame   # or $REPO
+git rev-parse --short HEAD          # expect 6711333
+test "$(cat /boot/firmware/memoryframe-mode.txt)" = dev
+
+mkdir -p ~/sdwear-s2s3
+# Prefer fetch + show (no checkout of the runner branch):
+git fetch origin hale/s2s3-runner-6711333
+git show origin/hale/s2s3-runner-6711333:deploy/qa/run-s2-s3-repaired.sh   > ~/sdwear-s2s3/run-s2-s3-repaired.sh
+chmod +x ~/sdwear-s2s3/run-s2-s3-repaired.sh
+sha256sum ~/sdwear-s2s3/run-s2-s3-repaired.sh
+# expect f659f992dade776765b77f49727666d667a979294918e66b0bf1da9374ec0662
+# (or whatever README/PR head currently lists)
+
+# Or scp the shared twin (same bytes when refreshed):
+#   /home/box/shared/MemoryFrame-compare/sdwear-97/run-s2-s3-nohang.sh
+
+bash ~/sdwear-s2s3/run-s2-s3-repaired.sh
 ```
 
 Shared-folder / scp twin:  
 `/home/box/shared/MemoryFrame-compare/sdwear-97/run-s2-s3-nohang.sh`  
-(refresh from this branch after pulls; checksums sit beside it).
+(checksums sit beside it; refresh from the PR branch without checking that branch out on the Pi).
 
 ### Offline proof
 

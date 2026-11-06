@@ -48,8 +48,13 @@ MINIMAL PROPOSED Pi RESTART STEPS (for parent/user approval ONLY — NOT execute
   1. Confirm still on HEAD 6711333 and mode=dev (read-only checks).
   2. If screen 9474.s2s3 (or current s2s3 session) still stuck: quit that screen only;
      do not reboot; do not change mode; do not deploy/reset; do not delete user media.
-  3. Copy run-s2-s3-repaired.sh to Pi (e.g. ~/sdwear-s2s3/run-s2-s3-repaired.sh);
-     verify sha256 == 239fcc27785dd7498b490f652ee9acf16d71dc3ccd73e1bf801a49f989422587.
+  3. Do NOT git-checkout the runner branch on the Pi (that moves HEAD off 6711333).
+     Leave device on main / 6711333 deploy HEAD. Install a copy, e.g.:
+       git fetch origin hale/s2s3-runner-6711333
+       git show origin/hale/s2s3-runner-6711333:deploy/qa/run-s2-s3-repaired.sh \
+         > ~/sdwear-s2s3/run-s2-s3-repaired.sh
+     or scp the shared twin run-s2-s3-nohang.sh. Verify sha256 against README/PR head
+     (current on 58166cf: f659f992dade776765b77f49727666d667a979294918e66b0bf1da9374ec0662).
   4. Start under screen: cd $REPO && bash ~/sdwear-s2s3/run-s2-s3-repaired.sh
      (or path chosen); expect warmup 10m + S2 30m + S3 upload.
   5. Collect: DONE symlink, summary-$RUN_ID.txt, run-$RUN_ID.log, /root/sd-wear/S2-t*.txt
@@ -66,3 +71,4 @@ ASSESSMENT CAVEATS (Sage / #129 follow-up — not merge blockers)
     the iteration count as seconds, so a "5s" offline deadline is ~5x short
     (~1s wall). Offline tests still validate no-bare-wait behaviour.
   - Before S3-t1: sync + 5s settle (logged). No drop_caches.
+  - Never git-checkout the runner branch on the Pi; use git show / scp into ~/sdwear-s2s3 so HEAD stays 6711333.

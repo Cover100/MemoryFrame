@@ -1,5 +1,13 @@
-"""SQLite schema and connection handling (one connection per request)."""
+"""SQLite schema and connection handling (one connection per worker thread).
+
+Waitress serves with several threads in one process. Opening and closing a WAL
+database on every request produces an IN_CLOSE_WRITE on the *-wal file even for
+SELECT-only work (#132 / #97 S2). Reuse one connection for the life of each
+worker thread; request teardown only rolls back leftover transaction state.
+"""
+import atexit
 import sqlite3
+import threading
 import time
 
 from flask import current_app, g
@@ -68,6 +76,13 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 """
 
+# One SQLite connection per OS thread (Waitress worker). Do not share across threads
+# (check_same_thread stays True). Flask `g` alone is not enough: teardown pops it
+# every request, which would force a reconnect.
+_local = threading.local()
+_registry_lock = threading.Lock()
+_registry = []  # live worker connections for process-exit close
+
 
 def connect(db_path):
     conn = sqlite3.connect(db_path, timeout=10)
@@ -78,6 +93,7 @@ def connect(db_path):
 
 
 def init_db(db_path):
+    # Short-lived bootstrap connection: not the per-thread worker handle.
     conn = connect(db_path)
     try:
         conn.executescript(SCHEMA)
@@ -111,16 +127,99 @@ def migrate(conn):
     conn.execute("UPDATE schema_version SET version = ? WHERE version < ?", (SCHEMA_VERSION, SCHEMA_VERSION))
 
 
+def _worker_connection(db_path):
+    """Return the thread-local connection for db_path, opening one if needed."""
+    conn = getattr(_local, "db", None)
+    cached_path = getattr(_local, "db_path", None)
+    if conn is not None and cached_path == db_path:
+        return conn
+    # Path change (common in tests) or first use on this thread: drop the old handle.
+    if conn is not None:
+        _forget_connection(conn)
+        try:
+            conn.close()
+        except sqlite3.Error:
+            pass
+    conn = connect(db_path)
+    _local.db = conn
+    _local.db_path = db_path
+    with _registry_lock:
+        _registry.append(conn)
+    return conn
+
+
+def _forget_connection(conn):
+    with _registry_lock:
+        try:
+            _registry.remove(conn)
+        except ValueError:
+            pass
+
+
 def get_db():
-    if "db" not in g:
-        g.db = connect(current_app.config["DB_PATH"])
+    path = current_app.config["DB_PATH"]
+    # Cache on g for the rest of this request so callers share one handle, but the
+    # durable reuse lives on the thread (g is popped at teardown).
+    if "db" in g:
+        return g.db
+    g.db = _worker_connection(path)
     return g.db
 
 
 def close_db(_exc=None):
+    """Request teardown: drop request cache and roll back; do NOT close the socket.
+
+    Closing a WAL connection every request is what stormed the SD card (#132).
+    Rollback clears any leftover write transaction so the next request on this
+    thread cannot see a half-done txn.
+    """
     conn = g.pop("db", None)
+    if conn is None:
+        conn = getattr(_local, "db", None)
     if conn is not None:
-        conn.close()
+        try:
+            conn.rollback()
+        except sqlite3.Error:
+            pass
+
+
+def dispose_worker_connection():
+    """Close and forget this thread's worker connection (tests / path switches).
+
+    Call after monkeypatching ``connect`` so the next ``get_db()`` opens a fresh
+    instrumented connection. Production code should not need this.
+    """
+    # Safe outside a request (e.g. after a test forced a BaseException through teardown).
+    try:
+        g.pop("db", None)
+    except RuntimeError:
+        pass
+    conn = getattr(_local, "db", None)
+    _local.db = None
+    _local.db_path = None
+    if conn is not None:
+        _forget_connection(conn)
+        try:
+            conn.close()
+        except sqlite3.Error:
+            pass
+
+
+def _close_all_worker_connections():
+    """Process exit: close every thread's worker connection."""
+    with _registry_lock:
+        conns = list(_registry)
+        _registry.clear()
+    for conn in conns:
+        try:
+            conn.close()
+        except sqlite3.Error:
+            pass
+    _local.db = None
+    _local.db_path = None
+
+
+atexit.register(_close_all_worker_connections)
 
 
 def init_app(app):

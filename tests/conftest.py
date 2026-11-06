@@ -18,6 +18,18 @@ import memoryframe.brightness as brightness_module  # noqa: E402
 from memoryframe import create_app, db as mfdb, library  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _dispose_db_worker_connection():
+    """#132: drop this thread's worker SQLite handle between tests.
+
+    Production reuses one connection per Waitress thread; tests create a new
+    temp DB path per app. Closing here (and on TESTING request teardown) keeps
+    the suite under the select() FD limit.
+    """
+    yield
+    mfdb.dispose_worker_connection()
+
+
 @pytest.fixture
 def data_dir(tmp_path):
     d = tmp_path / "data"

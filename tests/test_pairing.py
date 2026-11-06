@@ -305,6 +305,9 @@ def test_wal_close_write_reuses_connection(paired, mf_app):
     Watch the data directory (not the WAL inode): when the last connection closes,
     SQLite checkpoints and may unlink/recreate *-wal, which drops a file watch.
     """
+    # Opt into production reuse: TESTING teardown otherwise closes every request
+    # so Werkzeug live_server threads do not leak FDs across the suite.
+    mf_app.config["DB_REUSE_IN_TESTS"] = True
     import ctypes
     import ctypes.util
     import os

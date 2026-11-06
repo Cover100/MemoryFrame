@@ -4,6 +4,13 @@ Waitress serves with several threads in one process. Opening and closing a WAL
 database on every request produces an IN_CLOSE_WRITE on the *-wal file even for
 SELECT-only work (#132 / #97 S2). Reuse one connection for the life of each
 worker thread; request teardown only rolls back leftover transaction state.
+
+In TESTING, teardown closes the worker connection unless DB_REUSE_IN_TESTS is
+set: Werkzeug's threaded live_server creates short-lived request threads, and
+leaving those handles open leaks FDs until select() breaks (fd > 1023).
+Production Waitress keeps a fixed thread pool, so reuse there does not leak.
+check_same_thread stays True; atexit only closes connections this thread still
+owns — the OS reclaims any other FDs on process exit.
 """
 import atexit
 import sqlite3
@@ -81,7 +88,8 @@ CREATE TABLE IF NOT EXISTS settings (
 # every request, which would force a reconnect.
 _local = threading.local()
 _registry_lock = threading.Lock()
-_registry = []  # live worker connections for process-exit close
+# Live worker connections for best-effort process-exit close (owner thread only).
+_registry = []
 
 
 def connect(db_path):
@@ -167,11 +175,14 @@ def get_db():
 
 
 def close_db(_exc=None):
-    """Request teardown: drop request cache and roll back; do NOT close the socket.
+    """Request teardown: drop request cache and roll back leftover txn state.
 
+    Production (Waitress): do NOT close() — reuse the thread-local connection.
     Closing a WAL connection every request is what stormed the SD card (#132).
-    Rollback clears any leftover write transaction so the next request on this
-    thread cannot see a half-done txn.
+
+    TESTING (unless DB_REUSE_IN_TESTS): close after the request. Werkzeug's
+    threaded live_server uses short-lived threads; leaving the handle open
+    leaks one SQLite FD trio per request across the suite.
     """
     conn = g.pop("db", None)
     if conn is None:
@@ -181,6 +192,13 @@ def close_db(_exc=None):
             conn.rollback()
         except sqlite3.Error:
             pass
+    try:
+        testing = current_app.config.get("TESTING")
+        keep = current_app.config.get("DB_REUSE_IN_TESTS")
+    except RuntimeError:
+        testing, keep = False, False
+    if testing and not keep:
+        dispose_worker_connection()
 
 
 def dispose_worker_connection():
@@ -206,14 +224,18 @@ def dispose_worker_connection():
 
 
 def _close_all_worker_connections():
-    """Process exit: close every thread's worker connection."""
+    """Process exit: close worker connections this process still holds.
+
+    check_same_thread stays True, so closing a connection owned by another
+    (already-dead) thread can raise; ignore and rely on process teardown for
+    those FDs. Prefer dispose/path-switch/TESTING close from the owner thread.
+    """
     with _registry_lock:
         conns = list(_registry)
-        _registry.clear()
     for conn in conns:
         try:
             conn.close()
-        except sqlite3.Error:
+        except (sqlite3.Error, sqlite3.ProgrammingError):
             pass
     _local.db = None
     _local.db_path = None

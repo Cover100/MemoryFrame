@@ -1,0 +1,74 @@
+S2/S3 repaired harness — PREPARATION ONLY (not authorization to execute)
+Generated: 2026-11-06 11:30:25 AEST (Australia/Brisbane)
+
+ARTIFACT
+  path: /home/box/shared/MemoryFrame-compare/sdwear-97/s2s3-6711333/run-s2-s3-repaired.sh
+  sha256: 239fcc27785dd7498b490f652ee9acf16d71dc3ccd73e1bf801a49f989422587
+  md5:    f088109e8df0db0991d6913357638967
+  offline tests: /home/box/shared/MemoryFrame-compare/sdwear-97/s2s3-6711333/offline-tests/
+  test evidence: /home/box/shared/MemoryFrame-compare/sdwear-97/s2s3-6711333/evidence/offline-tests-20261106.txt
+
+DEFECTS in run-s2-s3-fixed.sh (lines ~59–75 and related)
+  1. Bare `wait || true` after killing only $IW — waits for ALL shell jobs,
+     including hung iotop/pidstat/iostat children AND the process-substitution
+     tee from `exec > >(tee -a "$LOG")`. Matches observed stall at S2-t0 with
+     inotify watches established and never reaching S2-t1.
+  2. Only IW PID tracked; other three monitors untracked → incomplete cleanup.
+  3. Unbounded curl (no --connect-timeout/--max-time) — hung HTTP can stall loop.
+  4. Admin/brightness/status calls use `|| true` with no success counters/gates —
+     a fully failed workload still looks like a completed S2.
+  5. Measurement Python reads /root/sd-wear without elevated privileges — may fail
+     for non-root runner.
+  6. Sparse JPEG generation (8px grid) not size-guaranteed; offline control measured
+     ~3.01MB at quality 92 (below 3.8MB band). Existing local photos/ happened to
+     land near 4MB but algorithm is not reliable.
+  7. Fixed photos path ~/sdwear-s2s3/photos risks mixing prior/generated uploads on
+     restart; : > run.log and unlabeled DONE overwrite prior evidence pointers.
+  8. No exact HEAD==6711333 assert (only prints HEAD); journal usage not delta'd.
+
+REPAIRS in run-s2-s3-repaired.sh
+  - MON_PIDS tracks all four monitors; kill_tree_bounded + wait_pids_bounded only
+    on those PIDs; TEE_PID recorded and never waited; no bare wait; no pkill.
+  - curl --connect-timeout 5 --max-time 30; http_code helper; ADMIN_OK/BR_OK gates.
+  - sudo python3 for /root/sd-wear card parsing; rejects negative deltas.
+  - High-entropy JPEG gen with size band 3.8–4.5MB; run-isolated photos-$RUN_ID.
+  - Archives prior S2/S3 labels under $OUT/archive-$RUN_ID (no user-media delete).
+  - DONE-$RUN_ID + symlink DONE; per-run log/summary; TARGET_HEAD=6711333 + mode=dev.
+  - Journal disk-usage parsed at t0/t1 with byte delta.
+
+OFFLINE TEST EVIDENCE (all PASS)
+  - monitor hang: bare wait blocked by timeout 2s; repaired path reaches S2-t1;
+    tee survives; unrelated process survives targeted cleanup.
+  - CSRF Netscape cookie parse + missing-cookie failure.
+  - S2 MB/h + S3 amplification parsing; negative/missing field rejection; journal delta.
+  - High-entropy ~4.26MB JPEGs; sparse control documents non-guarantee (~3.01MB).
+  - HTTP max-time bounds hang; admin/brightness success counters + gate.
+
+MINIMAL PROPOSED Pi RESTART STEPS (for parent/user approval ONLY — NOT executed)
+  1. Confirm still on HEAD 6711333 and mode=dev (read-only checks).
+  2. If screen 9474.s2s3 (or current s2s3 session) still stuck: quit that screen only;
+     do not reboot; do not change mode; do not deploy/reset; do not delete user media.
+  3. Do NOT git-checkout the runner branch on the Pi (that moves HEAD off 6711333).
+     Leave device on main / 6711333 deploy HEAD. Install a copy, e.g.:
+       git fetch origin hale/s2s3-runner-6711333
+       git show origin/hale/s2s3-runner-6711333:deploy/qa/run-s2-s3-repaired.sh \
+         > ~/sdwear-s2s3/run-s2-s3-repaired.sh
+     or scp the shared twin run-s2-s3-nohang.sh. Verify sha256 against README/PR head
+     (current on 58166cf: f659f992dade776765b77f49727666d667a979294918e66b0bf1da9374ec0662).
+  4. Start under screen: cd $REPO && bash ~/sdwear-s2s3/run-s2-s3-repaired.sh
+     (or path chosen); expect warmup 10m + S2 30m + S3 upload.
+  5. Collect: DONE symlink, summary-$RUN_ID.txt, run-$RUN_ID.log, /root/sd-wear/S2-t*.txt
+     S3-t*.txt, journal_delta line; report S2 MB/h vs ≤40 and S3 amp vs ≤4×.
+
+NO Pi upload, no process kill, no teammate notify, no repo/git push performed by this prep.
+
+ASSESSMENT CAVEATS (Sage / #129 follow-up — not merge blockers)
+  - DONE / exit 0 is NOT auto-PASS. Read the printed pass= lines vs agreed
+    limits: S2 MB/h <= 40; S3 amplification <= 4x. Assess manually.
+  - S2 internal gate is only ADMIN_OK >= 10 over 30 min (~10 successful
+    admin reads as a floor), not proof of full workload health.
+  - offline-tests/lib_monitor.sh sleeps 0.2s per loop iteration but treats
+    the iteration count as seconds, so a "5s" offline deadline is ~5x short
+    (~1s wall). Offline tests still validate no-bare-wait behaviour.
+  - Before S3-t1: sync + 5s settle (logged). No drop_caches.
+  - Never git-checkout the runner branch on the Pi; use git show / scp into ~/sdwear-s2s3 so HEAD stays 6711333.

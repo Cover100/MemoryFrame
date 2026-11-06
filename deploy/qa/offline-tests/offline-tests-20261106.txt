@@ -1,0 +1,63 @@
+=== offline tests 2026-11-06T11:30:19+10:00 ===
+--- test_monitor_hang_cannot_block_s2t1.sh ---
+PASS: bare wait blocked (timeout 2s) while hung monitor alive — matches Pi stall
+S2-loop-done
+=== S2-t1 ===
+PASS: repaired cleanup reached S2-t1 despite hung monitor + live tee
+PASS: tee pid still alive (not waited/killed by monitor cleanup)
+PASS: tracked monitor PIDs terminated by bounded tree cleanup
+/home/box/shared/MemoryFrame-compare/sdwear-97/s2s3-6711333/offline-tests/test_monitor_hang_cannot_block_s2t1.sh: line 102: 3902339 Killed                  sleep 3600
+PASS: unrelated process survived targeted cleanup (no broad pkill)
+RESULT pass=5 fail=0
+/home/box/shared/MemoryFrame-compare/sdwear-97/s2s3-6711333/offline-tests/test_monitor_hang_cannot_block_s2t1.sh: line 1: 3902368 Killed                  sleep 3600
+OK test_monitor_hang_cannot_block_s2t1.sh
+--- test_csrf.py ---
+PASS csrf_path
+OK test_csrf.py
+--- test_measure.py ---
+PASS s2_measure 8.0
+PASS s3_measure 0.15
+PASS rejects_negative_card_delta
+PASS journal_delta 1572864
+PASS rejects_missing_card_field
+PASS measure_all
+OK test_measure.py
+--- test_photosize.py ---
+gen 0 4265294
+gen 1 4266353
+gen 2 4266063
+sparse_control_size 3015741
+PASS documents_original_sparse_not_guaranteed 3015741
+PASS photosize [4265294, 4266353, 4266063]
+OK test_photosize.py
+--- test_http_bounds_and_asserts.sh ---
+PASS: curl max-time bound hung endpoint (2s code=000)
+PASS: assertable successful admin/brightness workloads admin_ok=5 br_ok=5
+PASS: admin success gate rejects insufficient workload
+RESULT pass=3 fail=0
+OK test_http_bounds_and_asserts.sh
+--- static repaired script ---
+2:# Hale remote #97 S2+S3 QA harness (repaired) — Memory Frame HEAD 6711333, dev mode only.
+10:#   - Exact HEAD=6711333 + mode=dev assertions; no reboot/mode/deploy/reset.
+17:TARGET_HEAD="${TARGET_HEAD:-6711333}"
+55:test "$HEAD_NOW" = "$TARGET_HEAD" || { echo "STOP: HEAD=$HEAD_NOW want=$TARGET_HEAD"; exit 2; }
+47:TEE_PID=$!
+48:# Shell children we own for monitor lifecycle (never includes TEE_PID)
+51:echo "=== start $(date -Is) RUN_ID=$RUN_ID HEAD=$(git rev-parse --short HEAD) mode=$(cat /boot/firmware/memoryframe-mode.txt) tee_pid=$TEE_PID ==="
+150:wait_pids_bounded() {
+151:  # Wait ONLY listed PIDs; never bare wait; never wait for TEE_PID.
+156:    if [ "$pid" = "${TEE_PID:-}" ]; then
+163:        echo "wait_pids_bounded: timeout pid=$pid after ${deadline_s}s (leaving; not bare-waiting)"
+174:cleanup_monitors() {
+176:  echo "=== cleanup_monitors count=${#MON_PIDS[@]} $(date -Is) ==="
+180:  wait_pids_bounded 5 "${MON_PIDS[@]+"${MON_PIDS[@]}"}"
+261:# CRITICAL: bounded cleanup of tracked monitors ONLY — never bare wait / never wait tee
+262:cleanup_monitors
+433:# Intentionally do NOT wait on TEE_PID — process exits; tee flushes on close.
+PASS: no bare wait in repaired script
+PASS: no pkill in repaired script
+PASS: HTTP time bounds present
+PASS: privileged python read of capture dir
+PASS: run-isolated photos path
+PASS: no reboot/mode mutation commands
+=== OFFLINE SUMMARY fail=0 ===

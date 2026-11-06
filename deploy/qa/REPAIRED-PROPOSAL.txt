@@ -56,3 +56,13 @@ MINIMAL PROPOSED Pi RESTART STEPS (for parent/user approval ONLY — NOT execute
      S3-t*.txt, journal_delta line; report S2 MB/h vs ≤40 and S3 amp vs ≤4×.
 
 NO Pi upload, no process kill, no teammate notify, no repo/git push performed by this prep.
+
+ASSESSMENT CAVEATS (Sage / #129 follow-up — not merge blockers)
+  - DONE / exit 0 is NOT auto-PASS. Read the printed pass= lines vs agreed
+    limits: S2 MB/h <= 40; S3 amplification <= 4x. Assess manually.
+  - S2 internal gate is only ADMIN_OK >= 10 over 30 min (~10 successful
+    admin reads as a floor), not proof of full workload health.
+  - offline-tests/lib_monitor.sh sleeps 0.2s per loop iteration but treats
+    the iteration count as seconds, so a "5s" offline deadline is ~5x short
+    (~1s wall). Offline tests still validate no-bare-wait behaviour.
+  - Before S3-t1: sync + 5s settle (logged). No drop_caches.

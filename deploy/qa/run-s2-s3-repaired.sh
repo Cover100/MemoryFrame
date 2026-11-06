@@ -376,6 +376,11 @@ done
 echo "=== S3-t1 $(date -Is) uploaded=$UP ok=$OK fail=$FAIL ==="
 test "$OK" -ge 18 || { echo "STOP: S3 upload ok=$OK < 18"; exit 4; }
 test "$UP" -ge $((18 * 3800000)) || { echo "STOP: uploaded bytes too low UP=$UP"; exit 4; }
+# Short settle so card_bytes_written reflects uploads before S3-t1 capture.
+# sync only (no drop_caches — not used elsewhere in this harness; keep QA impact small).
+echo "=== S3 settle before t1: sync + 5s $(date -Is) ==="
+sync
+sleep 5
 sudo "$CAP" S3-t1
 
 sudo python3 - <<PY

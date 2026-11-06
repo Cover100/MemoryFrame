@@ -250,3 +250,44 @@ def test_last_seen_throttled(paired, mf_app, monkeypatch):
     t["now"] += 31
     paired.get("/api/v1/status", environ_base=PHONE)
     assert seen() == t["now"]
+
+
+def test_last_seen_no_write_txn_within_throttle(paired, mf_app, monkeypatch):
+    """N session-authenticated GETs inside LAST_SEEN_EVERY issue 0 last_seen UPDATEs (#130).
+
+    create_session already wrote last_seen at pair time, so the first poll is also
+    within the throttle and must stay read-only (no UPDATE → no write txn / WAL storm).
+    """
+    from memoryframe import db as mdb
+    import time
+
+    t = {"now": time.time() + 1}
+    monkeypatch.setattr(mdb, "now", lambda: t["now"])
+
+    counts = {"update": 0}
+    real_connect = mdb.connect
+
+    def wrapping_connect(db_path):
+        conn = real_connect(db_path)
+
+        def tracer(sql):
+            if "UPDATE devices SET last_seen" in sql:
+                counts["update"] += 1
+
+        conn.set_trace_callback(tracer)
+        return conn
+
+    monkeypatch.setattr(mdb, "connect", wrapping_connect)
+
+    n = 20
+    for _ in range(n):
+        assert paired.get("/api/v1/status", environ_base=PHONE).status_code == 200
+        assert paired.get("/admin/", environ_base=PHONE).status_code == 200
+
+    # 2*n authenticated polls, all inside the 60 s throttle → no last_seen writes.
+    assert counts["update"] == 0
+
+    t["now"] += auth.LAST_SEEN_EVERY + 1
+    assert paired.get("/api/v1/status", environ_base=PHONE).status_code == 200
+    assert counts["update"] == 1
+    assert rows(mf_app, "SELECT last_seen FROM devices")[0][0] == t["now"]

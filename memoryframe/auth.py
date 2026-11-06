@@ -149,18 +149,21 @@ def current_device():
     if not token:
         return None
     conn = db.get_db()
+    # Join last_seen so we can skip the write while it is still fresh. A no-op UPDATE
+    # still opens a SQLite write transaction (commit or rollback), which storms the WAL
+    # under frequent admin/status polling (#130 / #97 S2).
     row = conn.execute(
-        "SELECT s.id, s.device_id FROM sessions s WHERE s.token_hash = ? AND s.revoked = 0 "
-        "AND s.expires_at > ?", (hash_token(token), db.now())).fetchone()
+        "SELECT s.device_id, d.last_seen FROM sessions s "
+        "JOIN devices d ON d.id = s.device_id "
+        "WHERE s.token_hash = ? AND s.revoked = 0 AND s.expires_at > ?",
+        (hash_token(token), db.now())).fetchone()
     if row is None:
         return None
     now = db.now()
-    cur = conn.execute("UPDATE devices SET last_seen = ? WHERE id = ? AND "
-                       "(last_seen IS NULL OR last_seen < ?)",
-                       (now, row["device_id"], now - LAST_SEEN_EVERY))
-    # Always end the implicit transaction: an UPDATE that matched nothing still holds the
-    # write lock until commit/rollback, which would block other writers (e.g. a second delete).
-    conn.commit() if cur.rowcount else conn.rollback()
+    if row["last_seen"] is not None and row["last_seen"] >= now - LAST_SEEN_EVERY:
+        return row["device_id"]
+    conn.execute("UPDATE devices SET last_seen = ? WHERE id = ?", (now, row["device_id"]))
+    conn.commit()
     return row["device_id"]
 
 

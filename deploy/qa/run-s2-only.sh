@@ -17,6 +17,9 @@
 #   - The intentional S2-only stop writes a completion record before exiting.
 #   - Scored outputs are a verified tmpfs. Capture and the verdict use that
 #     same run-scoped directory. sudo audit policy is left unchanged.
+#   - Tmpfs evidence is not copied anywhere after the run. A physical remeasure
+#     needs its own authorization and must collect these files after S2-t1
+#     before the tmpfs disappears. The S3 text after the S2-only exit does not run.
 # The absent 2026-11-06 20:44–21:14 watcher bytes are not explained by the
 # archive glob. This script does not assign a cause for that gap.
 # Safe cleanup: only kill tracked monitor process trees (no broad pkill).
@@ -46,7 +49,7 @@ TEE_PID=""
 IW_LOG=""
 IW_PID=""
 IW_IDENTITY=""
-WATCHER_ERR=""
+WATCHER_ERR="${WATCHER_ERR:-}"
 WATCHER_HEALTH=""
 SENTINEL_TOKEN=""
 SENTINEL_SEEN=0
@@ -176,6 +179,7 @@ required = [
     "WINDOW_START", "WINDOW_END", "WINDOW_CLOSED", "WATCHER_HEALTH",
     "BARRIER_TOKEN", "BARRIER_SEEN", "STDERR_PATH", "PREFIX_SHA256",
     "PREFIX_STABLE", "BOUND_LO", "BOUND_HI", "BOUND_SOURCE",
+    "CLOCK_CONSISTENT",
 ]
 for key in required:
     if vals.get(key, "") == "":
@@ -191,8 +195,10 @@ try:
     bound_hi = int(vals["BOUND_HI"])
 except ValueError:
     invalid("missing_identity")
-if vals["BOUND_SOURCE"] not in ("snapshot_date", "probe_clock"):
+if vals["BOUND_SOURCE"] not in ("snapshot_date", "probe_clock", "counter_bracket"):
     invalid("unbound_window")
+if vals["CLOCK_CONSISTENT"] != "1":
+    invalid("clock_inconsistent")
 iw = vals["IW_LOG"]
 run_id = vals["RUN_ID"]
 if run_id not in os.path.basename(iw):
@@ -228,6 +234,29 @@ with open(stderr_path, "r", encoding="utf-8", errors="replace") as fh:
             continue
         invalid("stderr_loss")
 
+def norm(path):
+    return path.rstrip("/")
+
+def root_loss(event, path, roots):
+    ev = event.upper()
+    if "Q_OVERFLOW" in ev or "UNMOUNT" in ev:
+        return True
+    if norm(path) not in roots:
+        return False
+    return any(name in ev for name in ("DELETE_SELF", "MOVE_SELF", "IGNORED"))
+
+root_list = [norm(p) for p in vals.get("WATCH_ROOTS", "").split("|") if p]
+id_list = [p for p in vals.get("WATCH_IDS", "").split("|") if p]
+if root_list and len(id_list) != len(root_list):
+    invalid("missing_identity")
+for root, ident in zip(root_list, id_list):
+    if not os.path.isdir(root) or os.path.islink(root):
+        invalid("root_lost")
+    st_root = os.lstat(root)
+    if ident != "%s:%s" % (st_root.st_dev, st_root.st_ino):
+        invalid("root_lost")
+roots = set(root_list)
+
 line_re = re.compile(r"^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}) (\S+) (.*)$")
 token = vals["SENTINEL_TOKEN"]
 barrier = vals["BARRIER_TOKEN"]
@@ -247,7 +276,7 @@ with open(iw, "r", encoding="utf-8", errors="replace") as fh:
         if not match:
             invalid("undated_log")
         event = match.group(3)
-        if "Q_OVERFLOW" in event or "UNMOUNT" in event:
+        if root_loss(event, match.group(4), roots):
             loss = True
 if not saw_barrier:
     invalid("barrier_missing")
@@ -256,7 +285,7 @@ with open(iw, "r", encoding="utf-8", errors="replace") as fh:
     for raw in fh:
         line = raw.rstrip("\n")
         match = line_re.match(line) if line else None
-        if match and ("Q_OVERFLOW" in match.group(3) or "UNMOUNT" in match.group(3)):
+        if match and root_loss(match.group(3), match.group(4), roots):
             loss = True
         elif line and not match:
             invalid("undated_log")
@@ -289,12 +318,13 @@ for line in prefix:
         if bound_lo < epoch < bound_hi:
             count += 1
         else:
+            # Print time cannot be placed inside the card-counter samples.
             ambiguous = True
 if not sentinel_ok:
     invalid("sentinel_missing")
-if ambiguous or (vals["BOUND_SOURCE"] != "snapshot_date" and count != 0):
-    invalid("boundary_uncertain" if ambiguous else "unbound_window")
-if vals["BOUND_SOURCE"] not in ("snapshot_date", "probe_clock"):
+if ambiguous:
+    invalid("unplaceable")
+if count != 0 and vals["BOUND_SOURCE"] not in ("snapshot_date", "counter_bracket"):
     invalid("unbound_window")
 emit("VALID", str(count), "ok")
 PY
@@ -422,6 +452,9 @@ write_s2_only_completion() {
     echo "NOTE=sudo_auth_and_audit_policy_unchanged"
     echo "NOTE=sudo_log_bytes_inside_the_card_delta_are_not_subtracted"
     echo "NOTE=offcard_placement_does_not_claim_a_new_s2_result"
+    echo "NOTE=tmpfs_evidence_is_not_archived_automatically"
+    echo "NOTE=physical_run_needs_separate_authorization_and_post_t1_collection"
+    echo "NOTE=unreachable_s3_tail_is_not_s3_coverage"
     echo "S2_SUDO_BOUNDARY=${S2_SUDO_BOUNDARY:-0}"
     echo "S2_SUDO_IN_WINDOW=${S2_SUDO_IN_WINDOW:-0}"
     if [ -f "$S2_CARD_FILE" ]; then
@@ -612,7 +645,18 @@ s2_begin_watcher() {
   WATCHER_HEALTH=unhealthy
   SENTINEL_SEEN=0
   SENTINEL_TOKEN="s2-sentinel-${RUN_ID}"
-  mkdir -p -- "$BASE" "$sentinel_dir"
+  mkdir -p -- "$BASE"
+  # Effective overrides must sit on the same verified tmpfs as BASE. A
+  # disk-backed stderr or sentinel path would be written during the window.
+  if ! s2_require_under_base "$BASE" "$sentinel_dir"; then
+    s2_fail_watcher offcard_sentinel
+    return 2
+  fi
+  if ! s2_require_under_base "$BASE" "$WATCHER_ERR"; then
+    s2_fail_watcher offcard_watcher_err
+    return 2
+  fi
+  mkdir -p -- "$sentinel_dir"
   echo "evidence_iw=$IW_LOG evidence_identity=$IW_IDENTITY watcher_err=$WATCHER_ERR sentinel_dir=$sentinel_dir"
   if sudo test -e "$IW_IDENTITY" || sudo test -L "$IW_IDENTITY"; then
     echo "IDENTITY_EXISTS $IW_IDENTITY"
@@ -654,7 +698,7 @@ s2_begin_watcher() {
     iw="$1"
     sentinel="$2"
     shift 2
-    stdbuf -oL -eL inotifywait -m -r -e close_write,create,delete,moved_to \
+    stdbuf -oL -eL inotifywait -m -r -e close_write,create,delete,moved_to,delete_self,move_self,unmount \
       --timefmt "%F %T" --format "%T %e %w%f" "$@" "$sentinel" >> "$iw"
   ' bash "$iw" "$sentinel_dir" "$@" 2>>"$WATCHER_ERR" &
   IW_PID=$!
@@ -681,7 +725,57 @@ s2_begin_watcher() {
     return 0
   fi
   WATCHER_HEALTH=healthy
+  if [ "$#" -gt 0 ]; then
+    s2_record_watch_roots "$@" || return 2
+  fi
   echo "WATCHER_HEALTH=healthy sentinel_seen=$SENTINEL_SEEN establish_epoch=$establish_epoch"
+}
+
+s2_record_watch_roots() {
+  sudo python3 - "$IW_IDENTITY" "$@" <<'PY'
+import os, sys
+identity = sys.argv[1]
+roots = sys.argv[2:]
+ids = []
+for root in roots:
+    if os.path.islink(root) or not os.path.isdir(root):
+        ids.append("missing")
+        continue
+    st = os.lstat(root)
+    ids.append("%s:%s" % (st.st_dev, st.st_ino))
+with open(identity, "a", encoding="utf-8") as fh:
+    fh.write("WATCH_ROOTS=%s\nWATCH_IDS=%s\n" % ("|".join(roots), "|".join(ids)))
+sys.stdout.write("ROOTS_RECORDED %s\n" % len(roots))
+PY
+}
+
+# A path that will receive watcher bytes must be inside BASE and on tmpfs.
+# Do not create missing disk directories while checking.
+s2_require_under_base() {
+  local base="$1"
+  local path="$2"
+  local base_real probe real
+  if [ ! -d "$base" ] || [ -L "$base" ]; then
+    echo "STOP: BASE $base is not a real directory" >&2
+    return 2
+  fi
+  base_real=$(readlink -f -- "$base")
+  probe="$path"
+  while [ ! -e "$probe" ] && [ "$probe" != "/" ]; do
+    probe=$(dirname -- "$probe")
+  done
+  if [ -L "$probe" ] || [ ! -d "$probe" ]; then
+    probe=$(dirname -- "$probe")
+  fi
+  real=$(readlink -f -- "$probe")
+  case "$real/" in
+    "$base_real"/*|"$base_real/") ;;
+    *)
+      echo "STOP: $path is outside verified BASE $base_real" >&2
+      return 2
+      ;;
+  esac
+  s2_require_offcard "$probe"
 }
 
 s2_on_exit() {
@@ -809,6 +903,7 @@ s2_observe_drain() {
   local bound_lo="$1"
   local bound_hi="$2"
   local bound_source="$3"
+  local clock_ok="${4:-0}"
   BARRIER_TOKEN="s2-barrier-${RUN_ID}"
   local seen=0 h1 h2 stable=0
   if [ -n "${IW_PID:-}" ] && kill -0 "$IW_PID" 2>/dev/null; then
@@ -823,9 +918,9 @@ s2_observe_drain() {
   if [ "$seen" = "1" ] && [ -n "$h1" ] && [ "$h1" = "$h2" ]; then
     stable=1
   fi
-  sudo python3 - "$IW_IDENTITY" "$BARRIER_TOKEN" "$seen" "$stable" "$h2" "${WATCHER_ERR:-}" "$bound_lo" "$bound_hi" "$bound_source" <<'PY'
+  sudo python3 - "$IW_IDENTITY" "$BARRIER_TOKEN" "$seen" "$stable" "$h2" "${WATCHER_ERR:-}" "$bound_lo" "$bound_hi" "$bound_source" "$clock_ok" <<'PY'
 import os, sys
-identity, token, seen, stable, digest, err, lo, hi, source = sys.argv[1:]
+identity, token, seen, stable, digest, err, lo, hi, source, clock_ok = sys.argv[1:]
 if not os.path.isfile(identity) or os.path.islink(identity):
     sys.stderr.write("DRAIN_MISSING_IDENTITY\n")
     raise SystemExit(2)
@@ -842,6 +937,7 @@ extra = "\n".join([
     "BOUND_LO=%s" % lo,
     "BOUND_HI=%s" % hi,
     "BOUND_SOURCE=%s" % source,
+    "CLOCK_CONSISTENT=%s" % clock_ok,
 ]) + "\n"
 with open(identity, "a", encoding="utf-8") as fh:
     fh.write(extra)
@@ -857,6 +953,28 @@ match = re.search(r"^date=(.+)$", text, re.M)
 if not match:
     raise SystemExit(2)
 print(int(datetime.datetime.fromisoformat(match.group(1).strip()).timestamp()))
+PY
+}
+
+# date= is printed before uptime and card_bytes. The counter sample is therefore
+# after that date and before this script returns. The only interval that is
+# certainly inside both counter samples is (post_t0, t1_date).
+s2_counter_bracket() {
+  python3 - "$@" <<'PY'
+import sys
+nums = sys.argv[1:]
+w0, u0, post0, w1, u1, post1 = nums[:6]
+w0, post0, w1, post1 = int(float(w0)), int(float(post0)), int(float(w1)), int(float(post1))
+u0, u1 = float(u0), float(u1)
+pre0 = int(float(nums[6])) if len(nums) > 6 else w0
+pre1 = int(float(nums[7])) if len(nums) > 7 else w1
+# date= is taken inside the capture, after pre and before post.
+if pre0 > w0 + 1 or pre1 > w1 + 1 or post0 < w0 or post1 < w1 or w1 <= post0 or u1 < u0:
+    consistent = 0
+else:
+    slack = (post0 - w0) + (post1 - w1) + 2
+    consistent = 1 if abs((w1 - w0) - (u1 - u0)) <= slack else 0
+sys.stdout.write("%s\n%s\n%s\n" % (post0, w1, consistent))
 PY
 }
 
@@ -879,10 +997,39 @@ s2_probe_sentinel() {
   sleep "${S2_PROBE_SLEEP:-1}"
   local end
   end=$(date +%s)
-  s2_observe_drain "$S2_START" "$end" probe_clock
+  s2_observe_drain "$S2_START" "$end" probe_clock 1
   s2_record_coverage "$S2_START" "$end" 1
   s2_write_attribution "$S2_START" "$end"
   echo "PROBE_IW=$IW_LOG"
+}
+
+# Watch a data root and the sentinel, then replace the root. The sentinel
+# barrier can still succeed; the score must not become a valid zero.
+s2_probe_root_move() {
+  OUT="$1"
+  BASE="$2"
+  RUN_ID="$3"
+  local root="$4"
+  S2_CARD_FILE="$BASE/s2-card-${RUN_ID}.txt"
+  S2_ATTR_FILE="$BASE/s2-attribution-${RUN_ID}.txt"
+  SUMMARY="$BASE/summary-${RUN_ID}.txt"
+  S2_SENTINEL_DIR="${S2_SENTINEL_DIR:-$BASE/sentinel-${RUN_ID}}"
+  S2_WATCH_TIMEOUT="${S2_WATCH_TIMEOUT:-20}"
+  trap s2_probe_cleanup EXIT
+  mkdir -p -- "$BASE"
+  sudo mkdir -p -- "$OUT"
+  sudo chown root:root -- "$OUT"
+  sudo chmod 700 -- "$OUT"
+  s2_begin_watcher "$OUT/S2-iw-${RUN_ID}.log" "$S2_SENTINEL_DIR" "$root"
+  mv -- "$root" "$root.moved"
+  mkdir -p -- "$root"
+  S2_START=$(date +%s)
+  local end
+  end=$(date +%s)
+  s2_observe_drain "$S2_START" "$end" probe_clock 1
+  s2_record_coverage "$S2_START" "$end" 1
+  s2_write_attribution "$S2_START" "$end"
+  echo "PROBE_ROOT_MOVED=$root"
 }
 
 # --- Monitor process-tree helpers (tracked PIDs only; no broad pkill) ---
@@ -1035,6 +1182,18 @@ case "${1:-}" in
     s2_require_offcard "$2"
     exit $?
     ;;
+  --check-under-base)
+    s2_require_under_base "$2" "$3"
+    exit $?
+    ;;
+  --bracket)
+    s2_counter_bracket "$2" "$3" "$4" "$5" "$6" "$7"
+    exit $?
+    ;;
+  --probe-root-move)
+    s2_probe_root_move "$2" "$3" "$4" "$5"
+    exit $?
+    ;;
   --capture)
     OUT="$2"
     s2_capture "$3"
@@ -1155,7 +1314,9 @@ start_monitor iotop "iotop -obPa -d 60 -n 30 -qqq > $(printf '%q' "$IOTOP_LOG") 
 start_monitor iostat "iostat -dkx mmcblk0 60 30 > $(printf '%q' "$IOSTAT_LOG") 2>&1"
 
 echo "=== S2-t0 $(date -Is) ==="
+S2_PRE_T0=$(date +%s)
 s2_capture "S2-t0-${RUN_TAG}"
+S2_POST_T0=$(date +%s)
 S2_WINDOW_OPEN=1
 S2_START=$(date +%s)
 MAX=$(curl_q http://127.0.0.1/brightness | python3 -c 'import sys,json; print(json.load(sys.stdin).get("maximum",255))' || echo 255)
@@ -1191,21 +1352,42 @@ echo "=== S2-t1 $(date -Is) loops=$i admin_ok=$ADMIN_OK admin_fail=$ADMIN_FAIL b
 # an incomplete S2-only completion via the EXIT trap. Monitors stay up through t1.
 test "$ADMIN_OK" -ge 10 || { echo "STOP: admin successes $ADMIN_OK < 10"; exit 3; }
 test "$BR_OK" -ge 20 || { echo "STOP: brightness successes $BR_OK < 20"; exit 3; }
+S2_PRE_T1=$(date +%s)
 s2_capture "S2-t1-${RUN_TAG}"
+S2_POST_T1=$(date +%s)
 S2_WINDOW_OPEN=0
 S2_T0_EPOCH=$(s2_snapshot_epoch "$OUT/S2-t0-${RUN_TAG}.txt" || true)
 S2_T1_EPOCH=$(s2_snapshot_epoch "$OUT/S2-t1-${RUN_TAG}.txt" || true)
-if [ -n "${S2_T0_EPOCH:-}" ] && [ -n "${S2_T1_EPOCH:-}" ]; then
-  S2_BOUND_SOURCE=snapshot_date
+S2_U0=$(sudo python3 - "$OUT/S2-t0-${RUN_TAG}.txt" <<'PY' || true
+import re, sys
+text = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+m = re.search(r"^uptime_s=([0-9.]+)$", text, re.M)
+print(m.group(1) if m else "")
+PY
+)
+S2_U1=$(sudo python3 - "$OUT/S2-t1-${RUN_TAG}.txt" <<'PY' || true
+import re, sys
+text = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+m = re.search(r"^uptime_s=([0-9.]+)$", text, re.M)
+print(m.group(1) if m else "")
+PY
+)
+if [ -n "${S2_T0_EPOCH:-}" ] && [ -n "${S2_T1_EPOCH:-}" ] && [ -n "${S2_U0:-}" ] && [ -n "${S2_U1:-}" ]; then
+  bracket=$(s2_counter_bracket "$S2_T0_EPOCH" "$S2_U0" "$S2_POST_T0" "$S2_T1_EPOCH" "$S2_U1" "$S2_POST_T1" "$S2_PRE_T0" "$S2_PRE_T1")
+  S2_T0_EPOCH=$(printf '%s\n' "$bracket" | sed -n '1p')
+  S2_T1_EPOCH=$(printf '%s\n' "$bracket" | sed -n '2p')
+  S2_CLOCK_OK=$(printf '%s\n' "$bracket" | sed -n '3p')
+  S2_BOUND_SOURCE=counter_bracket
 else
   S2_BOUND_SOURCE=unparsed
   S2_T0_EPOCH=0
   S2_T1_EPOCH=0
+  S2_CLOCK_OK=0
 fi
 
 # Drain the watcher after the card sample. Score only a stable prefix.
-# The loop clock above is the workload timer, not the attribution window.
-s2_observe_drain "$S2_T0_EPOCH" "$S2_T1_EPOCH" "$S2_BOUND_SOURCE"
+# Bounds are the post-t0 return and the t1 date, which bracket the counters.
+s2_observe_drain "$S2_T0_EPOCH" "$S2_T1_EPOCH" "$S2_BOUND_SOURCE" "$S2_CLOCK_OK"
 s2_record_coverage "$S2_T0_EPOCH" "$S2_T1_EPOCH" 1
 s2_write_attribution "$S2_T0_EPOCH" "$S2_T1_EPOCH"
 

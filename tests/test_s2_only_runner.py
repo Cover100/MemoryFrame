@@ -126,6 +126,7 @@ def write_case(tmp_path, run_id="run-1", wal_epochs=(), extra_lines="", extra_af
         "BOUND_LO": str(start),
         "BOUND_HI": str(end),
         "BOUND_SOURCE": "snapshot_date",
+        "CLOCK_CONSISTENT": "1",
     }
     fields.update(overrides)
     # A replaced log must be described by the overridden inode/path, not re-stat'd.
@@ -177,7 +178,10 @@ def test_runner_does_not_keep_the_unprivileged_archive_glob():
     assert "s2_require_offcard" in text
     assert "WAIT_TIMEOUT" in text
     assert "Q_OVERFLOW" in text
-    assert "boundary_uncertain" in text
+    assert "unplaceable" in text
+    assert "clock_inconsistent" in text
+    assert "root_lost" in text
+    assert "delete_self,move_self,unmount" in text
     loop = text.split("while [ $(($(date +%s)-S2_START)) -lt 1800 ]; do", 1)[1].split("\ndone", 1)[0]
     assert "sudo" not in loop
 
@@ -474,9 +478,17 @@ def test_incomplete_exit_writes_completion_without_inventing_zero(tmp_path):
     assert (base / ("DONE-S2-" + run_id)).read_text() == before
 
 
-def test_live_sentinel_on_run_scoped_log_after_root_only_preserve(root_out, tmp_path):
+def shm_dir(name):
+    path = Path("/dev/shm") / name
+    subprocess.run(["sudo", "rm", "-rf", str(path)], check=False)
+    path.mkdir()
+    return path
+
+
+def test_live_sentinel_on_run_scoped_log_after_root_only_preserve(root_out):
     if shutil.which("inotifywait") is None or shutil.which("stdbuf") is None:
         pytest.skip("inotifywait and stdbuf are required for the sentinel probe")
+    base = shm_dir("mf-live-%s" % os.getpid())
     stale = "17:04:22 CLOSE_WRITE,CLOSE /var/lib/memoryframe/memoryframe.db-wal\n"
     sudo_write(root_out / "S2-iw.log", stale)
     sudo_write(root_out / "S2-iw-earlier.log", "earlier-run\n")
@@ -486,7 +498,10 @@ def test_live_sentinel_on_run_scoped_log_after_root_only_preserve(root_out, tmp_
     archive = root_out / ("archive-" + run_id)
     assert sudo_read(archive / "S2-iw.log") == stale
 
-    probe = run(["--probe-sentinel", str(root_out), str(tmp_path), run_id], timeout=40)
+    try:
+        probe = run(["--probe-sentinel", str(root_out), str(base), run_id], timeout=40)
+    finally:
+        subprocess.run(["sudo", "rm", "-rf", str(base)], check=False)
     assert probe.returncode == 0, probe.stdout + probe.stderr
     fields = kv(probe.stdout)
     assert fields["S2_ATTRIBUTION"] == "VALID"
@@ -505,16 +520,20 @@ def test_live_sentinel_on_run_scoped_log_after_root_only_preserve(root_out, tmp_
     assert "COVERAGE_ALIVE=1" in identity
 
 
-def test_probe_does_not_overwrite_existing_attribution(root_out, tmp_path):
+def test_probe_does_not_overwrite_existing_attribution(root_out):
     if shutil.which("inotifywait") is None or shutil.which("stdbuf") is None:
         pytest.skip("inotifywait and stdbuf are required for the sentinel probe")
     run_id = "keepattr"
-    dest = tmp_path / ("s2-attribution-" + run_id + ".txt")
+    base = shm_dir("mf-keep-%s" % os.getpid())
+    dest = base / ("s2-attribution-" + run_id + ".txt")
     dest.write_text("KEEP-ATTR\n")
-    result = run(["--probe-sentinel", str(root_out), str(tmp_path), run_id], timeout=40)
-    assert result.returncode == 2, result.stdout + result.stderr
-    assert dest.read_text() == "KEEP-ATTR\n"
-    assert "ATTR_REFUSE_OVERWRITE" in result.stderr
+    try:
+        result = run(["--probe-sentinel", str(root_out), str(base), run_id], timeout=40)
+        assert result.returncode == 2, result.stdout + result.stderr
+        assert dest.read_text() == "KEEP-ATTR\n"
+        assert "ATTR_REFUSE_OVERWRITE" in result.stderr
+    finally:
+        subprocess.run(["sudo", "rm", "-rf", str(base)], check=False)
 
 
 def test_overflow_stderr_boundary_and_missing_barrier_are_not_valid_zero(tmp_path):
@@ -544,7 +563,7 @@ def test_overflow_stderr_boundary_and_missing_barrier_are_not_valid_zero(tmp_pat
         "PREFIX_SHA256=%s" % digest,
     ))
     result = run(["--attribute", str(bound[0]), str(start), str(end)])
-    assert_unavailable(result.stdout, "boundary_uncertain")
+    assert_unavailable(result.stdout, "unplaceable")
 
     late = write_case(
         tmp_path,
@@ -552,7 +571,7 @@ def test_overflow_stderr_boundary_and_missing_barrier_are_not_valid_zero(tmp_pat
         extra_lines=event_line(int(time.time()) + 60, "CLOSE_WRITE,CLOSE", "/var/lib/memoryframe/memoryframe.db-wal"),
     )
     result = run(["--attribute", str(late[0]), str(late[2]), str(late[3])])
-    assert_unavailable(result.stdout, "boundary_uncertain")
+    assert_unavailable(result.stdout, "unplaceable")
 
     missing_barrier = write_case(tmp_path, run_id="nobarrier", BARRIER_SEEN="0")
     result = run(["--attribute", str(missing_barrier[0]), str(missing_barrier[2]), str(missing_barrier[3])])
@@ -626,3 +645,123 @@ def test_reap_returns_while_resistant_child_is_alive():
     assert "WAIT_TIMEOUT" in stdout
     assert "REAP_CHILD_STILL_ALIVE" in stdout
     assert elapsed < 6
+
+
+def test_disk_backed_watcher_paths_are_refused(tmp_path):
+    base = shm_dir("mf-base-%s" % os.getpid())
+    try:
+        disk_err = tmp_path / "disk-watcher.err"
+        disk_sent = tmp_path / "disk-sentinel"
+        bad_err = run(["--check-under-base", str(base), str(disk_err)])
+        assert bad_err.returncode == 2
+        assert "outside verified BASE" in bad_err.stderr
+        bad_sent = run(["--check-under-base", str(base), str(disk_sent)])
+        assert bad_sent.returncode == 2
+        inside = base / "sentinel"
+        good = run(["--check-under-base", str(base), str(inside)])
+        assert good.returncode == 0, good.stderr
+        assert "OFFCARD_OK" in good.stdout
+        assert not disk_err.exists()
+    finally:
+        subprocess.run(["sudo", "rm", "-rf", str(base)], check=False)
+
+
+def test_disk_override_does_not_start_the_watcher(root_out, tmp_path):
+    if shutil.which("inotifywait") is None:
+        pytest.skip("inotifywait is required")
+    base = shm_dir("mf-ovr-%s" % os.getpid())
+    disk_err = tmp_path / "in-window.err"
+    env = dict(os.environ, WATCHER_ERR=str(disk_err))
+    try:
+        result = run(["--probe-sentinel", str(root_out), str(base), "ovr1"], env=env, timeout=20)
+    finally:
+        subprocess.run(["sudo", "rm", "-rf", str(base)], check=False)
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "S2_WAL_CLOSE_WRITE=0" not in result.stdout
+    text = disk_err.read_text() if disk_err.exists() else ""
+    assert "Watches established" not in text
+
+
+def test_root_lifecycle_events_are_not_a_valid_zero(tmp_path):
+    root = tmp_path / "data-root"
+    root.mkdir()
+    st = root.stat()
+    ident_bits = {
+        "WATCH_ROOTS": str(root),
+        "WATCH_IDS": "%s:%s" % (st.st_dev, st.st_ino),
+    }
+    for name, event in (("delself", "DELETE_SELF"), ("moveself", "MOVE_SELF"), ("ignored", "IGNORED")):
+        case = write_case(
+            tmp_path,
+            run_id=name,
+            extra_lines=event_line(int(time.time()) - 15, event, str(root) + "/"),
+            **ident_bits,
+        )
+        result = run(["--attribute", str(case[0]), str(case[2]), str(case[3])])
+        assert_unavailable(result.stdout, "watcher_loss")
+    child = write_case(
+        tmp_path,
+        run_id="child",
+        extra_lines=event_line(int(time.time()) - 15, "DELETE_SELF", str(root / "sub") + "/"),
+        **ident_bits,
+    )
+    result = run(["--attribute", str(child[0]), str(child[2]), str(child[3])])
+    assert kv(result.stdout)["S2_ATTRIBUTION"] == "VALID"
+    assert kv(result.stdout)["S2_WAL_CLOSE_WRITE"] == "0"
+
+
+def test_replacing_the_watched_root_is_not_a_valid_zero(tmp_path):
+    if shutil.which("inotifywait") is None or shutil.which("stdbuf") is None:
+        pytest.skip("inotifywait and stdbuf are required")
+    base = shm_dir("mf-rootmv-%s" % os.getpid())
+    out = base / "out"
+    root = tmp_path / "data-root"
+    root.mkdir()
+    (root / "sub").mkdir()
+    try:
+        result = run(
+            ["--probe-root-move", str(out), str(base), "rootmv", str(root)],
+            timeout=40,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert kv(result.stdout)["S2_WAL_CLOSE_WRITE"] == "UNAVAILABLE"
+        assert kv(result.stdout)["S2_ATTRIBUTION"] == "INVALID"
+        assert "S2_WAL_CLOSE_WRITE=0" not in result.stdout
+        log = sudo_read(out / "S2-iw-rootmv.log")
+        assert "MOVE_SELF" in log
+        assert "s2-barrier-rootmv" in log
+    finally:
+        subprocess.run(["sudo", "rm", "-rf", str(base)], check=False)
+        shutil.rmtree(root, ignore_errors=True)
+        shutil.rmtree(Path(str(root) + ".moved"), ignore_errors=True)
+
+
+def test_counter_gap_and_clock_inconsistency_are_not_exact(tmp_path):
+    gap = write_case(
+        tmp_path,
+        run_id="gap",
+        extra_lines=event_line(101, "CLOSE_WRITE,CLOSE", "/var/lib/memoryframe/memoryframe.db-wal"),
+        WINDOW_START="102",
+        WINDOW_END="400",
+        BOUND_LO="102",
+        BOUND_HI="400",
+        ESTABLISH_EPOCH="100",
+        COVERAGE_EPOCH="400",
+        BOUND_SOURCE="counter_bracket",
+        CLOCK_CONSISTENT="1",
+    )
+    result = run(["--attribute", str(gap[0]), "102", "400"])
+    assert_unavailable(result.stdout, "unplaceable")
+    assert "S2_WAL_CLOSE_WRITE=1" not in result.stdout
+
+    clocks = write_case(tmp_path, run_id="clocks", CLOCK_CONSISTENT="0")
+    result = run(["--attribute", str(clocks[0]), str(clocks[2]), str(clocks[3])])
+    assert_unavailable(result.stdout, "clock_inconsistent")
+
+    bracket = run(["--bracket", "100", "10", "102", "400", "310", "401"])
+    assert bracket.returncode == 0, bracket.stderr
+    lo, hi, ok = bracket.stdout.splitlines()
+    assert lo == "102" and hi == "400" and ok == "1"
+    backwards = run(["--bracket", "200", "10", "201", "100", "20", "202"])
+    assert backwards.returncode == 0, backwards.stderr
+    assert backwards.stdout.splitlines()[2] == "0"

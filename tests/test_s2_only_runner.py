@@ -5,8 +5,10 @@ here. These tests lock the harness rules around it: a stale or uncovered
 watcher log is UNAVAILABLE, never a zero WAL count, and that attribution is
 separate from the card verdict.
 """
+import hashlib
 import os
 import shutil
+import signal
 import subprocess
 import time
 from datetime import datetime
@@ -19,8 +21,8 @@ RUNNER = ROOT / "deploy" / "qa" / "run-s2-only.sh"
 BASH = shutil.which("bash")
 
 
-def run(args, timeout=60):
-    return subprocess.run([BASH, str(RUNNER), *args], capture_output=True, text=True, timeout=timeout)
+def run(args, timeout=60, env=None):
+    return subprocess.run([BASH, str(RUNNER), *args], capture_output=True, text=True, timeout=timeout, env=env)
 
 
 def kv(text):
@@ -81,7 +83,8 @@ def event_line(epoch, event, path):
     return "%s %s %s\n" % (stamp, event, path)
 
 
-def write_case(tmp_path, run_id="run-1", wal_epochs=(), extra_lines="", **overrides):
+def write_case(tmp_path, run_id="run-1", wal_epochs=(), extra_lines="", extra_after="",
+               sentinel_ok=True, **overrides):
     log = tmp_path / ("S2-iw-%s.log" % run_id)
     identity = tmp_path / ("S2-evidence-%s.identity" % run_id)
     now = int(time.time())
@@ -89,11 +92,16 @@ def write_case(tmp_path, run_id="run-1", wal_epochs=(), extra_lines="", **overri
     end = now - 5
     establish = start - 2
     token = "s2-sentinel-%s" % run_id
-    body = event_line(establish, "CLOSE_WRITE,CLOSE", str(tmp_path / "sentinel" / token))
+    barrier = "s2-barrier-%s" % run_id
+    seen = token if sentinel_ok else "not-the-sentinel"
+    prefix = event_line(establish, "CLOSE_WRITE,CLOSE", str(tmp_path / "sentinel" / seen))
     for epoch in wal_epochs:
-        body += event_line(epoch, "CLOSE_WRITE,CLOSE", "/var/lib/memoryframe/memoryframe.db-wal")
-    body += extra_lines
-    log.write_text(body)
+        prefix += event_line(epoch, "CLOSE_WRITE,CLOSE", "/var/lib/memoryframe/memoryframe.db-wal")
+    prefix += extra_lines
+    barrier_line = event_line(end, "CLOSE_WRITE,CLOSE", str(tmp_path / "sentinel" / barrier))
+    log.write_text(prefix + barrier_line + extra_after)
+    stderr = tmp_path / ("stderr-%s.txt" % run_id)
+    stderr.write_text("Setting up watches.\nWatches established.\n")
     st = log.stat()
     fields = {
         "RUN_ID": run_id,
@@ -110,6 +118,14 @@ def write_case(tmp_path, run_id="run-1", wal_epochs=(), extra_lines="", **overri
         "WINDOW_CLOSED": "1",
         "COVERAGE_EPOCH": str(end),
         "COVERAGE_ALIVE": "1",
+        "BARRIER_TOKEN": barrier,
+        "BARRIER_SEEN": "1",
+        "STDERR_PATH": str(stderr),
+        "PREFIX_SHA256": hashlib.sha256(prefix.encode()).hexdigest(),
+        "PREFIX_STABLE": "1",
+        "BOUND_LO": str(start),
+        "BOUND_HI": str(end),
+        "BOUND_SOURCE": "snapshot_date",
     }
     fields.update(overrides)
     # A replaced log must be described by the overridden inode/path, not re-stat'd.
@@ -155,6 +171,15 @@ def test_runner_does_not_keep_the_unprivileged_archive_glob():
     assert "S2_WAL_CLOSE_WRITE" in text
     assert "S2_CARD_VERDICT" in text
     assert "S2-only complete:" in text
+    assert 'OUT="${OUT:-/root/sd-wear}"' not in text
+    assert 'sudo "$CAP" S2-t0' not in text
+    assert 'sudo "$CAP" "$label" "$OUT"' in text
+    assert "s2_require_offcard" in text
+    assert "WAIT_TIMEOUT" in text
+    assert "Q_OVERFLOW" in text
+    assert "boundary_uncertain" in text
+    loop = text.split("while [ $(($(date +%s)-S2_START)) -lt 1800 ]; do", 1)[1].split("\ndone", 1)[0]
+    assert "sudo" not in loop
 
 
 def test_shellcheck_clean():
@@ -201,14 +226,15 @@ def test_corrected_archive_does_not_clobber_existing_evidence(root_out):
     sudo_write(archive / "S2-iw.log", "ARCHIVED-ORIGINAL\n")
     sudo_write(root_out / "S2-iw.log", "LIVE-DIFFERENT\n")
     result = run(["--preserve", str(root_out), "same", str(archive)])
-    assert result.returncode == 0, result.stderr
+    assert result.returncode == 2, result.stderr
     assert "PRESERVE_KEPT" in result.stdout
+    assert "PRESERVE_ABORT" in result.stderr
     assert "preserved=0" in result.stdout
     assert sudo_read(archive / "S2-iw.log") == "ARCHIVED-ORIGINAL\n"
     assert sudo_read(root_out / "S2-iw.log") == "LIVE-DIFFERENT\n"
 
     again = run(["--preserve", str(root_out), "same", str(archive)])
-    assert again.returncode == 0, again.stderr
+    assert again.returncode == 2, again.stderr
     assert sudo_read(archive / "S2-iw.log") == "ARCHIVED-ORIGINAL\n"
 
 
@@ -305,28 +331,30 @@ def test_unhealthy_and_sentinel_missing_are_unavailable(tmp_path):
     result = run(["--attribute", str(unhealthy[0]), str(unhealthy[2]), str(unhealthy[3])])
     assert_unavailable(result.stdout, "unhealthy")
 
-    quiet = write_case(tmp_path, run_id="no-sentinel")
-    text = quiet[1].read_text().replace("s2-sentinel-no-sentinel", "something-else")
-    quiet[1].write_text(text)
+    quiet = write_case(tmp_path, run_id="no-sentinel", sentinel_ok=False)
     result = run(["--attribute", str(quiet[0]), str(quiet[2]), str(quiet[3])])
     assert_unavailable(result.stdout, "sentinel_missing")
 
 
 def test_valid_coverage_counts_wal_and_honest_zero(tmp_path):
-    start_holder = write_case(tmp_path, run_id="count")
-    start, end = start_holder[2], start_holder[3]
-    inside = start + 5
-    outside = end + 30
-    log = start_holder[1]
+    ident, log, start, end = write_case(tmp_path, run_id="count")
     token = "s2-sentinel-count"
-    body = event_line(start - 2, "CLOSE_WRITE,CLOSE", str(tmp_path / token))
-    body += event_line(inside, "CLOSE_WRITE,CLOSE", "/var/lib/memoryframe/memoryframe.db-wal")
-    body += event_line(inside + 1, "CLOSE_WRITE,CLOSE", "/var/lib/memoryframe/memoryframe.db-wal")
-    body += event_line(outside, "CLOSE_WRITE,CLOSE", "/var/lib/memoryframe/memoryframe.db-wal")
-    body += event_line(inside, "CLOSE_WRITE,CLOSE", "/var/log/other")
-    body += event_line(inside, "CREATE", "/var/lib/memoryframe/memoryframe.db-wal")
-    log.write_text(body)
-    result = run(["--attribute", str(start_holder[0]), str(start), str(end)])
+    barrier = "s2-barrier-count"
+    prefix = event_line(start - 2, "CLOSE_WRITE,CLOSE", str(tmp_path / "sentinel" / token))
+    prefix += event_line(start + 5, "CLOSE_WRITE,CLOSE", "/var/lib/memoryframe/memoryframe.db-wal")
+    prefix += event_line(start + 6, "CLOSE_WRITE,CLOSE", "/var/lib/memoryframe/memoryframe.db-wal")
+    prefix += event_line(start + 5, "CLOSE_WRITE,CLOSE", "/var/log/other")
+    prefix += event_line(start + 5, "CREATE", "/var/lib/memoryframe/memoryframe.db-wal")
+    # After the barrier: excluded from the scored prefix, not an exact-count failure.
+    after = event_line(end + 30, "CLOSE_WRITE,CLOSE", "/var/lib/memoryframe/memoryframe.db-wal")
+    barrier_line = event_line(end, "CLOSE_WRITE,CLOSE", str(tmp_path / "sentinel" / barrier))
+    log.write_text(prefix + barrier_line + after)
+    digest = hashlib.sha256(prefix.encode()).hexdigest()
+    ident.write_text(ident.read_text().replace(
+        "PREFIX_SHA256=%s" % kv_one(ident, "PREFIX_SHA256"),
+        "PREFIX_SHA256=%s" % digest,
+    ))
+    result = run(["--attribute", str(ident), str(start), str(end)])
     assert result.returncode == 0, result.stderr
     fields = kv(result.stdout)
     assert fields["S2_ATTRIBUTION"] == "VALID"
@@ -487,3 +515,114 @@ def test_probe_does_not_overwrite_existing_attribution(root_out, tmp_path):
     assert result.returncode == 2, result.stdout + result.stderr
     assert dest.read_text() == "KEEP-ATTR\n"
     assert "ATTR_REFUSE_OVERWRITE" in result.stderr
+
+
+def test_overflow_stderr_boundary_and_missing_barrier_are_not_valid_zero(tmp_path):
+    overflow = write_case(
+        tmp_path,
+        run_id="overflow",
+        extra_lines=event_line(int(time.time()) - 20, "Q_OVERFLOW", "/var/lib/memoryframe"),
+    )
+    result = run(["--attribute", str(overflow[0]), str(overflow[2]), str(overflow[3])])
+    assert_unavailable(result.stdout, "watcher_loss")
+
+    stderr_case = write_case(tmp_path, run_id="stderr")
+    stderr_path = Path(kv_one(stderr_case[0], "STDERR_PATH"))
+    stderr_path.write_text(stderr_path.read_text() + "Couldn't watch /var/lib/memoryframe: No such file or directory\n")
+    result = run(["--attribute", str(stderr_case[0]), str(stderr_case[2]), str(stderr_case[3])])
+    assert_unavailable(result.stdout, "stderr_loss")
+
+    bound = write_case(tmp_path, run_id="bound")
+    start, end = bound[2], bound[3]
+    prefix = event_line(start - 2, "CLOSE_WRITE,CLOSE", str(tmp_path / "sentinel" / "s2-sentinel-bound"))
+    prefix += event_line(end, "CLOSE_WRITE,CLOSE", "/var/lib/memoryframe/memoryframe.db-wal")
+    barrier = event_line(end, "CLOSE_WRITE,CLOSE", str(tmp_path / "sentinel" / "s2-barrier-bound"))
+    bound[1].write_text(prefix + barrier)
+    digest = hashlib.sha256(prefix.encode()).hexdigest()
+    bound[0].write_text(bound[0].read_text().replace(
+        "PREFIX_SHA256=%s" % kv_one(bound[0], "PREFIX_SHA256"),
+        "PREFIX_SHA256=%s" % digest,
+    ))
+    result = run(["--attribute", str(bound[0]), str(start), str(end)])
+    assert_unavailable(result.stdout, "boundary_uncertain")
+
+    late = write_case(
+        tmp_path,
+        run_id="lateprint",
+        extra_lines=event_line(int(time.time()) + 60, "CLOSE_WRITE,CLOSE", "/var/lib/memoryframe/memoryframe.db-wal"),
+    )
+    result = run(["--attribute", str(late[0]), str(late[2]), str(late[3])])
+    assert_unavailable(result.stdout, "boundary_uncertain")
+
+    missing_barrier = write_case(tmp_path, run_id="nobarrier", BARRIER_SEEN="0")
+    result = run(["--attribute", str(missing_barrier[0]), str(missing_barrier[2]), str(missing_barrier[3])])
+    assert_unavailable(result.stdout, "barrier_missing")
+
+
+def test_scored_directory_must_be_verified_tmpfs(tmp_path):
+    disk = run(["--check-offcard", str(tmp_path)])
+    assert disk.returncode == 2
+    assert "not a verified tmpfs" in disk.stderr
+    parent = Path("/dev/shm") / ("mf-off-%s" % os.getpid())
+    parent.mkdir()
+    try:
+        good = run(["--check-offcard", str(parent)])
+        assert good.returncode == 0, good.stderr
+        assert "OFFCARD_OK" in good.stdout
+        assert "fstype=tmpfs" in good.stdout
+    finally:
+        parent.rmdir()
+
+
+def test_later_capture_does_not_truncate_an_earlier_snapshot():
+    if not sudo_ok():
+        pytest.skip("passwordless sudo is required")
+    parent = Path("/dev/shm") / ("mf-cap-%s" % os.getpid())
+    out = parent / "out"
+    subprocess.run(["sudo", "mkdir", "-p", str(out)], check=True)
+    subprocess.run(["sudo", "chown", "root:root", str(out)], check=True)
+    subprocess.run(["sudo", "chmod", "700", str(out)], check=True)
+    try:
+        sudo_write(out / "S2-t0-earlier.txt", "EARLIER-SNAPSHOT\n")
+        env = dict(os.environ, REPO=str(ROOT))
+        first = run(["--capture", str(out), "S2-t0-runA"], env=env)
+        assert first.returncode == 0, first.stderr + first.stdout
+        assert sudo_read(out / "S2-t0-earlier.txt") == "EARLIER-SNAPSHOT\n"
+        first_bytes = sudo_read(out / "S2-t0-runA.txt")
+        assert "label=S2-t0-runA" in first_bytes
+        again = run(["--capture", str(out), "S2-t0-runA"], env=env)
+        assert again.returncode == 2
+        assert "CAPTURE_REFUSE_EXISTS" in again.stderr
+        assert sudo_read(out / "S2-t0-runA.txt") == first_bytes
+        second = run(["--capture", str(out), "S2-t0-runB"], env=env)
+        assert second.returncode == 0, second.stderr
+        assert sudo_read(out / "S2-t0-earlier.txt") == "EARLIER-SNAPSHOT\n"
+        assert sudo_read(out / "S2-t0-runA.txt") == first_bytes
+        assert "label=S2-t0-runB" in sudo_read(out / "S2-t0-runB.txt")
+    finally:
+        subprocess.run(["sudo", "rm", "-rf", str(parent)], check=False)
+
+
+def test_reap_returns_while_resistant_child_is_alive():
+    started = time.time()
+    proc = subprocess.Popen(
+        [BASH, str(RUNNER), "--reap-self"],
+        start_new_session=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        stdout, stderr = proc.communicate(timeout=8)
+    except subprocess.TimeoutExpired:
+        os.killpg(proc.pid, signal.SIGKILL)
+        raise AssertionError("reap blocked on a child that ignored the deadline")
+    finally:
+        if proc.poll() is None:
+            os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait(timeout=5)
+    elapsed = time.time() - started
+    assert proc.returncode == 0, stdout + stderr
+    assert "WAIT_TIMEOUT" in stdout
+    assert "REAP_CHILD_STILL_ALIVE" in stdout
+    assert elapsed < 6

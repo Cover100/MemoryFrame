@@ -15,16 +15,22 @@
 #   - WAL attribution is fail-closed. UNAVAILABLE is not a zero count.
 #   - Card MB/h and WAL attribution are separate results.
 #   - The intentional S2-only stop writes a completion record before exiting.
+#   - Scored outputs are a verified tmpfs. Capture and the verdict use that
+#     same run-scoped directory. sudo audit policy is left unchanged.
 # The absent 2026-11-06 20:44–21:14 watcher bytes are not explained by the
 # archive glob. This script does not assign a cause for that gap.
 # Safe cleanup: only kill tracked monitor process trees (no broad pkill).
 set -eu
 
 REPO="${REPO:-$HOME/Documents/GitHub/MemoryFrame}"
-OUT="${OUT:-/root/sd-wear}"
-BASE="${BASE:-$HOME/sdwear-s2s3}"
-TARGET_HEAD="${TARGET_HEAD:-6711333}"
+# Scored files default onto a tmpfs. /root and $HOME are on the SD card on a Pi
+# and would be counted in card_bytes_written. The mount is checked, not assumed.
 RUN_ID="${RUN_ID:-$(date +%Y%m%dT%H%M%S%z)}"
+RUN_TAG=$(printf '%s' "$RUN_ID" | tr -c 'A-Za-z0-9._-' '-')
+S2_SCORE_PARENT="${S2_SCORE_PARENT:-/dev/shm}"
+OUT="${OUT:-$S2_SCORE_PARENT/mf-s2-${RUN_TAG}/out}"
+BASE="${BASE:-$S2_SCORE_PARENT/mf-s2-${RUN_TAG}/base}"
+TARGET_HEAD="${TARGET_HEAD:-6711333}"
 JAR="$BASE/cookies.txt"
 LOG="$BASE/run-${RUN_ID}.log"
 PHOTOS="$BASE/photos-${RUN_ID}"
@@ -47,6 +53,9 @@ SENTINEL_SEEN=0
 S2_START=""
 S2_FINISH_DONE=0
 S2_IN_EXIT_TRAP=0
+S2_WINDOW_OPEN=0
+S2_SUDO_BOUNDARY=0
+S2_SUDO_IN_WINDOW=0
 
 # Bounded curl defaults (override via env if needed)
 CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-5}"
@@ -110,6 +119,10 @@ preserve_prior_evidence() {
       done < <(find "$out" -mindepth 1 -maxdepth 1 -type f -name "${pat}*" -print0)
     done
     echo "PRESERVE_SUMMARY preserved=$preserved kept=$kept archive=$archive"
+    if [ "$kept" -gt 0 ]; then
+      echo "PRESERVE_ABORT kept=$kept" >&2
+      exit 2
+    fi
   ' bash "$out" "$archive" \
     S2-t0 S2-t1 S3-t0 S3-t1 S2-pidstat S2-iotop S2-iostat S2-iw S2-evidence
 }
@@ -120,7 +133,7 @@ attribute_s2_wal() {
   local window_start="$2"
   local window_end="$3"
   sudo python3 - "$identity" "$window_start" "$window_end" <<'PY'
-import os, re, stat, sys, time
+import hashlib, os, re, stat, sys, time
 
 def emit(attr, wal, reason):
     if attr != "VALID" or re.fullmatch(r"\d+", str(wal)) is None:
@@ -161,6 +174,8 @@ required = [
     "RUN_ID", "IW_LOG", "ESTABLISH_EPOCH", "DEVICE", "INODE",
     "SENTINEL_TOKEN", "SENTINEL_SEEN", "COVERAGE_EPOCH", "COVERAGE_ALIVE",
     "WINDOW_START", "WINDOW_END", "WINDOW_CLOSED", "WATCHER_HEALTH",
+    "BARRIER_TOKEN", "BARRIER_SEEN", "STDERR_PATH", "PREFIX_SHA256",
+    "PREFIX_STABLE", "BOUND_LO", "BOUND_HI", "BOUND_SOURCE",
 ]
 for key in required:
     if vals.get(key, "") == "":
@@ -168,10 +183,16 @@ for key in required:
 try:
     if int(vals["WINDOW_START"]) != window_start or int(vals["WINDOW_END"]) != window_end:
         invalid("mismatched_identity")
+    if int(vals["BOUND_LO"]) != window_start or int(vals["BOUND_HI"]) != window_end:
+        invalid("mismatched_identity")
     establish = int(vals["ESTABLISH_EPOCH"])
     coverage = int(vals["COVERAGE_EPOCH"])
+    bound_lo = int(vals["BOUND_LO"])
+    bound_hi = int(vals["BOUND_HI"])
 except ValueError:
     invalid("missing_identity")
+if vals["BOUND_SOURCE"] not in ("snapshot_date", "probe_clock"):
+    invalid("unbound_window")
 iw = vals["IW_LOG"]
 run_id = vals["RUN_ID"]
 if run_id not in os.path.basename(iw):
@@ -193,31 +214,88 @@ if vals["WINDOW_CLOSED"] != "1":
     invalid("partial_uncovered")
 if establish > window_start or coverage < window_end:
     invalid("partial_uncovered")
+if vals["BARRIER_SEEN"] != "1" or vals["BARRIER_TOKEN"] == "":
+    invalid("barrier_missing")
+if vals["PREFIX_STABLE"] != "1":
+    invalid("prefix_unstable")
+stderr_path = vals["STDERR_PATH"]
+if not os.path.isfile(stderr_path) or os.path.islink(stderr_path):
+    invalid("stderr_missing")
+with open(stderr_path, "r", encoding="utf-8", errors="replace") as fh:
+    for raw in fh:
+        line = raw.rstrip("\n")
+        if line == "" or line.startswith("Setting up watches") or line.startswith("Watches established"):
+            continue
+        invalid("stderr_loss")
 
 line_re = re.compile(r"^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}) (\S+) (.*)$")
 token = vals["SENTINEL_TOKEN"]
-sentinel_ok = False
-count = 0
+barrier = vals["BARRIER_TOKEN"]
+prefix = []
+saw_barrier = False
+loss = False
 with open(iw, "r", encoding="utf-8", errors="replace") as fh:
     for raw in fh:
         line = raw.rstrip("\n")
+        if barrier in line:
+            saw_barrier = True
+            break
+        prefix.append(line)
         if line == "":
             continue
         match = line_re.match(line)
         if not match:
             invalid("undated_log")
-        date_s, time_s, event, path = match.groups()
+        event = match.group(3)
+        if "Q_OVERFLOW" in event or "UNMOUNT" in event:
+            loss = True
+if not saw_barrier:
+    invalid("barrier_missing")
+# A loss marker after the barrier still means the queue was not intact.
+with open(iw, "r", encoding="utf-8", errors="replace") as fh:
+    for raw in fh:
+        line = raw.rstrip("\n")
+        match = line_re.match(line) if line else None
+        if match and ("Q_OVERFLOW" in match.group(3) or "UNMOUNT" in match.group(3)):
+            loss = True
+        elif line and not match:
+            invalid("undated_log")
+if loss:
+    invalid("watcher_loss")
+digest = hashlib.sha256(("".join(line + "\n" for line in prefix)).encode()).hexdigest()
+if digest != vals["PREFIX_SHA256"]:
+    invalid("prefix_unstable")
+sentinel_ok = False
+count = 0
+ambiguous = False
+for line in prefix:
+    if line == "":
+        continue
+    match = line_re.match(line)
+    date_s, time_s, event, path = match.groups()
+    if token in path or barrier in path:
         if token in path:
             sentinel_ok = True
-        try:
-            epoch = int(time.mktime(time.strptime(date_s + " " + time_s, "%Y-%m-%d %H:%M:%S")))
-        except ValueError:
-            invalid("undated_log")
-        if "CLOSE_WRITE" in event and path.endswith("memoryframe.db-wal"):
-            if window_start <= epoch <= window_end:
-                count += 1
+        continue
+    try:
+        epoch = int(time.mktime(time.strptime(date_s + " " + time_s, "%Y-%m-%d %H:%M:%S")))
+    except ValueError:
+        invalid("undated_log")
+    if "CLOSE_WRITE" in event and path.endswith("memoryframe.db-wal"):
+        # inotifywait stamps whole seconds when it prints, not when the
+        # kernel saw the event. The snapshot date is also a whole second.
+        # Only an open interval is unambiguous. A boundary or late line
+        # makes an exact count unavailable.
+        if bound_lo < epoch < bound_hi:
+            count += 1
+        else:
+            ambiguous = True
 if not sentinel_ok:
     invalid("sentinel_missing")
+if ambiguous or (vals["BOUND_SOURCE"] != "snapshot_date" and count != 0):
+    invalid("boundary_uncertain" if ambiguous else "unbound_window")
+if vals["BOUND_SOURCE"] not in ("snapshot_date", "probe_clock"):
+    invalid("unbound_window")
 emit("VALID", str(count), "ok")
 PY
 }
@@ -249,11 +327,15 @@ s2_write_attribution() {
 s2_card_verdict() {
   local out="$1"
   local dest="$2"
-  sudo python3 - "$out" "$dest" <<'PY'
+  local t0_label="${3:-S2-t0}"
+  local t1_label="${4:-S2-t1}"
+  sudo python3 - "$out" "$dest" "$t0_label" "$t1_label" <<'PY'
 import os, re, sys
 
 out = sys.argv[1]
 dest = sys.argv[2]
+t0_label = sys.argv[3]
+t1_label = sys.argv[4]
 
 def write(lines, code):
     if os.path.lexists(dest):
@@ -288,8 +370,8 @@ def snap(label):
         return None
     return int(card.group(1)), float(up.group(1)), (date.group(1).strip() if date else "")
 
-t0 = snap("S2-t0")
-t1 = snap("S2-t1")
+t0 = snap(t0_label)
+t1 = snap(t1_label)
 if t0 is None or t1 is None:
     unavailable("missing_snapshot")
 c0, u0, d0 = t0
@@ -336,6 +418,12 @@ write_s2_only_completion() {
     echo "IW_LOG=${IW_LOG:-}"
     echo "NOTE=card_verdict_and_wal_attribution_are_independent"
     echo "NOTE=UNAVAILABLE_is_not_zero"
+    echo "NOTE=scored_files_are_on_verified_tmpfs_when_the_run_starts"
+    echo "NOTE=sudo_auth_and_audit_policy_unchanged"
+    echo "NOTE=sudo_log_bytes_inside_the_card_delta_are_not_subtracted"
+    echo "NOTE=offcard_placement_does_not_claim_a_new_s2_result"
+    echo "S2_SUDO_BOUNDARY=${S2_SUDO_BOUNDARY:-0}"
+    echo "S2_SUDO_IN_WINDOW=${S2_SUDO_IN_WINDOW:-0}"
     if [ -f "$S2_CARD_FILE" ]; then
       cat -- "$S2_CARD_FILE"
     else
@@ -632,6 +720,146 @@ s2_probe_cleanup() {
   exit "$rc"
 }
 
+s2_note_sudo() {
+  if [ "${S2_WINDOW_OPEN:-0}" = "1" ]; then
+    S2_SUDO_IN_WINDOW=$((S2_SUDO_IN_WINDOW + 1))
+  else
+    S2_SUDO_BOUNDARY=$((S2_SUDO_BOUNDARY + 1))
+  fi
+}
+
+# fstype must be tmpfs and the source must not be a disk device. This refuses
+# /root and $HOME, which sit on the SD card on a Pi. It does not change sudoers
+# or audit policy.
+s2_require_offcard() {
+  local dir="$1"
+  local line fstype source
+  if [ ! -d "$dir" ] || [ -L "$dir" ]; then
+    echo "STOP: $dir is not a real directory to verify" >&2
+    return 2
+  fi
+  line=$(findmnt -T "$dir" -n -o FSTYPE,SOURCE 2>/dev/null | head -1 || true)
+  fstype=${line%% *}
+  source=${line#* }
+  if [ -z "$line" ] || [ "$fstype" != "tmpfs" ]; then
+    echo "STOP: $dir fstype=${fstype:-missing} source=${source:-missing} is not a verified tmpfs" >&2
+    return 2
+  fi
+  case "$source" in
+    *mmcblk*|*nvme*|/dev/sd*|/dev/vd*|/dev/xvd*|/dev/hd*)
+      echo "STOP: $dir source=$source is a block device" >&2
+      return 2
+      ;;
+  esac
+  echo "OFFCARD_OK dir=$dir fstype=$fstype source=$source"
+}
+
+s2_prepare_score_dirs() {
+  mkdir -p -- "$(dirname -- "$OUT")" "$BASE"
+  if [ ! -d "$OUT" ]; then
+    s2_note_sudo
+    sudo mkdir -p -- "$OUT"
+  fi
+  if [ "$(stat -c %u -- "$OUT")" != "0" ]; then
+    echo "STOP: $OUT is not root-owned; refusing to chown a pre-existing directory" >&2
+    return 2
+  fi
+  s2_note_sudo
+  sudo chmod 700 -- "$OUT"
+  s2_require_offcard "$OUT"
+  s2_require_offcard "$BASE"
+}
+
+# Run-scoped label, same OUT the verdict reads. Refuse an existing file so a
+# later capture cannot truncate a snapshot that archive failed to move.
+s2_capture() {
+  local label="$1"
+  local dest="$OUT/${label}.txt"
+  s2_note_sudo
+  if sudo test -e "$dest" || sudo test -L "$dest"; then
+    echo "CAPTURE_REFUSE_EXISTS $dest" >&2
+    return 2
+  fi
+  s2_note_sudo
+  sudo "$CAP" "$label" "$OUT"
+}
+
+s2_prefix_sha() {
+  sudo python3 - "$IW_LOG" "$BARRIER_TOKEN" <<'PY'
+import hashlib, sys
+path, token = sys.argv[1], sys.argv[2]
+try:
+    text = open(path, "r", encoding="utf-8", errors="replace").read()
+except OSError:
+    sys.stdout.write("\n")
+    raise SystemExit(0)
+prefix = []
+for line in text.splitlines(keepends=True):
+    if token in line:
+        break
+    prefix.append(line)
+sys.stdout.write(hashlib.sha256("".join(prefix).encode()).hexdigest() + "\n")
+PY
+}
+
+# After S2-t1, wait until a barrier event is in the log, then require the
+# bytes before that line to stay put. The barrier itself is not a WAL event.
+# inotifywait can still be holding events that happened before t1.
+s2_observe_drain() {
+  local bound_lo="$1"
+  local bound_hi="$2"
+  local bound_source="$3"
+  BARRIER_TOKEN="s2-barrier-${RUN_ID}"
+  local seen=0 h1 h2 stable=0
+  if [ -n "${IW_PID:-}" ] && kill -0 "$IW_PID" 2>/dev/null; then
+    sudo bash -c 'set -eu; d="$1"; t="$2"; : > "$d/$t"' bash "$S2_SENTINEL_DIR" "$BARRIER_TOKEN" || true
+    if s2_wait_for_token "$IW_LOG" "$BARRIER_TOKEN" "${S2_BARRIER_TIMEOUT:-15}" "$IW_PID"; then
+      seen=1
+    fi
+  fi
+  h1=$(s2_prefix_sha || true)
+  sleep "${S2_PREFIX_SETTLE:-0.3}"
+  h2=$(s2_prefix_sha || true)
+  if [ "$seen" = "1" ] && [ -n "$h1" ] && [ "$h1" = "$h2" ]; then
+    stable=1
+  fi
+  sudo python3 - "$IW_IDENTITY" "$BARRIER_TOKEN" "$seen" "$stable" "$h2" "${WATCHER_ERR:-}" "$bound_lo" "$bound_hi" "$bound_source" <<'PY'
+import os, sys
+identity, token, seen, stable, digest, err, lo, hi, source = sys.argv[1:]
+if not os.path.isfile(identity) or os.path.islink(identity):
+    sys.stderr.write("DRAIN_MISSING_IDENTITY\n")
+    raise SystemExit(2)
+text = open(identity, "r", encoding="utf-8").read()
+if "\nBARRIER_TOKEN=" in "\n" + text:
+    sys.stdout.write("DRAIN_KEPT\n")
+    raise SystemExit(0)
+extra = "\n".join([
+    "BARRIER_TOKEN=%s" % token,
+    "BARRIER_SEEN=%s" % seen,
+    "STDERR_PATH=%s" % err,
+    "PREFIX_SHA256=%s" % digest,
+    "PREFIX_STABLE=%s" % stable,
+    "BOUND_LO=%s" % lo,
+    "BOUND_HI=%s" % hi,
+    "BOUND_SOURCE=%s" % source,
+]) + "\n"
+with open(identity, "a", encoding="utf-8") as fh:
+    fh.write(extra)
+sys.stdout.write("DRAIN_RECORDED seen=%s stable=%s\n" % (seen, stable))
+PY
+}
+
+s2_snapshot_epoch() {
+  sudo python3 - "$1" <<'PY'
+import datetime, re, sys
+text = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+match = re.search(r"^date=(.+)$", text, re.M)
+if not match:
+    raise SystemExit(2)
+print(int(datetime.datetime.fromisoformat(match.group(1).strip()).timestamp()))
+PY
+}
+
 s2_probe_sentinel() {
   OUT="$1"
   BASE="$2"
@@ -651,6 +879,7 @@ s2_probe_sentinel() {
   sleep "${S2_PROBE_SLEEP:-1}"
   local end
   end=$(date +%s)
+  s2_observe_drain "$S2_START" "$end" probe_clock
   s2_record_coverage "$S2_START" "$end" 1
   s2_write_attribution "$S2_START" "$end"
   echo "PROBE_IW=$IW_LOG"
@@ -737,7 +966,11 @@ wait_pids_bounded() {
       sleep 1
       waited=$((waited + 1))
     done
-    # Reap if already exited (non-blocking if gone: wait returns immediately / errors)
+    # wait on a live child blocks until it exits. Reap only after it is gone.
+    if kill -0 "$pid" 2>/dev/null; then
+      echo "WAIT_TIMEOUT pid=$pid still_alive=1"
+      continue
+    fi
     wait "$pid" 2>/dev/null || true
   done
 }
@@ -798,6 +1031,27 @@ case "${1:-}" in
     s2_probe_sentinel "$2" "$3" "$4"
     exit $?
     ;;
+  --check-offcard)
+    s2_require_offcard "$2"
+    exit $?
+    ;;
+  --capture)
+    OUT="$2"
+    s2_capture "$3"
+    exit $?
+    ;;
+  --reap-self)
+    set -m
+    bash -c 'trap "" TERM; sleep 30' &
+    pid=$!
+    wait_pids_bounded 1 "$pid"
+    if kill -0 "$pid" 2>/dev/null; then
+      echo "REAP_CHILD_STILL_ALIVE pid=$pid"
+      kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
+    fi
+    wait "$pid" 2>/dev/null || true
+    exit 0
+    ;;
   --*)
     echo "unknown command $1" >&2
     exit 2
@@ -825,9 +1079,9 @@ test -f "$CAP"
 
 trap s2_on_exit EXIT
 
-# Preserve prior capture evidence under OUT (archive, do not delete user media).
+# Archive and directory setup happen before S2-t0, outside the scored window.
+s2_prepare_score_dirs
 preserve_prior_evidence "$OUT" "$RUN_ID"
-sudo mkdir -p "$OUT"
 
 # --- CSRF helper ---
 cat > "$HELPER" << 'PY'
@@ -901,7 +1155,8 @@ start_monitor iotop "iotop -obPa -d 60 -n 30 -qqq > $(printf '%q' "$IOTOP_LOG") 
 start_monitor iostat "iostat -dkx mmcblk0 60 30 > $(printf '%q' "$IOSTAT_LOG") 2>&1"
 
 echo "=== S2-t0 $(date -Is) ==="
-sudo "$CAP" S2-t0
+s2_capture "S2-t0-${RUN_TAG}"
+S2_WINDOW_OPEN=1
 S2_START=$(date +%s)
 MAX=$(curl_q http://127.0.0.1/brightness | python3 -c 'import sys,json; print(json.load(sys.stdin).get("maximum",255))' || echo 255)
 MIN=$(curl_q http://127.0.0.1/brightness | python3 -c 'import sys,json; print(json.load(sys.stdin).get("minimum",40))' || echo 40)
@@ -910,7 +1165,9 @@ echo "brightness min=$MIN max=$MAX"
 ADMIN_OK=0; ADMIN_FAIL=0; BR_OK=0; BR_FAIL=0; STATUS_OK=0; STATUS_FAIL=0
 i=0
 while [ $(($(date +%s)-S2_START)) -lt 1800 ]; do
-  if [ "${WATCHER_HEALTH:-}" = "healthy" ] && ! watcher_alive "${IW_PID:-}"; then
+  # The monitor pid is owned by this user, so a plain kill -0 is enough.
+  # The 30-minute loop must not append an auth-log line every sample.
+  if [ "${WATCHER_HEALTH:-}" = "healthy" ] && ! kill -0 "${IW_PID:-}" 2>/dev/null; then
     WATCHER_HEALTH=early_exit
     echo "WATCHER_EARLY_EXIT pid=${IW_PID:-} epoch=$(date +%s)"
   fi
@@ -934,15 +1191,26 @@ echo "=== S2-t1 $(date -Is) loops=$i admin_ok=$ADMIN_OK admin_fail=$ADMIN_FAIL b
 # an incomplete S2-only completion via the EXIT trap. Monitors stay up through t1.
 test "$ADMIN_OK" -ge 10 || { echo "STOP: admin successes $ADMIN_OK < 10"; exit 3; }
 test "$BR_OK" -ge 20 || { echo "STOP: brightness successes $BR_OK < 20"; exit 3; }
-sudo "$CAP" S2-t1
-S2_END=$(date +%s)
+s2_capture "S2-t1-${RUN_TAG}"
+S2_WINDOW_OPEN=0
+S2_T0_EPOCH=$(s2_snapshot_epoch "$OUT/S2-t0-${RUN_TAG}.txt" || true)
+S2_T1_EPOCH=$(s2_snapshot_epoch "$OUT/S2-t1-${RUN_TAG}.txt" || true)
+if [ -n "${S2_T0_EPOCH:-}" ] && [ -n "${S2_T1_EPOCH:-}" ]; then
+  S2_BOUND_SOURCE=snapshot_date
+else
+  S2_BOUND_SOURCE=unparsed
+  S2_T0_EPOCH=0
+  S2_T1_EPOCH=0
+fi
 
-# Score the watcher while it is still alive, then the EXIT trap stops it.
-s2_record_coverage "$S2_START" "$S2_END" 1
-s2_write_attribution "$S2_START" "$S2_END"
+# Drain the watcher after the card sample. Score only a stable prefix.
+# The loop clock above is the workload timer, not the attribution window.
+s2_observe_drain "$S2_T0_EPOCH" "$S2_T1_EPOCH" "$S2_BOUND_SOURCE"
+s2_record_coverage "$S2_T0_EPOCH" "$S2_T1_EPOCH" 1
+s2_write_attribution "$S2_T0_EPOCH" "$S2_T1_EPOCH"
 
 set +e
-s2_card_verdict "$OUT" "$S2_CARD_FILE"
+s2_card_verdict "$OUT" "$S2_CARD_FILE" "S2-t0-${RUN_TAG}" "S2-t1-${RUN_TAG}"
 card_rc=$?
 set -e
 

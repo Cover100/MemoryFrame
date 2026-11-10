@@ -371,15 +371,20 @@ def test_valid_coverage_counts_wal_and_honest_zero(tmp_path):
     assert fields["S2_ATTRIBUTION"] == "VALID"
     assert fields["S2_WAL_CLOSE_WRITE"] == "2"
     assert fields["S2_ATTRIBUTION_REASON"] == "ok"
+    assert fields["S2_WAL_TIMEBASE"] == "observer_print_whole_second"
+    assert fields["S2_WAL_COUNT_IS_KERNEL_TOTAL"] == "0"
+    assert fields["S2_WAL_COUNT_IS_CARD_WINDOW_TOTAL"] == "0"
+    assert fields["S2_WAL_PREWINDOW_PRINTS"] == "0"
+    assert "kernel_or_card_total" in fields["S2_WAL_COUNT_MEANS"]
 
     zero = write_case(tmp_path, run_id="zero")
     result = run(["--attribute", str(zero[0]), str(zero[2]), str(zero[3])])
     fields = kv(result.stdout)
-    assert fields == {
-        "S2_ATTRIBUTION": "VALID",
-        "S2_WAL_CLOSE_WRITE": "0",
-        "S2_ATTRIBUTION_REASON": "ok",
-    }
+    assert fields["S2_ATTRIBUTION"] == "VALID"
+    assert fields["S2_WAL_CLOSE_WRITE"] == "0"
+    assert fields["S2_WAL_PREWINDOW_PRINTS"] == "0"
+    assert fields["S2_WAL_ZERO_MEANS"] == "no_observed_wal_close_write_in_pre_barrier_stream"
+    assert fields["S2_WAL_COUNT_IS_KERNEL_TOTAL"] == "0"
 
 
 def kv_one(path, key):
@@ -744,7 +749,9 @@ def test_replacing_the_watched_root_is_not_a_valid_zero(tmp_path):
 
 
 def test_counter_gap_and_clock_inconsistency_are_not_exact(tmp_path):
-    gap = write_case(
+    # A print in the second before bound_lo is already pre-window. It is not
+    # counted, and it does not by itself make the score unavailable.
+    early = write_case(
         tmp_path,
         run_id="gap",
         extra_lines=event_line(101, "CLOSE_WRITE,CLOSE", "/var/lib/memoryframe/memoryframe.db-wal"),
@@ -752,12 +759,34 @@ def test_counter_gap_and_clock_inconsistency_are_not_exact(tmp_path):
         WINDOW_END="400",
         BOUND_LO="102",
         BOUND_HI="400",
-        ESTABLISH_EPOCH="100",
+        ESTABLISH_EPOCH="90",
         COVERAGE_EPOCH="400",
         BOUND_SOURCE="counter_bracket",
         CLOCK_CONSISTENT="1",
     )
-    result = run(["--attribute", str(gap[0]), "102", "400"])
+    result = run(["--attribute", str(early[0]), "102", "400"])
+    fields = kv(result.stdout)
+    assert fields["S2_ATTRIBUTION"] == "VALID"
+    assert fields["S2_WAL_CLOSE_WRITE"] == "0"
+    assert fields["S2_WAL_PREWINDOW_PRINTS"] == "1"
+    assert fields["S2_WAL_ZERO_MEANS"] == "no_interior_observer_print_of_wal_close_write"
+    assert "S2_WAL_CLOSE_WRITE=1" not in result.stdout
+
+    # The bracket second itself is still ambiguous: do not publish an interior count.
+    on_bound = write_case(
+        tmp_path,
+        run_id="onbound",
+        extra_lines=event_line(102, "CLOSE_WRITE,CLOSE", "/var/lib/memoryframe/memoryframe.db-wal"),
+        WINDOW_START="102",
+        WINDOW_END="400",
+        BOUND_LO="102",
+        BOUND_HI="400",
+        ESTABLISH_EPOCH="90",
+        COVERAGE_EPOCH="400",
+        BOUND_SOURCE="counter_bracket",
+        CLOCK_CONSISTENT="1",
+    )
+    result = run(["--attribute", str(on_bound[0]), "102", "400"])
     assert_unavailable(result.stdout, "unplaceable")
     assert "S2_WAL_CLOSE_WRITE=1" not in result.stdout
 
@@ -772,3 +801,53 @@ def test_counter_gap_and_clock_inconsistency_are_not_exact(tmp_path):
     backwards = run(["--bracket", "200", "10", "201", "100", "20", "202"])
     assert backwards.returncode == 0, backwards.stderr
     assert backwards.stdout.splitlines()[2] == "0"
+
+
+def test_prewindow_prints_keep_interior_observations(tmp_path):
+    both = write_case(
+        tmp_path,
+        run_id="earlyint",
+        extra_lines=(
+            event_line(int(time.time()) - 40, "CLOSE_WRITE,CLOSE", "/var/lib/memoryframe/memoryframe.db-wal")
+            + event_line(int(time.time()) - 20, "CLOSE_WRITE,CLOSE", "/var/lib/memoryframe/memoryframe.db-wal")
+        ),
+    )
+    # write_case window is (now-30, now-5). -40s is before it; -20s is inside it.
+    result = run(["--attribute", str(both[0]), str(both[2]), str(both[3])])
+    fields = kv(result.stdout)
+    assert result.returncode == 0, result.stderr
+    assert fields["S2_ATTRIBUTION"] == "VALID"
+    assert fields["S2_WAL_CLOSE_WRITE"] == "1"
+    assert fields["S2_WAL_PREWINDOW_PRINTS"] == "1"
+    assert fields["S2_WAL_COUNT_IS_KERNEL_TOTAL"] == "0"
+    assert fields["S2_WAL_COUNT_IS_CARD_WINDOW_TOTAL"] == "0"
+
+    only = write_case(
+        tmp_path,
+        run_id="earlyonly",
+        extra_lines=event_line(int(time.time()) - 40, "CLOSE_WRITE,CLOSE", "/var/lib/memoryframe/memoryframe.db-wal"),
+    )
+    result = run(["--attribute", str(only[0]), str(only[2]), str(only[3])])
+    fields = kv(result.stdout)
+    assert fields["S2_ATTRIBUTION"] == "VALID"
+    assert fields["S2_WAL_CLOSE_WRITE"] == "0"
+    assert fields["S2_WAL_PREWINDOW_PRINTS"] == "1"
+    assert fields["S2_WAL_ZERO_MEANS"] == "no_interior_observer_print_of_wal_close_write"
+    assert fields["S2_WAL_ZERO_MEANS"] != "no_observed_wal_close_write_in_pre_barrier_stream"
+
+    # A print on the bracket second is still ambiguous, even next to an interior line.
+    mixed = write_case(tmp_path, run_id="boundint")
+    start, end = mixed[2], mixed[3]
+    prefix = event_line(start - 2, "CLOSE_WRITE,CLOSE", str(tmp_path / "sentinel" / "s2-sentinel-boundint"))
+    prefix += event_line(start, "CLOSE_WRITE,CLOSE", "/var/lib/memoryframe/memoryframe.db-wal")
+    prefix += event_line(start + 5, "CLOSE_WRITE,CLOSE", "/var/lib/memoryframe/memoryframe.db-wal")
+    barrier = event_line(end, "CLOSE_WRITE,CLOSE", str(tmp_path / "sentinel" / "s2-barrier-boundint"))
+    mixed[1].write_text(prefix + barrier)
+    digest = hashlib.sha256(prefix.encode()).hexdigest()
+    mixed[0].write_text(mixed[0].read_text().replace(
+        "PREFIX_SHA256=%s" % kv_one(mixed[0], "PREFIX_SHA256"),
+        "PREFIX_SHA256=%s" % digest,
+    ))
+    result = run(["--attribute", str(mixed[0]), str(start), str(end)])
+    assert_unavailable(result.stdout, "unplaceable")
+    assert "S2_WAL_CLOSE_WRITE=1" not in result.stdout

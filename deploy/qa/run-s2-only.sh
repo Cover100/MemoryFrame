@@ -13,6 +13,10 @@
 #   - Monitor/evidence paths are run-scoped and are never truncated in place.
 #   - Watcher establish, sentinel, exit, and window coverage are recorded.
 #   - WAL attribution is fail-closed. UNAVAILABLE is not a zero count.
+#   - A numeric WAL count is how many CLOSE_WRITE lines the observer printed
+#     in whole seconds strictly inside the bracket. It is not a kernel event
+#     total and not a card-byte total. A covered zero means that stream had
+#     no such printed line, not that the database wrote nothing.
 #   - Card MB/h and WAL attribution are separate results.
 #   - The intentional S2-only stop writes a completion record before exiting.
 #   - Scored outputs are a verified tmpfs. Capture and the verdict use that
@@ -138,16 +142,34 @@ attribute_s2_wal() {
   sudo python3 - "$identity" "$window_start" "$window_end" <<'PY'
 import hashlib, os, re, stat, sys, time
 
-def emit(attr, wal, reason):
+def emit(attr, wal, reason, prewindow=0):
     if attr != "VALID" or re.fullmatch(r"\d+", str(wal)) is None:
         attr = "INVALID"
         wal = "UNAVAILABLE"
         if reason == "ok":
             reason = "bad_count"
-    sys.stdout.write(
-        "S2_ATTRIBUTION=%s\nS2_WAL_CLOSE_WRITE=%s\nS2_ATTRIBUTION_REASON=%s\n"
-        % (attr, wal, reason)
-    )
+    # Keys S2_ATTRIBUTION / S2_WAL_CLOSE_WRITE / S2_ATTRIBUTION_REASON stay.
+    # The extra fields stop a parser from reading the number as a kernel total.
+    lines = [
+        "S2_ATTRIBUTION=%s" % attr,
+        "S2_WAL_CLOSE_WRITE=%s" % wal,
+        "S2_ATTRIBUTION_REASON=%s" % reason,
+        "S2_WAL_TIMEBASE=observer_print_whole_second",
+        "S2_WAL_COUNT_IS_KERNEL_TOTAL=0",
+        "S2_WAL_COUNT_IS_CARD_WINDOW_TOTAL=0",
+        "S2_WAL_COUNT_MEANS=observed_interior_print_lines_not_kernel_or_card_total",
+    ]
+    if attr == "VALID":
+        lines.append("S2_WAL_PREWINDOW_PRINTS=%s" % int(prewindow))
+        if str(wal) == "0" and int(prewindow) == 0:
+            lines.append(
+                "S2_WAL_ZERO_MEANS=no_observed_wal_close_write_in_pre_barrier_stream"
+            )
+        elif str(wal) == "0":
+            lines.append(
+                "S2_WAL_ZERO_MEANS=no_interior_observer_print_of_wal_close_write"
+            )
+    sys.stdout.write("\n".join(lines) + "\n")
     raise SystemExit(0)
 
 def invalid(reason):
@@ -296,6 +318,7 @@ if digest != vals["PREFIX_SHA256"]:
     invalid("prefix_unstable")
 sentinel_ok = False
 count = 0
+prewindow = 0
 ambiguous = False
 for line in prefix:
     if line == "":
@@ -311,14 +334,17 @@ for line in prefix:
     except ValueError:
         invalid("undated_log")
     if "CLOSE_WRITE" in event and path.endswith("memoryframe.db-wal"):
-        # inotifywait stamps whole seconds when it prints, not when the
-        # kernel saw the event. The snapshot date is also a whole second.
-        # Only an open interval is unambiguous. A boundary or late line
-        # makes an exact count unavailable.
-        if bound_lo < epoch < bound_hi:
+        # The stamp is when inotifywait printed the line, in whole seconds,
+        # not when the kernel generated the close. A second strictly before
+        # bound_lo was already printed before the bracket and is not interior.
+        # The bracket second itself, or any later print, can still be a queued
+        # in-window close or a post-window close, so that uncertainty stays
+        # fail-closed. The interior tally is an observed print count only.
+        if epoch < bound_lo:
+            prewindow += 1
+        elif bound_lo < epoch < bound_hi:
             count += 1
         else:
-            # Print time cannot be placed inside the card-counter samples.
             ambiguous = True
 if not sentinel_ok:
     invalid("sentinel_missing")
@@ -326,7 +352,7 @@ if ambiguous:
     invalid("unplaceable")
 if count != 0 and vals["BOUND_SOURCE"] not in ("snapshot_date", "counter_bracket"):
     invalid("unbound_window")
-emit("VALID", str(count), "ok")
+emit("VALID", str(count), "ok", prewindow)
 PY
 }
 
@@ -455,6 +481,7 @@ write_s2_only_completion() {
     echo "NOTE=tmpfs_evidence_is_not_archived_automatically"
     echo "NOTE=physical_run_needs_separate_authorization_and_post_t1_collection"
     echo "NOTE=unreachable_s3_tail_is_not_s3_coverage"
+    echo "NOTE=wal_counts_are_observer_print_lines_not_kernel_or_card_totals"
     echo "S2_SUDO_BOUNDARY=${S2_SUDO_BOUNDARY:-0}"
     echo "S2_SUDO_IN_WINDOW=${S2_SUDO_IN_WINDOW:-0}"
     if [ -f "$S2_CARD_FILE" ]; then
@@ -961,9 +988,11 @@ print(int(datetime.datetime.fromisoformat(match.group(1).strip()).timestamp()))
 PY
 }
 
-# date= is printed before uptime and card_bytes. The counter sample is therefore
-# after that date and before this script returns. The only interval that is
-# certainly inside both counter samples is (post_t0, t1_date).
+# date= is printed before uptime and card_bytes, so the counter read is later
+# than that stamp and earlier than this script's return. (post_t0, t1_date)
+# is only the observer-print bracket used to classify lines. A line printed
+# inside it can still be a pre-window close that was queued, and the kernel
+# can coalesce unread duplicates, so the bracket is not a generation-time proof.
 s2_counter_bracket() {
   python3 - "$@" <<'PY'
 import sys

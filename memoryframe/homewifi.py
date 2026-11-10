@@ -27,7 +27,8 @@ bp.before_request(auth.require_session("admin"))
 MAX_BODY = 512
 RATE_N, RATE_WINDOW = 3, 600
 STATE_FILE = "/run/memoryframe/home-wifi.json"
-REASONS = {"ok", "connect_failed", "timeout", "busy", "invalid"}
+REASONS = {"ok", "connect_failed", "timeout", "busy", "invalid", "save_failed"}   # #137: save_failed =
+# the network worked but the frame could not store it (previous developer Wi-Fi kept or restored)
 _attempts = collections.deque()
 _lock = threading.Lock()
 _running = {"since": 0.0}

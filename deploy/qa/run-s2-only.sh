@@ -778,6 +778,9 @@ s2_require_under_base() {
   s2_require_offcard "$probe"
 }
 
+# EXIT trap for the measurement (`trap s2_on_exit EXIT`). ShellCheck 0.11
+# does not treat trap as a call, so this handler looks unused (SC2329).
+# shellcheck disable=SC2329
 s2_on_exit() {
   local rc=$?
   if [ "$S2_IN_EXIT_TRAP" = "1" ]; then
@@ -803,6 +806,8 @@ s2_on_exit() {
   exit "$rc"
 }
 
+# EXIT trap for --probe-sentinel and --probe-root-move. Same SC2329 limit.
+# shellcheck disable=SC2329
 s2_probe_cleanup() {
   local rc=$?
   if [ "$S2_IN_EXIT_TRAP" = "1" ]; then
@@ -1033,6 +1038,9 @@ s2_probe_root_move() {
 }
 
 # --- Monitor process-tree helpers (tracked PIDs only; no broad pkill) ---
+# Only kill_tree_bounded calls this. That function is itself only reached
+# from the EXIT traps, which ShellCheck 0.11 does not count (SC2329).
+# shellcheck disable=SC2329
 list_descendants() {
   # Recursively list child PIDs of $1 via /proc (best-effort)
   local root="$1" q=("$1") seen=() child
@@ -1060,6 +1068,8 @@ list_descendants() {
   printf '%s\n' "${seen[@]}"
 }
 
+# Only cleanup_monitors calls this, and that runs from the EXIT traps above.
+# shellcheck disable=SC2329
 kill_tree_bounded() {
   # SIGTERM then SIGKILL after deadline; only PIDs in the tree of $1
   local root="$1"
@@ -1122,6 +1132,8 @@ wait_pids_bounded() {
   done
 }
 
+# Called from s2_on_exit and s2_probe_cleanup. Both are EXIT traps.
+# shellcheck disable=SC2329
 cleanup_monitors() {
   local pid
   echo "=== cleanup_monitors count=${#MON_PIDS[@]} $(date -Is) ==="

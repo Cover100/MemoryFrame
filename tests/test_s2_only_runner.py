@@ -187,11 +187,18 @@ def test_runner_does_not_keep_the_unprivileged_archive_glob():
 
 
 def test_shellcheck_clean():
+    """The installed shellcheck must accept the runner.
+
+    GitHub Actions uses ShellCheck 0.11, which reports SC2329 for functions
+    reached only through ``trap``. Those five handlers carry a narrow
+    disable that names the real caller. Other warnings still fail this test.
+    """
     shellcheck = shutil.which("shellcheck")
     if shellcheck is None:
         pytest.skip("shellcheck not installed")
     result = subprocess.run([shellcheck, str(RUNNER)], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
+    assert "SC2329" not in result.stdout
 
 
 def test_unprivileged_glob_preserves_nothing_then_corrected_archive_moves(root_out, tmp_path):

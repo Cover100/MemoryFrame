@@ -57,6 +57,10 @@ case "$1 $2" in
       [ -f "$D/p/$5/file" ] && f="$(cat "$D/p/$5/file")" && [ -f "$f" ] && sed -i "s/^id=.*/id=$5/" "$f"
     else echo "$5" > "$D/p/$3/autoconnect"; [ -n "$7" ] && echo "$7" > "$D/p/$3/prio"; fi;;
   "connection load")
+    if [ -f "$D/loadfail" ] && read -r lf_name lf_n < "$D/loadfail" && [ "$(basename "$3")" = "$lf_name" ] \
+        && [ "$lf_n" -gt 0 ]; then   # #135 QA: NM refuses this file (N more times)
+      echo "$lf_name $((lf_n - 1))" > "$D/loadfail"; echo "Error: failed to load connection" >&2; exit 4
+    fi
     n="$(sed -n 's/^id=//p' "$3")"
     # a same-named profile from ANOTHER file stays a separate profile (as in NM), found by uuid only
     if [ -d "$D/p/$n" ] && [ "$(cat "$D/p/$n/file" 2>/dev/null)" != "$3" ]; then mv "$D/p/$n" "$D/p/$n~dup"; fi
@@ -627,14 +631,31 @@ def test_dev_temp_single_try(env):   # #135: dev-temp unchanged (unit TimeoutSta
     assert not (env["boot"] / "memoryframe-mode.txt").exists()
 
 
-def test_boot_retry_fits_unit_timeout():   # #135: DEV_WAIT + one capped try + sleep + 2x30 s hotspot < 150
+def test_boot_retry_fits_unit_timeout():   # #135: worst case computed from the script's own constants
+    import re
     src = SCRIPT.read_text()
     unit = (ROOT / "deploy" / "memoryframe-netmode.service").read_text()
-    assert 'DEV_WAIT="${MEMORYFRAME_DEV_WAIT:-45}"' in src and 'DEV_TRY_WAIT="${MEMORYFRAME_DEV_TRY_WAIT:-15}"' in src
-    assert "RESTORE_WAIT=15" in src and '--wait "$RESTORE_WAIT" connection up "$prev"' in src
-    assert '--wait "$DEV_WAIT" connection up "$prev"' not in src
-    # dev: DEV_WAIT + last try >= 5 s + retry sleep 3; hotspot 2 x 30 s; restore of the previous link 15 s
-    assert "TimeoutStartSec=150" in unit and 45 + 5 + 3 + 2 * 30 + 15 < 150
+
+    def num(pattern, text=src):
+        m = re.search(pattern, text)
+        assert m, pattern
+        return int(m.group(1))
+
+    dev_wait = num(r'DEV_WAIT="\$\{MEMORYFRAME_DEV_WAIT:-(\d+)\}"')
+    try_wait = num(r'DEV_TRY_WAIT="\$\{MEMORYFRAME_DEV_TRY_WAIT:-(\d+)\}"')
+    retry_sleep = num(r'DEV_RETRY_SLEEP="\$\{MEMORYFRAME_DEV_RETRY_SLEEP:-(\d+)\}"')
+    min_try = num(r'\[ "\$wait" -ge (\d+) \] \|\| wait=\1')            # last try waits at least this
+    restore_wait = num(r'(?m)^RESTORE_WAIT=(\d+)')
+    ap = src[src.index("apply_product() {"):src.index("left_by_product() {")]
+    hotspot_tries = len(re.search(r'for try in ([\d ]+); do', ap).group(1).split())
+    hotspot_wait = num(r'--wait (\d+) connection up "\$HOTSPOT_CON"', ap)
+    assert '--wait "$RESTORE_WAIT" connection up "$prev"' in ap and '--wait "$DEV_WAIT" connection up "$prev"' not in ap
+    timeout = num(r'TimeoutStartSec=(\d+)', unit)
+    assert (dev_wait, timeout) == (45, 150)                     # owner: 45 s before the hotspot; unit unchanged
+    assert try_wait <= dev_wait and min_try <= try_wait
+    # dev: budget + last try (>= min_try) + one retry sleep; hotspot tries; restore of the previous link
+    worst = dev_wait + min_try + retry_sleep + hotspot_tries * hotspot_wait + restore_wait
+    assert worst < timeout, worst
     assert "After=sys-subsystem-net-devices-wlan0.device" in unit
     assert "Wants=sys-subsystem" not in unit and "Requires=sys-subsystem" not in unit
 

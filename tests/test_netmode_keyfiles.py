@@ -132,13 +132,70 @@ exec {real} "$@"
     rq = env["tmp"] / "app" / "home-wifi"
     rq.write_text(f"v1\n{'Second'.encode().hex()}\n{SENT}\n")
     r = run(env, "home-wifi", "--request")
-    assert r.returncode != 0 and "previous one kept" in r.stderr
+    assert r.returncode != 0 and "previous developer Wi-Fi kept" in r.stderr
     assert json.loads((env["state"] / "home-wifi.json").read_text())["state"] == "failed"
     assert kf.read_bytes() == good                                # byte-identical
     assert list((env["tmp"] / "nm").glob(".*")) == [] and backing(env, "MemoryFrame-home-pending") == []
     fake.unlink()
     reboot(env)
     assert run(env, "boot").returncode == 0 and active(env) == HCON
+
+
+def test_load_failure_after_install_restores_previous_file(env):   # #135 QA N1
+    dev_fallback_on_hotspot(env)
+    save_from_phone(env, "First")
+    [kf] = backing(env, HCON)
+    good = kf.read_bytes()
+    old_uuid = (env["d"] / "p" / HCON / "uuid").read_text().strip()
+    (env["d"] / "loadfail").write_text("MemoryFrame-home.nmconnection 1\n")                 # NM refuses the new final file once
+    rq = env["tmp"] / "app" / "home-wifi"
+    rq.write_text(f"v1\n{'Second'.encode().hex()}\n{SENT}\n")
+    r = run(env, "home-wifi", "--request")
+    assert r.returncode != 0
+    assert "did not load the new file; previous developer Wi-Fi restored" in r.stderr
+    assert "test failed" not in r.stderr                         # truthful: the test itself passed
+    assert kf.read_bytes() == good and (env["d"] / "p" / HCON / "uuid").read_text().strip() == old_uuid
+    assert list((env["tmp"] / "nm").glob(".*")) == [] and backing(env, "MemoryFrame-home-pending") == []
+    reboot(env)
+    assert run(env, "boot").returncode == 0 and active(env) == HCON
+
+
+def test_load_failure_with_no_previous_file_is_logged_truthfully(env):
+    dev_fallback_on_hotspot(env)
+    (env["d"] / "loadfail").write_text("MemoryFrame-home.nmconnection 1\n")
+    rq = env["tmp"] / "app" / "home-wifi"
+    rq.parent.mkdir(mode=0o700, exist_ok=True)
+    rq.write_text(f"v1\n{'First'.encode().hex()}\n{SENT}\n")
+    env["env"]["MEMORYFRAME_HOME_REQ"] = str(rq)
+    env["env"]["MEMORYFRAME_HOME_WAIT"] = "1"
+    r = run(env, "home-wifi", "--request")
+    assert r.returncode != 0 and "kept" not in r.stderr
+    assert "no previous file to restore: the new (tested) file stays" in r.stderr
+    assert list((env["tmp"] / "nm").glob(".*")) == []
+
+
+def test_boot_removes_stray_hidden_temp_and_restores_interrupted_backup(env):   # #135 QA: PSK never left
+    nm = env["tmp"] / "nm"
+    nm.mkdir()
+    stray = nm / ".MemoryFrame-home.Ab12Cd"
+    stray.write_text("[connection]\nid=MemoryFrame-home\n[wifi-security]\npsk=secret\n")
+    (env["boot"] / "memoryframe-mode.txt").write_text("dev\n")
+    assert run(env, "boot").returncode == 0
+    assert list(nm.glob(".*")) == []
+    # power cut after the backup, with the final file gone/empty: the backup is put back at boot
+    final = nm / "MemoryFrame-home.nmconnection"
+    final.write_text("")
+    (nm / ".MemoryFrame-home.bak").write_text("[connection]\nid=MemoryFrame-home\nuuid=u-1\n")
+    assert run(env, "boot").returncode == 0
+    assert final.read_text().startswith("[connection]\nid=MemoryFrame-home") and list(nm.glob(".*")) == []
+
+
+def test_pending_keyfile_is_fsynced_before_rename(env):   # #135 QA (g)
+    dev_fallback_on_hotspot(env)
+    log = fake_sync(env)
+    save_from_phone(env)
+    assert any(l.startswith("sync -- ") and "MemoryFrame-home-pending-" in l and l.endswith(".tmp")
+               for l in log.read_text().splitlines())
 
 
 def test_phone_save_replaces_a_legacy_in_memory_home_profile(env):   # the Pi today: file already lost

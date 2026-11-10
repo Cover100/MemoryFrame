@@ -79,6 +79,7 @@ HOTSPOT_SH="${MEMORYFRAME_HOTSPOT_SH:-$DIR/hotspot.sh}"
 DEV_WAIT="${MEMORYFRAME_DEV_WAIT:-45}"
 DEV_TRY_WAIT="${MEMORYFRAME_DEV_TRY_WAIT:-15}"      # #135: max wait per boot try
 DEV_RETRY_SLEEP="${MEMORYFRAME_DEV_RETRY_SLEEP:-3}"
+RESTORE_WAIT=15                                      # #135: max wait to bring the previous link back
 BOOT_ID_FILE="${MEMORYFRAME_BOOT_ID_FILE:-/proc/sys/kernel/random/boot_id}"
 IFACE="${MEMORYFRAME_IFACE:-wlan0}"
 
@@ -259,7 +260,8 @@ apply_product() {   # requested dev_fallback [fallback]
     done
     if [ -n "$prev" ] && [ "$(active)" != "$prev" ]; then
         log "product: restoring the previous connection ($prev)"
-        "$NMCLI" --wait "$DEV_WAIT" connection up "$prev" >/dev/null 2>&1 || log "could not restore $prev"
+        # #135 review M2: capped, so boot stays inside TimeoutStartSec=150 (~53 s dev + 2x30 s hotspot + 15 s)
+        "$NMCLI" --wait "$RESTORE_WAIT" connection up "$prev" >/dev/null 2>&1 || log "could not restore $prev"
     fi
     write_state product "$1" "$2" true
     return 1
@@ -439,8 +441,10 @@ new_keyfile() {   # id -> prints a fresh, unique keyfile path in NM_DIR (created
     mktemp --suffix=.nmconnection "$NM_DIR/$1-XXXXXX"
 }
 
-write_keyfile() {   # path; content on stdin. tmp + mv, 0600 (root-only: it holds a password)
-    ( umask 077; cat > "$1.tmp"; chmod 0600 "$1.tmp"; mv -f "$1.tmp" "$1" )
+write_keyfile() {   # path; content on stdin. tmp + mv, 0600 (root-only: it holds a password); checked steps
+    if ( umask 077; cat > "$1.tmp" && [ -s "$1.tmp" ] && chmod 0600 "$1.tmp" && mv -f "$1.tmp" "$1" ); then return 0; fi
+    rm -f "$1.tmp"
+    return 1
 }
 
 sync_nm_dir() {   # #135: make a promoted keyfile (renamed in place by NM) durable before we report success
@@ -448,7 +452,9 @@ sync_nm_dir() {   # #135: make a promoted keyfile (renamed in place by NM) durab
 }
 
 durable_install() {   # tmp final (same dir): 0600, fsync file, rename, fsync dir (power-cut safe, #135)
-    chmod 0600 "$1" && sync -- "$1" && mv -f "$1" "$2" && { sync -- "$(dirname "$2")" 2>/dev/null || sync; }
+    # A failed step before mv leaves final untouched; the dir fsync after mv is best effort.
+    chmod 0600 "$1" && sync -- "$1" && mv -f "$1" "$2" || return 1
+    sync -- "$(dirname "$2")" 2>/dev/null || sync 2>/dev/null || true
 }
 
 delete_pending_profile() {
@@ -476,6 +482,7 @@ wifi_rollback() {
         "$NMCLI" --wait 30 connection up "$prev" >/dev/null 2>&1 || ok=1
     fi
     delete_pending_profile
+    sync_nm_dir
     rm -f "$PENDING"
     local err=false
     if [ "$ok" != 0 ]; then err=true; fi
@@ -613,21 +620,33 @@ promote_home() {   # pending keyfile path
     local src="$1" final="$NM_DIR/$HOME_CON.nmconnection" tmp uuid old
     uuid="$(cat /proc/sys/kernel/random/uuid)"
     old="$(prop "$HOME_CON" connection.uuid)"
-    tmp="$(mktemp "$NM_DIR/.$HOME_CON.XXXXXX")"        # dot file: NM never loads it
-    # the password stays in the files: sed copies it, it is never in a shell variable or argv
-    sed -e "s/^id=.*/id=$HOME_CON/" -e "/^uuid=/d" -e "s/^\[connection\]\$/[connection]\nuuid=$uuid/" "$src" > "$tmp"
-    durable_install "$tmp" "$final" || { rm -f "$tmp"; log "home-wifi: could not write $final"; return 1; }
+    # NOTE: called as `if ! promote_home`, so set -e is OFF in here: every step is checked explicitly.
+    # A failed or short copy must never replace a good final file (#135 review M1).
+    if ! stage_home "$src" "$uuid" "$final"; then log "home-wifi: could not write $final (previous one kept)"; return 1; fi
     "$NMCLI" connection load "$final" >/dev/null 2>&1 || true
     if ! home_saved "$final" "$uuid"; then log "home-wifi: saved file not loaded by NetworkManager"; return 1; fi
     if [ -n "$old" ] && [ "$old" != "$uuid" ]; then
         "$NMCLI" connection delete uuid "$old" >/dev/null 2>&1 || true
         if [ ! -s "$final" ]; then   # the old profile was backed by the same path: write it once more
-            sed -e "s/^id=.*/id=$HOME_CON/" -e "/^uuid=/d" -e "s/^\[connection\]\$/[connection]\nuuid=$uuid/" "$src" > "$tmp"
-            durable_install "$tmp" "$final" && "$NMCLI" connection load "$final" >/dev/null 2>&1
+            if stage_home "$src" "$uuid" "$final"; then "$NMCLI" connection load "$final" >/dev/null 2>&1 || true; fi
             home_saved "$final" "$uuid" || { log "home-wifi: saved file lost while replacing the old one"; return 1; }
         fi
     fi
     return 0
+}
+
+stage_home() {   # src uuid final: copy the tested pending keyfile as MemoryFrame-home and install it durably
+    # The password stays in the files: sed copies it, it is never in a shell variable or argv.
+    # Only a complete copy (non-empty, carrying our uuid= and id=) is installed; otherwise final is untouched.
+    local src="$1" uuid="$2" final="$3" tmp
+    tmp="$(mktemp "$NM_DIR/.$HOME_CON.XXXXXX")" || return 1   # dot file: NM never loads it
+    if sed -e "s/^id=.*/id=$HOME_CON/" -e "/^uuid=/d" -e "s/^\[connection\]\$/[connection]\nuuid=$uuid/" "$src" > "$tmp" \
+            && [ -s "$tmp" ] && grep -qxF "uuid=$uuid" "$tmp" && grep -qxF "id=$HOME_CON" "$tmp" \
+            && grep -q '^psk=' "$tmp" && durable_install "$tmp" "$final"; then
+        return 0
+    fi
+    rm -f "$tmp"
+    return 1
 }
 
 home_saved() {   # final uuid: on disk (non-empty, our UUID) AND live in NM under that UUID as MemoryFrame-home

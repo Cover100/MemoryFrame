@@ -631,9 +631,21 @@ def test_boot_retry_fits_unit_timeout():   # #135: DEV_WAIT + one capped try + s
     src = SCRIPT.read_text()
     unit = (ROOT / "deploy" / "memoryframe-netmode.service").read_text()
     assert 'DEV_WAIT="${MEMORYFRAME_DEV_WAIT:-45}"' in src and 'DEV_TRY_WAIT="${MEMORYFRAME_DEV_TRY_WAIT:-15}"' in src
-    assert "TimeoutStartSec=150" in unit and 45 + 5 + 3 + 2 * 30 < 150
+    assert "RESTORE_WAIT=15" in src and '--wait "$RESTORE_WAIT" connection up "$prev"' in src
+    assert '--wait "$DEV_WAIT" connection up "$prev"' not in src
+    # dev: DEV_WAIT + last try >= 5 s + retry sleep 3; hotspot 2 x 30 s; restore of the previous link 15 s
+    assert "TimeoutStartSec=150" in unit and 45 + 5 + 3 + 2 * 30 + 15 < 150
     assert "After=sys-subsystem-net-devices-wlan0.device" in unit
     assert "Wants=sys-subsystem" not in unit and "Requires=sys-subsystem" not in unit
+
+
+def test_hotspot_failure_restore_wait_is_capped(env):   # #135 review M2
+    (env["boot"] / "memoryframe-mode.txt").write_text("product\n")
+    (env["d"] / "fail").write_text(HOT + "\n")                # both hotspot tries fail, HOME was active
+    env["env"]["MEMORYFRAME_DEV_WAIT"] = "45"
+    r = run(env, "boot")
+    assert r.returncode == 0 and state(env)["hotspot_error"] is True
+    assert f"nmcli --wait 15 connection up {HOME}" in (env["d"] / "log").read_text().splitlines()
 
 
 # ---------- Tester #40 (2): never modify a non-MemoryFrame profile ----------

@@ -52,6 +52,9 @@ connection, but do it by hand first: the guard only runs when install.sh runs.)
     survives reboots and power cuts. Boot logs a WARNING if a `/etc/netplan/90-NM-*.yaml` is empty (a power
     cut can leave NetworkManager's netplan profile at 0 bytes, which silently deletes the home Wi-Fi);
     `/etc/netplan` is never changed. After such a loss, re-save the developer Wi-Fi from the phone once.
+  - **Deploying the #135 fix:** after install, re-save the developer Wi-Fi once from the phone (hotspot →
+    Developer Wi-Fi). A profile saved by older code exists only in NetworkManager's memory and is lost
+    at the next reboot; the new save writes `MemoryFrame-home.nmconnection` and then persists.
 
 ## Files on the boot partition (`/boot/firmware`, the "bootfs" drive on a PC)
 

@@ -10,6 +10,8 @@ import os
 import shutil
 import threading
 
+import pytest
+
 from test_netmode_script import (HOME, HOT, OTHER, PENDING, NEWPW, active, env, keyfiles, on_hotspot,  # noqa: F401
                                  profile, reboot, run, state)
 
@@ -106,6 +108,35 @@ def test_boot_keeps_legacy_pending_named_file_that_backs_home(env):   # a Pi sav
     (env["d"] / "active").write_text("\n")
     r = run(env, "boot")
     assert f.exists() and active(env) == HCON, r.stderr
+    reboot(env)
+    assert run(env, "boot").returncode == 0 and active(env) == HCON
+
+
+@pytest.mark.parametrize("how", ["fails", "short"])
+def test_failed_copy_never_replaces_the_saved_file(env, how):   # #135 review M1
+    dev_fallback_on_hotspot(env)
+    save_from_phone(env, "First")
+    [kf] = backing(env, HCON)
+    good = kf.read_bytes()
+    real = shutil.which("sed")
+    fake = env["d"] / "sed"      # only the copy into the .MemoryFrame-home.* temp file goes wrong
+    fake.write_text(f"""#!/bin/bash
+out="$(readlink /proc/$$/fd/1)"
+if [[ "$out" == */.MemoryFrame-home.* ]]; then
+  printf '[connection]\\nid=Memory'
+  [ "{how}" = fails ] && exit 1 || exit 0
+fi
+exec {real} "$@"
+""")
+    fake.chmod(0o755)
+    rq = env["tmp"] / "app" / "home-wifi"
+    rq.write_text(f"v1\n{'Second'.encode().hex()}\n{SENT}\n")
+    r = run(env, "home-wifi", "--request")
+    assert r.returncode != 0 and "previous one kept" in r.stderr
+    assert json.loads((env["state"] / "home-wifi.json").read_text())["state"] == "failed"
+    assert kf.read_bytes() == good                                # byte-identical
+    assert list((env["tmp"] / "nm").glob(".*")) == [] and backing(env, "MemoryFrame-home-pending") == []
+    fake.unlink()
     reboot(env)
     assert run(env, "boot").returncode == 0 and active(env) == HCON
 

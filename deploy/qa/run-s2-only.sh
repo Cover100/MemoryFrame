@@ -201,7 +201,7 @@ required = [
     "WINDOW_START", "WINDOW_END", "WINDOW_CLOSED", "WATCHER_HEALTH",
     "BARRIER_TOKEN", "BARRIER_SEEN", "STDERR_PATH", "PREFIX_SHA256",
     "PREFIX_STABLE", "BOUND_LO", "BOUND_HI", "BOUND_SOURCE",
-    "CLOCK_CONSISTENT",
+    "CLOCK_CONSISTENT", "T0_DATE",
 ]
 for key in required:
     if vals.get(key, "") == "":
@@ -217,6 +217,13 @@ try:
     bound_hi = int(vals["BOUND_HI"])
 except ValueError:
     invalid("missing_identity")
+try:
+    t0_date = int(vals["T0_DATE"])
+except ValueError:
+    invalid("opening_bound_invalid")
+# post_t0 is BOUND_LO. A t0_date after that return cannot open the bracket.
+if t0_date > bound_lo:
+    invalid("opening_bound_invalid")
 if vals["BOUND_SOURCE"] not in ("snapshot_date", "probe_clock", "counter_bracket"):
     invalid("unbound_window")
 if vals["CLOCK_CONSISTENT"] != "1":
@@ -334,13 +341,14 @@ for line in prefix:
     except ValueError:
         invalid("undated_log")
     if "CLOSE_WRITE" in event and path.endswith("memoryframe.db-wal"):
-        # The stamp is when inotifywait printed the line, in whole seconds,
-        # not when the kernel generated the close. A second strictly before
-        # bound_lo was already printed before the bracket and is not interior.
-        # The bracket second itself, or any later print, can still be a queued
-        # in-window close or a post-window close, so that uncertainty stays
-        # fail-closed. The interior tally is an observed print count only.
-        if epoch < bound_lo:
+        # Stamps are observer print time in whole seconds, not kernel time.
+        # A second strictly before t0_date was printed before capture dated
+        # the card read, so it is pre-window. From t0_date through post_t0
+        # (BOUND_LO) the card counter has not yet been bracketed: the read
+        # is inside the capture script, and the script returns later. That
+        # inclusive span stays unplaceable. Interior prints are only
+        # (post_t0, t1_date). Later prints stay unplaceable too.
+        if epoch < t0_date:
             prewindow += 1
         elif bound_lo < epoch < bound_hi:
             count += 1
@@ -936,6 +944,7 @@ s2_observe_drain() {
   local bound_hi="$2"
   local bound_source="$3"
   local clock_ok="${4:-0}"
+  local t0_date="${5:-}"
   BARRIER_TOKEN="s2-barrier-${RUN_ID}"
   local seen=0 h1 h2 stable=0
   if [ -n "${IW_PID:-}" ] && kill -0 "$IW_PID" 2>/dev/null; then
@@ -950,9 +959,9 @@ s2_observe_drain() {
   if [ "$seen" = "1" ] && [ -n "$h1" ] && [ "$h1" = "$h2" ]; then
     stable=1
   fi
-  sudo python3 - "$IW_IDENTITY" "$BARRIER_TOKEN" "$seen" "$stable" "$h2" "${WATCHER_ERR:-}" "$bound_lo" "$bound_hi" "$bound_source" "$clock_ok" <<'PY'
+  sudo python3 - "$IW_IDENTITY" "$BARRIER_TOKEN" "$seen" "$stable" "$h2" "${WATCHER_ERR:-}" "$bound_lo" "$bound_hi" "$bound_source" "$clock_ok" "$t0_date" <<'PY'
 import os, sys
-identity, token, seen, stable, digest, err, lo, hi, source, clock_ok = sys.argv[1:]
+identity, token, seen, stable, digest, err, lo, hi, source, clock_ok, t0_date = sys.argv[1:]
 if not os.path.isfile(identity) or os.path.islink(identity):
     sys.stderr.write("DRAIN_MISSING_IDENTITY\n")
     raise SystemExit(2)
@@ -970,6 +979,7 @@ extra = "\n".join([
     "BOUND_HI=%s" % hi,
     "BOUND_SOURCE=%s" % source,
     "CLOCK_CONSISTENT=%s" % clock_ok,
+    "T0_DATE=%s" % t0_date,
 ]) + "\n"
 with open(identity, "a", encoding="utf-8") as fh:
     fh.write(extra)
@@ -1031,7 +1041,7 @@ s2_probe_sentinel() {
   sleep "${S2_PROBE_SLEEP:-1}"
   local end
   end=$(date +%s)
-  s2_observe_drain "$S2_START" "$end" probe_clock 1
+  s2_observe_drain "$S2_START" "$end" probe_clock 1 "$S2_START"
   s2_record_coverage "$S2_START" "$end" 1
   s2_write_attribution "$S2_START" "$end"
   echo "PROBE_IW=$IW_LOG"
@@ -1060,7 +1070,7 @@ s2_probe_root_move() {
   S2_START=$(date +%s)
   local end
   end=$(date +%s)
-  s2_observe_drain "$S2_START" "$end" probe_clock 1
+  s2_observe_drain "$S2_START" "$end" probe_clock 1 "$S2_START"
   s2_record_coverage "$S2_START" "$end" 1
   s2_write_attribution "$S2_START" "$end"
   echo "PROBE_ROOT_MOVED=$root"
@@ -1414,6 +1424,7 @@ print(m.group(1) if m else "")
 PY
 )
 if [ -n "${S2_T0_EPOCH:-}" ] && [ -n "${S2_T1_EPOCH:-}" ] && [ -n "${S2_U0:-}" ] && [ -n "${S2_U1:-}" ]; then
+  S2_T0_DATE="$S2_T0_EPOCH"
   bracket=$(s2_counter_bracket "$S2_T0_EPOCH" "$S2_U0" "$S2_POST_T0" "$S2_T1_EPOCH" "$S2_U1" "$S2_POST_T1" "$S2_PRE_T0" "$S2_PRE_T1")
   S2_T0_EPOCH=$(printf '%s\n' "$bracket" | sed -n '1p')
   S2_T1_EPOCH=$(printf '%s\n' "$bracket" | sed -n '2p')
@@ -1421,14 +1432,16 @@ if [ -n "${S2_T0_EPOCH:-}" ] && [ -n "${S2_T1_EPOCH:-}" ] && [ -n "${S2_U0:-}" ]
   S2_BOUND_SOURCE=counter_bracket
 else
   S2_BOUND_SOURCE=unparsed
+  S2_T0_DATE=""
   S2_T0_EPOCH=0
   S2_T1_EPOCH=0
   S2_CLOCK_OK=0
 fi
 
 # Drain the watcher after the card sample. Score only a stable prefix.
-# Bounds are the post-t0 return and the t1 date, which bracket the counters.
-s2_observe_drain "$S2_T0_EPOCH" "$S2_T1_EPOCH" "$S2_BOUND_SOURCE" "$S2_CLOCK_OK"
+# BOUND_LO is the post-t0 return. T0_DATE is the capture date, which is
+# before the card read. Prints in [T0_DATE, BOUND_LO] are not pre-window.
+s2_observe_drain "$S2_T0_EPOCH" "$S2_T1_EPOCH" "$S2_BOUND_SOURCE" "$S2_CLOCK_OK" "$S2_T0_DATE"
 s2_record_coverage "$S2_T0_EPOCH" "$S2_T1_EPOCH" 1
 s2_write_attribution "$S2_T0_EPOCH" "$S2_T1_EPOCH"
 

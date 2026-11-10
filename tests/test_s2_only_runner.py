@@ -127,6 +127,7 @@ def write_case(tmp_path, run_id="run-1", wal_epochs=(), extra_lines="", extra_af
         "BOUND_HI": str(end),
         "BOUND_SOURCE": "snapshot_date",
         "CLOCK_CONSISTENT": "1",
+        "T0_DATE": str(start),
     }
     fields.update(overrides)
     # A replaced log must be described by the overridden inode/path, not re-stat'd.
@@ -749,9 +750,9 @@ def test_replacing_the_watched_root_is_not_a_valid_zero(tmp_path):
 
 
 def test_counter_gap_and_clock_inconsistency_are_not_exact(tmp_path):
-    # A print in the second before bound_lo is already pre-window. It is not
-    # counted, and it does not by itself make the score unavailable.
-    early = write_case(
+    # t0_date=100, post_t0=102. A print at 101 is after the date and before
+    # the script returned, so it is not definitely pre-window.
+    gap = write_case(
         tmp_path,
         run_id="gap",
         extra_lines=event_line(101, "CLOSE_WRITE,CLOSE", "/var/lib/memoryframe/memoryframe.db-wal"),
@@ -759,18 +760,16 @@ def test_counter_gap_and_clock_inconsistency_are_not_exact(tmp_path):
         WINDOW_END="400",
         BOUND_LO="102",
         BOUND_HI="400",
+        T0_DATE="100",
         ESTABLISH_EPOCH="90",
         COVERAGE_EPOCH="400",
         BOUND_SOURCE="counter_bracket",
         CLOCK_CONSISTENT="1",
     )
-    result = run(["--attribute", str(early[0]), "102", "400"])
-    fields = kv(result.stdout)
-    assert fields["S2_ATTRIBUTION"] == "VALID"
-    assert fields["S2_WAL_CLOSE_WRITE"] == "0"
-    assert fields["S2_WAL_PREWINDOW_PRINTS"] == "1"
-    assert fields["S2_WAL_ZERO_MEANS"] == "no_interior_observer_print_of_wal_close_write"
+    result = run(["--attribute", str(gap[0]), "102", "400"])
+    assert_unavailable(result.stdout, "unplaceable")
     assert "S2_WAL_CLOSE_WRITE=1" not in result.stdout
+    assert "S2_WAL_CLOSE_WRITE=0" not in result.stdout
 
     # The bracket second itself is still ambiguous: do not publish an interior count.
     on_bound = write_case(
@@ -781,6 +780,7 @@ def test_counter_gap_and_clock_inconsistency_are_not_exact(tmp_path):
         WINDOW_END="400",
         BOUND_LO="102",
         BOUND_HI="400",
+        T0_DATE="100",
         ESTABLISH_EPOCH="90",
         COVERAGE_EPOCH="400",
         BOUND_SOURCE="counter_bracket",
@@ -803,6 +803,148 @@ def test_counter_gap_and_clock_inconsistency_are_not_exact(tmp_path):
     assert backwards.stdout.splitlines()[2] == "0"
 
 
+def _opening(run_id, *epochs, **extra):
+    lines = "".join(
+        event_line(epoch, "CLOSE_WRITE,CLOSE", "/var/lib/memoryframe/memoryframe.db-wal")
+        for epoch in epochs
+    )
+    fields = dict(
+        WINDOW_START="110",
+        WINDOW_END="400",
+        BOUND_LO="110",
+        BOUND_HI="400",
+        T0_DATE="100",
+        ESTABLISH_EPOCH="80",
+        COVERAGE_EPOCH="400",
+        BOUND_SOURCE="counter_bracket",
+        CLOCK_CONSISTENT="1",
+    )
+    fields.update(extra)
+    return lines, fields
+
+
+def test_hale_gap_103_is_ambiguous_and_early_90_stays_usable(tmp_path):
+    """Hale: t0_date=100, post_t0=105.
+
+    Stamp 103, alone or beside an interior 200, is inside the capture
+    script and must not be scored as pre-window. Stamp 90 is strictly
+    before t0_date, so it stays usable with or without interior 200.
+    """
+    common = dict(
+        WINDOW_START="105",
+        WINDOW_END="400",
+        BOUND_LO="105",
+        BOUND_HI="400",
+        T0_DATE="100",
+        ESTABLISH_EPOCH="80",
+        COVERAGE_EPOCH="400",
+        BOUND_SOURCE="counter_bracket",
+        CLOCK_CONSISTENT="1",
+    )
+
+    def case(run_id, epochs):
+        lines = "".join(
+            event_line(epoch, "CLOSE_WRITE,CLOSE", "/var/lib/memoryframe/memoryframe.db-wal")
+            for epoch in epochs
+        )
+        return write_case(tmp_path, run_id=run_id, extra_lines=lines, **common)
+
+    result = run(["--attribute", str(case("hale103", (103,))[0]), "105", "400"])
+    assert_unavailable(result.stdout, "unplaceable")
+
+    result = run(["--attribute", str(case("hale103int", (103, 200))[0]), "105", "400"])
+    assert_unavailable(result.stdout, "unplaceable")
+    assert "S2_WAL_CLOSE_WRITE=1" not in result.stdout
+    assert "S2_WAL_CLOSE_WRITE=0" not in result.stdout
+
+    result = run(["--attribute", str(case("hale90int", (90, 200))[0]), "105", "400"])
+    got = kv(result.stdout)
+    assert result.returncode == 0, result.stderr
+    assert got["S2_ATTRIBUTION"] == "VALID"
+    assert got["S2_WAL_CLOSE_WRITE"] == "1"
+    assert got["S2_WAL_PREWINDOW_PRINTS"] == "1"
+    assert got["S2_WAL_TIMEBASE"] == "observer_print_whole_second"
+    assert got["S2_WAL_COUNT_IS_KERNEL_TOTAL"] == "0"
+    assert got["S2_WAL_COUNT_IS_CARD_WINDOW_TOTAL"] == "0"
+    assert got["S2_WAL_COUNT_MEANS"] == "observed_interior_print_lines_not_kernel_or_card_total"
+
+    result = run(["--attribute", str(case("hale90", (90,))[0]), "105", "400"])
+    got = kv(result.stdout)
+    assert got["S2_ATTRIBUTION"] == "VALID"
+    assert got["S2_WAL_CLOSE_WRITE"] == "0"
+    assert got["S2_WAL_PREWINDOW_PRINTS"] == "1"
+    assert got["S2_WAL_ZERO_MEANS"] == "no_interior_observer_print_of_wal_close_write"
+    assert got["S2_WAL_TIMEBASE"] == "observer_print_whole_second"
+
+
+def test_warmup_prints_before_t0_date_stay_usable(tmp_path):
+    lines, fields = _opening("warmboth", 90, 200)
+    both = write_case(tmp_path, run_id="warmboth", extra_lines=lines, **fields)
+    result = run(["--attribute", str(both[0]), "110", "400"])
+    got = kv(result.stdout)
+    assert result.returncode == 0, result.stderr
+    assert got["S2_ATTRIBUTION"] == "VALID"
+    assert got["S2_WAL_CLOSE_WRITE"] == "1"
+    assert got["S2_WAL_PREWINDOW_PRINTS"] == "1"
+    assert got["S2_WAL_COUNT_IS_KERNEL_TOTAL"] == "0"
+    assert got["S2_WAL_COUNT_IS_CARD_WINDOW_TOTAL"] == "0"
+
+    lines, fields = _opening("warmonly", 90)
+    only = write_case(tmp_path, run_id="warmonly", extra_lines=lines, **fields)
+    result = run(["--attribute", str(only[0]), "110", "400"])
+    got = kv(result.stdout)
+    assert got["S2_ATTRIBUTION"] == "VALID"
+    assert got["S2_WAL_CLOSE_WRITE"] == "0"
+    assert got["S2_WAL_PREWINDOW_PRINTS"] == "1"
+    assert got["S2_WAL_ZERO_MEANS"] == "no_interior_observer_print_of_wal_close_write"
+
+
+def test_opening_interval_and_missing_t0_date_stay_unavailable(tmp_path):
+    lines, fields = _opening("insidegap", 101)
+    gap = write_case(tmp_path, run_id="insidegap", extra_lines=lines, **fields)
+    # Retarget this fixture to the reported 100/102 gap. _opening uses 110.
+    text = gap[0].read_text()
+    text = text.replace("BOUND_LO=110", "BOUND_LO=102").replace("WINDOW_START=110", "WINDOW_START=102")
+    gap[0].write_text(text)
+    result = run(["--attribute", str(gap[0]), "102", "400"])
+    assert_unavailable(result.stdout, "unplaceable")
+
+    for epoch, name in ((100, "datebound"), (102, "postbound")):
+        lines, fields = _opening(name, epoch)
+        case = write_case(tmp_path, run_id=name, extra_lines=lines, **fields)
+        text = case[0].read_text().replace("BOUND_LO=110", "BOUND_LO=102").replace(
+            "WINDOW_START=110", "WINDOW_START=102"
+        )
+        case[0].write_text(text)
+        result = run(["--attribute", str(case[0]), "102", "400"])
+        assert_unavailable(result.stdout, "unplaceable")
+        assert "S2_WAL_CLOSE_WRITE=0" not in result.stdout
+
+    missing = write_case(tmp_path, run_id="not0")
+    kept = [line for line in missing[0].read_text().splitlines() if not line.startswith("T0_DATE=")]
+    missing[0].write_text("\n".join(kept) + "\n")
+    result = run(["--attribute", str(missing[0]), str(missing[2]), str(missing[3])])
+    assert_unavailable(result.stdout, "missing_identity")
+
+    invalid = write_case(tmp_path, run_id="badt0", T0_DATE="later")
+    result = run(["--attribute", str(invalid[0]), str(invalid[2]), str(invalid[3])])
+    assert_unavailable(result.stdout, "opening_bound_invalid")
+
+    backwards = write_case(
+        tmp_path,
+        run_id="t0after",
+        T0_DATE="500",
+        BOUND_LO="110",
+        WINDOW_START="110",
+        BOUND_HI="400",
+        WINDOW_END="400",
+        ESTABLISH_EPOCH="80",
+        COVERAGE_EPOCH="400",
+    )
+    result = run(["--attribute", str(backwards[0]), "110", "400"])
+    assert_unavailable(result.stdout, "opening_bound_invalid")
+
+
 def test_prewindow_prints_keep_interior_observations(tmp_path):
     both = write_case(
         tmp_path,
@@ -812,7 +954,9 @@ def test_prewindow_prints_keep_interior_observations(tmp_path):
             + event_line(int(time.time()) - 20, "CLOSE_WRITE,CLOSE", "/var/lib/memoryframe/memoryframe.db-wal")
         ),
     )
-    # write_case window is (now-30, now-5). -40s is before it; -20s is inside it.
+    # T0_DATE defaults to the post_t0 bound, so this is a zero-width opening.
+    # -40s is strictly before t0_date; -20s is interior. A print between a
+    # real t0_date and a later post_t0 is covered by the Hale 100/105 cases.
     result = run(["--attribute", str(both[0]), str(both[2]), str(both[3])])
     fields = kv(result.stdout)
     assert result.returncode == 0, result.stderr

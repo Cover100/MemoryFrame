@@ -6,7 +6,8 @@
     invalid_ssid: "Name must be 1-32 characters.",
     invalid_password: "Password must be 8-63 letters, numbers or symbols (or 64 hex digits).",
     cooldown: "Try again in a few minutes.",
-    busy: "Try again in a few minutes."
+    busy: "Try again in a few minutes.",
+    save_failed: "The network worked, but the frame couldn't save it. Your saved network did not change."
   };
   var STATES = ["formStep", "hwTesting", "hwSaved", "hwFailed"];
   function view(id) { STATES.forEach(function (s) { $(s).hidden = s !== id; }); }
@@ -41,11 +42,14 @@
     if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
     else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
   });
-  function failed(rateLimited) {
+  function failed(rateLimited, notSaved) {
     // 429: "Try again in a few minutes." in the 12f layout, without the Try again button.
-    $("hwFailedLine").textContent = rateLimited ? MSG.cooldown : "The frame is back on its own Wi-Fi. Your saved network did not change.";
-    $("hwFailedTitle").textContent = rateLimited ? "Too many tries" : "Couldn't connect";   // nothing was tried on 429
-    $("hwFailedSteps").hidden = rateLimited; $("hwRetry").hidden = rateLimited;
+    // #137 save_failed: the network worked but the frame couldn't store it (nothing changed).
+    $("hwFailedLine").textContent = rateLimited ? MSG.cooldown : notSaved ? MSG.save_failed
+      : "The frame is back on its own Wi-Fi. Your saved network did not change.";
+    $("hwFailedTitle").textContent = rateLimited ? "Too many tries" : notSaved ? "Couldn't save"
+      : "Couldn't connect";   // nothing was tried on 429
+    $("hwFailedSteps").hidden = rateLimited || !!notSaved; $("hwRetry").hidden = rateLimited;
     view("hwFailed");
     if (rateLimited) $("hwFailedTitle").focus();   // Retry is hidden: focus the title, not <body>
   }
@@ -56,7 +60,7 @@
       .then(function (s) {
         if (s.state === "testing") { setTimeout(poll, 3000); return; }
         if (s.state === "saved") { $("hwSavedName").textContent = s.ssid || testing; view("hwSaved"); $("hwDone").focus(); }
-        else { failed(false); $("hwRetry").focus(); }
+        else { failed(false, s.reason === "save_failed"); $("hwRetry").focus(); }
       })
       .catch(function () { setTimeout(poll, 3000); });
   }

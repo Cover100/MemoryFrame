@@ -64,6 +64,7 @@ case "$1 $2" in
     n="$(sed -n 's/^id=//p' "$3")"
     # a same-named profile from ANOTHER file stays a separate profile (as in NM), found by uuid only
     if [ -d "$D/p/$n" ] && [ "$(cat "$D/p/$n/file" 2>/dev/null)" != "$3" ]; then mv "$D/p/$n" "$D/p/$n~dup"; fi
+    if [ -f "$D/loadbadid" ] && [ "$(basename "$3")" = "$(cat "$D/loadbadid")" ]; then n="$n~bad"; rm -f "$D/loadbadid"; fi   # #137 N4 (once)
     mkdir -p "$D/p/$n"
     m="$(sed -n 's/^mode=//p' "$3")"
     echo 802-11-wireless > "$D/p/$n/type"; echo "${m:-ap}" > "$D/p/$n/mode"; echo no > "$D/p/$n/autoconnect"

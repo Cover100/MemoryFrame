@@ -169,9 +169,84 @@ def test_load_failure_with_no_previous_file_is_logged_truthfully(env):
     env["env"]["MEMORYFRAME_HOME_REQ"] = str(rq)
     env["env"]["MEMORYFRAME_HOME_WAIT"] = "1"
     r = run(env, "home-wifi", "--request")
-    assert r.returncode != 0 and "kept" not in r.stderr
-    assert "no previous file to restore: the new (tested) file stays" in r.stderr
-    assert list((env["tmp"] / "nm").glob(".*")) == []
+    assert r.returncode != 0 and "kept" not in r.stderr and "next boot" not in r.stderr   # #137 N3
+    assert "did not load the new file; nothing new saved" in r.stderr
+    assert list((env["tmp"] / "nm").glob(".*")) == [] and backing(env, HCON) == []
+    assert not (env["tmp"] / "nm" / "MemoryFrame-home.nmconnection").exists()
+    reboot(env)
+    r = run(env, "boot")                                          # consistent with the phone's "failed"
+    assert active(env) == HOT and state(env)["dev_fallback"] is True
+
+
+BAK_BODY = "[connection]\nid=MemoryFrame-home\nuuid=u-bak-1\ntype=wifi\n\n[wifi]\nmode=infrastructure\n"
+
+
+def power_cut_mid_replace(env):
+    """#137 R1: final file left empty, backup complete; NM (started before netmode) skipped the empty file."""
+    shutil.rmtree(env["d"] / "p" / HOME)
+    shutil.rmtree(env["d"] / "p" / OTHER)
+    nm = env["tmp"] / "nm"
+    nm.mkdir()
+    (nm / "MemoryFrame-home.nmconnection").write_text("")
+    (nm / ".MemoryFrame-home.bak").write_text(BAK_BODY)
+    (env["boot"] / "memoryframe-mode.txt").write_text("dev\n")
+    (env["d"] / "active").write_text("\n")
+    return nm
+
+
+def test_boot_restore_after_power_cut_is_loaded_and_used_this_boot(env):   # #137 R1
+    nm = power_cut_mid_replace(env)
+    r = run(env, "boot")
+    assert r.returncode == 0 and active(env) == HCON, r.stderr
+    assert "previous developer Wi-Fi file restored and loaded" in r.stderr
+    assert (env["d"] / "p" / HCON / "uuid").read_text().strip() == "u-bak-1"
+    s = state(env)
+    assert s["mode"] == "dev" and s["dev_fallback"] is False
+    assert (nm / "MemoryFrame-home.nmconnection").read_text() == BAK_BODY and list(nm.glob(".*")) == []
+
+
+def test_boot_restore_load_failure_is_logged_truthfully(env):   # #137 R1
+    nm = power_cut_mid_replace(env)
+    (env["d"] / "loadfail").write_text("MemoryFrame-home.nmconnection 1\n")
+    r = run(env, "boot")
+    assert "restored, but NetworkManager did not load it" in r.stderr and "and loaded" not in r.stderr
+    assert (nm / "MemoryFrame-home.nmconnection").read_text() == BAK_BODY   # still on disk for the next boot
+    assert active(env) == HOT and state(env)["dev_fallback"] is True
+
+
+def test_backup_is_created_0600_even_if_final_was_looser(env):   # #137 R2
+    dev_fallback_on_hotspot(env)
+    save_from_phone(env, "First")
+    [kf] = backing(env, HCON)
+    kf.chmod(0o644)
+    f = env["d"] / "sync"      # record the backup's mode when it is fsync-ed
+    f.write_text('#!/bin/bash\nfor a; do case "$a" in *.bak) stat -c %a "$a" >> "$STUB_DIR/bakmodes";; esac; done\n')
+    f.chmod(0o755)
+    (env["d"] / "loadfail").write_text("MemoryFrame-home.nmconnection 1\n")   # keep the backup in play
+    rq = env["tmp"] / "app" / "home-wifi"
+    rq.write_text(f"v1\n{'Second'.encode().hex()}\n{SENT}\n")
+    run(env, "home-wifi", "--request")
+    modes = (env["d"] / "bakmodes").read_text().split()
+    assert modes and set(modes) == {"600"}
+    assert oct(kf.stat().st_mode & 0o777) == "0o600"              # restored file is 0600 too
+
+
+def test_uuid_mismatch_restore_drops_the_bad_profile_and_reloads(env):   # #137 N4
+    dev_fallback_on_hotspot(env)
+    save_from_phone(env, "First")
+    [kf] = backing(env, HCON)
+    good = kf.read_bytes()
+    old_uuid = (env["d"] / "p" / HCON / "uuid").read_text().strip()
+    (env["d"] / "loadbadid").write_text("MemoryFrame-home.nmconnection")      # NM loads it, wrong id
+    rq = env["tmp"] / "app" / "home-wifi"
+    rq.write_text(f"v1\n{'Second'.encode().hex()}\n{SENT}\n")
+    r = run(env, "home-wifi", "--request")
+    assert r.returncode != 0 and "previous developer Wi-Fi restored" in r.stderr
+    assert not (env["d"] / "p" / f"{HCON}~bad").exists()          # the bad in-memory profile is gone
+    assert kf.read_bytes() == good
+    assert (env["d"] / "p" / HCON / "uuid").read_text().strip() == old_uuid  # in memory == disk
+    reboot(env)
+    assert run(env, "boot").returncode == 0 and active(env) == HCON
 
 
 def test_boot_removes_stray_hidden_temp_and_restores_interrupted_backup(env):   # #135 QA: PSK never left
@@ -276,3 +351,52 @@ def test_dev_temp_no_profile_falls_back_at_once(env):   # dev-temp keeps its old
     assert r.returncode == 1 and active(env) == HOT
     s = state(env)
     assert s["requested"] == "dev-temp" and s["dev_fallback"] is True
+
+
+@pytest.mark.parametrize("nm_fault", ["loadfail", "loadbadid"])
+def test_failed_backup_restore_keeps_the_previous_file_and_logs_it(env, nm_fault):
+    """#138 M1: the .bak cannot be put back (fsync EIO): it stays on disk and a home keyfile is never lost."""
+    dev_fallback_on_hotspot(env)
+    save_from_phone(env, "First")
+    [kf] = backing(env, HCON)
+    good = kf.read_bytes()
+    sync = env["d"] / "sync"   # 1st fsync of the .bak (the backup) works, every later one (restore) fails
+    sync.write_text('#!/bin/bash\nfor a; do case "$a" in *.bak) n=$(($(cat "$STUB_DIR/bakn" 2>/dev/null || echo 0) + 1))\n'
+                    '  echo $n > "$STUB_DIR/bakn"; [ $n -ge 2 ] && exit 1;; esac; done\nexit 0\n')
+    sync.chmod(0o755)
+    (env["d"] / nm_fault).write_text("MemoryFrame-home.nmconnection" + (" 1\n" if nm_fault == "loadfail" else ""))
+    rq = env["tmp"] / "app" / "home-wifi"
+    rq.write_text(f"v1\n{'Second'.encode().hex()}\n{SENT}\n")
+    r = run(env, "home-wifi", "--request")
+    assert r.returncode != 0
+    assert "could not put the previous developer Wi-Fi file back; backup kept" in r.stderr
+    assert "nothing new saved" not in r.stderr and "previous developer Wi-Fi restored" not in r.stderr
+    bak = env["tmp"] / "nm" / ".MemoryFrame-home.bak"
+    assert bak.read_bytes() == good and oct(bak.stat().st_mode & 0o777) == "0o600"   # the last copy is kept
+    # NM refused the file (loadfail): the tested file stays too; NM loaded it wrongly (deleted by UUID): only the .bak
+    assert kf.exists() == (nm_fault == "loadfail")
+    sync.write_text("#!/bin/bash\nexit 0\n")   # the SD card works again
+    reboot(env)
+    r = run(env, "boot")
+    assert r.returncode == 0 and active(env) == HCON and kf.stat().st_size > 0, r.stderr
+    assert not bak.exists()
+    if nm_fault == "loadbadid":
+        assert "previous developer Wi-Fi file restored and loaded" in r.stderr and kf.read_bytes() == good
+
+
+def test_no_valid_new_uuid_changes_nothing_and_deletes_nothing(env):
+    """#138 nit: an empty/invalid new UUID never reaches `nmcli connection delete uuid`."""
+    dev_fallback_on_hotspot(env)
+    save_from_phone(env, "First")
+    [kf] = backing(env, HCON)
+    good = kf.read_bytes()
+    cat = env["d"] / "cat"   # reading /proc/sys/kernel/random/uuid gives nothing
+    cat.write_text(f'#!/bin/bash\n[ "$1" = /proc/sys/kernel/random/uuid ] && exit 0\nexec {shutil.which("cat")} "$@"\n')
+    cat.chmod(0o755)
+    before = len((env["d"] / "log").read_text().splitlines())
+    rq = env["tmp"] / "app" / "home-wifi"
+    rq.write_text(f"v1\n{'Second'.encode().hex()}\n{SENT}\n")
+    r = run(env, "home-wifi", "--request")
+    assert r.returncode != 0 and "no valid new UUID; nothing changed" in r.stderr
+    assert not [l for l in (env["d"] / "log").read_text().splitlines()[before:] if " delete uuid" in l]
+    assert kf.read_bytes() == good and list((env["tmp"] / "nm").glob(".*")) == []

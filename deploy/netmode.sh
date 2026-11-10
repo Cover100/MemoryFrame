@@ -624,13 +624,15 @@ HOME_BAK=".$HOME_CON.bak"   # in NM_DIR; dot files are never loaded by NM
 promote_home() {   # pending keyfile path
     local src="$1" final="$NM_DIR/$HOME_CON.nmconnection" bak="$NM_DIR/$HOME_BAK" uuid old
     uuid="$(cat /proc/sys/kernel/random/uuid)"
+    if ! [[ $uuid =~ ^[0-9a-f-]{36}$ ]]; then log "home-wifi: no valid new UUID; nothing changed"; return 1; fi
     old="$(prop "$HOME_CON" connection.uuid)"
     # NOTE: called as `if ! promote_home`, so set -e is OFF in here: every step is checked explicitly.
     # A failed or short copy must never replace a good final file (#135 review M1), and if NM then
     # refuses the new file, the previous one is put back (#135 QA N1). Log lines say what really happened.
     rm -f "$bak"
     if [ -s "$final" ]; then
-        if ! { cp -p "$final" "$bak" && sync -- "$bak"; }; then
+        # #137 R2: the backup holds the password: created 0600 itself, never inheriting the final file's mode
+        if ! { ( umask 077; cp "$final" "$bak" ) && chmod 0600 "$bak" && sync -- "$bak"; }; then
             rm -f "$bak"; log "home-wifi: could not back up $final; nothing changed"; return 1
         fi
     fi
@@ -638,37 +640,52 @@ promote_home() {   # pending keyfile path
         rm -f "$bak"; log "home-wifi: could not write $final; previous developer Wi-Fi kept"; return 1
     fi
     "$NMCLI" connection load "$final" >/dev/null 2>&1 || true
-    if ! home_saved "$final" "$uuid"; then restore_home_bak "NetworkManager did not load the new file"; return 1; fi
+    if ! home_saved "$final" "$uuid"; then restore_home_bak "NetworkManager did not load the new file" "$uuid"; return 1; fi
     if [ -n "$old" ] && [ "$old" != "$uuid" ]; then
         "$NMCLI" connection delete uuid "$old" >/dev/null 2>&1 || true
         if [ ! -s "$final" ]; then   # the old profile was backed by the same path: write it once more
             if stage_home "$src" "$uuid" "$final"; then "$NMCLI" connection load "$final" >/dev/null 2>&1 || true; fi
-            if ! home_saved "$final" "$uuid"; then restore_home_bak "saved file lost while replacing the old one"; return 1; fi
+            if ! home_saved "$final" "$uuid"; then restore_home_bak "saved file lost while replacing the old one" "$uuid"; return 1; fi
         fi
     fi
     rm -f "$bak"
     return 0
 }
 
-restore_home_bak() {   # why: put the previous MemoryFrame-home file back (durably) and reload it
+restore_home_bak() {   # why new_uuid: undo a failed save. Previous file back (durably) and live again,
+    # else (first save) nothing saved at all, so the phone's "failed" is the whole truth (#137 N3).
     local final="$NM_DIR/$HOME_CON.nmconnection" bak="$NM_DIR/$HOME_BAK"
-    if [ -s "$bak" ] && durable_install "$bak" "$final"; then
-        "$NMCLI" connection load "$final" >/dev/null 2>&1 || true
-        log "home-wifi: $1; previous developer Wi-Fi restored"
-    elif [ -s "$final" ]; then
-        log "home-wifi: $1; no previous file to restore: the new (tested) file stays and is used from the next boot"
-    else
-        log "home-wifi: $1; no developer Wi-Fi file saved"
+    # #137 N4: drop the half-loaded new profile first (NM may hold it under its UUID; deleting it by UUID
+    # also removes its file, which is replaced or removed right below anyway)
+    if [[ ${2:-} =~ ^[0-9a-f-]{36}$ ]]; then "$NMCLI" connection delete uuid "$2" >/dev/null 2>&1 || true; fi
+    if [ ! -s "$bak" ]; then   # first save (or a pre-#135 profile under another file name, left as it is)
+        rm -f "$final" "$bak"; log "home-wifi: $1; nothing new saved"
+    elif durable_install "$bak" "$final"; then
+        if load_home "$final"; then log "home-wifi: $1; previous developer Wi-Fi restored"
+        else log "home-wifi: $1; previous developer Wi-Fi file restored but NetworkManager did not load it"; fi
+    else   # #138 M1: never remove the last good copy; boot (clean_home_temps) puts it back if final is gone
+        HOME_BAK_KEEP=1; log "home-wifi: $1; could not put the previous developer Wi-Fi file back; backup kept"
     fi
-    rm -f "$bak"
+}
+
+load_home() {   # final: load it and verify the live profile has the file's uuid= (as MemoryFrame-home)
+    local u
+    "$NMCLI" connection load "$1" >/dev/null 2>&1 || true
+    u="$(sed -n 's/^uuid=//p' "$1" 2>/dev/null | head -n1)"
+    if [ -n "$u" ]; then home_saved "$1" "$u"; else [ "$(prop "$HOME_CON" connection.id)" = "$HOME_CON" ]; fi
 }
 
 clean_home_temps() {   # #135 QA: no stray copy of the password may stay behind (failure paths, kill, boot)
     local final="$NM_DIR/$HOME_CON.nmconnection" f
     if [ -s "$NM_DIR/$HOME_BAK" ] && [ ! -s "$final" ]; then   # cut while replacing: previous file back
-        durable_install "$NM_DIR/$HOME_BAK" "$final" && log "home-wifi: previous developer Wi-Fi file restored"
+        # #137 R1: NM started before us and skipped the empty file: load it now so this boot can use it
+        if durable_install "$NM_DIR/$HOME_BAK" "$final"; then
+            if load_home "$final"; then log "home-wifi: previous developer Wi-Fi file restored and loaded"
+            else log "home-wifi: previous developer Wi-Fi file restored, but NetworkManager did not load it"; fi
+        else HOME_BAK_KEEP=1; log "home-wifi: could not restore the previous developer Wi-Fi file; backup kept"; fi
     fi
-    for f in "$NM_DIR/.$HOME_CON".*; do [ -e "$f" ] && rm -f "$f"; done
+    # #138 M1: a backup that could not be put back is the last copy of the previous Wi-Fi: keep it
+    for f in "$NM_DIR/.$HOME_CON".*; do [[ -n ${HOME_BAK_KEEP:-} && $f == "$NM_DIR/$HOME_BAK" ]] || rm -f "$f"; done
     return 0
 }
 

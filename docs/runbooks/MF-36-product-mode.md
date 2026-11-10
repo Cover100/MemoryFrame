@@ -43,6 +43,15 @@ connection, but do it by hand first: the guard only runs when install.sh runs.)
 - **Persistent developer mode** (developer's Pi only): `dev` in `memoryframe-mode.txt`, written from
   a PC or with `sudo deploy/netmode.sh dev`. Every boot then joins home Wi-Fi; if it can't, the
   hotspot starts for that boot only and the next boot tries home Wi-Fi again.
+  - #135: at boot Wi-Fi may not be ready yet, so the join is retried (rescan between tries, at most
+    15 s per try) for up to `MEMORYFRAME_DEV_WAIT` (45 s) before the hotspot fallback. If NetworkManager
+    already joined any saved client Wi-Fi at boot, that connection is kept (counts as dev). Each failed try
+    logs nmcli's reason: `journalctl -b -t memoryframe-netmode`.
+  - #135: the developer Wi-Fi saved from the phone lives in its own file
+    `/etc/NetworkManager/system-connections/MemoryFrame-home.nmconnection` (root 0600, fsync-ed), so it
+    survives reboots and power cuts. Boot logs a WARNING if a `/etc/netplan/90-NM-*.yaml` is empty (a power
+    cut can leave NetworkManager's netplan profile at 0 bytes, which silently deletes the home Wi-Fi);
+    `/etc/netplan` is never changed. After such a loss, re-save the developer Wi-Fi from the phone once.
 
 ## Files on the boot partition (`/boot/firmware`, the "bootfs" drive on a PC)
 

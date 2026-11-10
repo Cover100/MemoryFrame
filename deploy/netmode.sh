@@ -38,7 +38,8 @@
 #            If it fails, the previous connection (home Wi-Fi) is brought back and the failure is
 #            recorded for the frame's error screen. Never reboots.
 #            Once up, the hotspot ALWAYS stays on (no "no phone joined" fallback; MF-51 decision).
-#   dev:     hotspot down, the dev profile up (waits up to MEMORYFRAME_DEV_WAIT s). If it
+#   dev:     hotspot down, the dev profile up (retries for up to MEMORYFRAME_DEV_WAIT s, #135; a saved
+#            client Wi-Fi NM already joined is kept). If it
 #            doesn't connect: the hotspot is started for this boot only (the frame shows "Developer
 #            Wi-Fi not found"); client autoconnect and the mode file are left alone, so the next
 #            boot tries the home Wi-Fi again.
@@ -50,7 +51,8 @@
 # the MemoryFrame-hotspot profile, refreshed whenever the state is written (boot, wifi-apply/commit/
 # rollback, mode changes, reset), so the app shows what is really broadcast (#89).
 # Test hooks: NMCLI, MEMORYFRAME_BOOT_DIR, MEMORYFRAME_STATE_DIR, MEMORYFRAME_HOTSPOT_SH,
-# MEMORYFRAME_DEV_WAIT, MEMORYFRAME_BOOT_ID_FILE.
+# MEMORYFRAME_DEV_WAIT, MEMORYFRAME_DEV_TRY_WAIT, MEMORYFRAME_DEV_RETRY_SLEEP, MEMORYFRAME_BOOT_ID_FILE,
+# MEMORYFRAME_NETPLAN_DIR (read only).
 # #68 dev-only test hook (root may use it): the file $STATE_DIR/force-dev-fallback (tmpfs, so gone after a
 # reboot) makes dev mode act as if no developer Wi-Fi connected: hotspot for now, dev_fallback=true.
 # No profile is edited. Product mode never looks at it.
@@ -75,6 +77,9 @@ STATE_DIR="${MEMORYFRAME_STATE_DIR:-/run/memoryframe}"
 HOTSPOT_CON="${MEMORYFRAME_HOTSPOT_CON:-MemoryFrame-hotspot}"
 HOTSPOT_SH="${MEMORYFRAME_HOTSPOT_SH:-$DIR/hotspot.sh}"
 DEV_WAIT="${MEMORYFRAME_DEV_WAIT:-45}"
+DEV_TRY_WAIT="${MEMORYFRAME_DEV_TRY_WAIT:-15}"      # #135: max wait per boot try
+DEV_RETRY_SLEEP="${MEMORYFRAME_DEV_RETRY_SLEEP:-3}"
+RESTORE_WAIT=15                                      # #135: max wait to bring the previous link back
 BOOT_ID_FILE="${MEMORYFRAME_BOOT_ID_FILE:-/proc/sys/kernel/random/boot_id}"
 IFACE="${MEMORYFRAME_IFACE:-wlan0}"
 
@@ -87,6 +92,7 @@ PENDING="$STATE_DIR/wifi-change-pending"     # written by the MF-18 helper while
 PENDING_CON="${MEMORYFRAME_PENDING_CON:-MemoryFrame-AP-pending}"
 OLD_CON="${MEMORYFRAME_OLD_CON:-MemoryFrame-hotspot-old}"   # only during wifi-commit
 NM_DIR="${MEMORYFRAME_NM_DIR:-/etc/NetworkManager/system-connections}"
+NETPLAN_DIR="${MEMORYFRAME_NETPLAN_DIR:-/etc/netplan}"   # #135: only ever read
 HOME_CON="MemoryFrame-home"                   # #68: the developer Wi-Fi saved from the phone
 HOME_PENDING="MemoryFrame-home-pending"
 HOME_OLD="MemoryFrame-home-old"
@@ -254,7 +260,8 @@ apply_product() {   # requested dev_fallback [fallback]
     done
     if [ -n "$prev" ] && [ "$(active)" != "$prev" ]; then
         log "product: restoring the previous connection ($prev)"
-        "$NMCLI" --wait "$DEV_WAIT" connection up "$prev" >/dev/null 2>&1 || log "could not restore $prev"
+        # #135 review M2: capped, so boot stays inside TimeoutStartSec=150 (~53 s dev + 2x30 s hotspot + 15 s)
+        "$NMCLI" --wait "$RESTORE_WAIT" connection up "$prev" >/dev/null 2>&1 || log "could not restore $prev"
     fi
     write_state product "$1" "$2" true
     return 1
@@ -283,6 +290,40 @@ dev_profile() {
     [ -n "$best" ] && printf '%s\n' "$best"
 }
 
+dev_up() {   # profile [once]
+    # #135: at boot (memoryframe-netmode.service runs right after NetworkManager starts) wlan0 or the
+    # first Wi-Fi scan may not be ready, and `nmcli connection up` then fails at once ("device not
+    # ready", "SSID not found") instead of waiting. Persistent dev therefore retries until DEV_WAIT is
+    # used up; each try waits at most DEV_TRY_WAIT s, so a try that blocks can't eat the whole window.
+    # Worst case about DEV_WAIT + 5 + DEV_RETRY_SLEEP s, then the hotspot fallback (~60 s toast, MF-51).
+    # "once" (dev-temp, unit TimeoutStartSec=90): one try with the full wait, as before.
+    local p="$1" end="${DEV_END:-$((SECONDS + DEV_WAIT))}" wait err
+    while :; do
+        if [ "${2:-}" = once ]; then wait="$DEV_WAIT"
+        else
+            wait=$((end - SECONDS)); [ "$wait" -ge 5 ] || wait=5
+            [ "$wait" -le "$DEV_TRY_WAIT" ] || wait="$DEV_TRY_WAIT"
+        fi
+        if err="$("$NMCLI" --wait "$wait" connection up "$p" 2>&1 >/dev/null)" && [ "$(active)" = "$p" ]; then return 0; fi
+        # nmcli's error text never contains a password; logged so a failed boot says why.
+        log "dev: $p not up yet ($(printf '%s' "$err" | tr '\r\n' '  ' | cut -c1-160))"
+        if [ "${2:-}" = once ] || [ "$SECONDS" -ge "$end" ]; then return 1; fi
+        "$NMCLI" device wifi rescan ifname "$IFACE" >/dev/null 2>&1 || true
+        sleep "$DEV_RETRY_SLEEP"
+    done
+}
+
+on_client_wifi() {   # active [ssid]: is wlan0 already on a saved client (home) Wi-Fi profile?
+    # #135 (H2, owner decision 10 Nov): NM may already have autoconnected a saved home profile at boot
+    # (e.g. the netplan one). That counts as dev: switching away from a working link only risks it.
+    # An explicit ssid= in memoryframe-dev-wifi.txt still wins: then only that network counts.
+    local cur="$1" ssid="${2:-}" all
+    if [ -z "$cur" ] || [ "$cur" = "$HOTSPOT_CON" ]; then return 1; fi
+    all="$(client_profiles)"      # Wi-Fi client profiles on wlan0 only (no hotspot, no MemoryFrame-*-pending/old)
+    [[ $'\n'"$all"$'\n' == *$'\n'"$cur"$'\n'* ]] || return 1
+    [ -z "$ssid" ] || [ "$(prop "$cur" 802-11-wireless.ssid)" = "$ssid" ]
+}
+
 apply_dev() {   # [temp]: MF-51 menu "Dev mode" until reboot (hotspot profile left untouched)
     local ssid p temp="${1:-}" req=dev
     if [ "$temp" = temp ]; then req=dev-temp; fi
@@ -292,19 +333,29 @@ apply_dev() {   # [temp]: MF-51 menu "Dev mode" until reboot (hotspot profile le
         apply_product "$req" true fallback || true
         return 1
     fi
-    if ! p="$(dev_profile "$ssid")"; then
-        log "dev: no matching NetworkManager Wi-Fi profile${ssid:+ for the configured ssid}; starting the hotspot"
-        apply_product "$req" true fallback || true
-        return 1
-    fi
+    local DEV_END=$((SECONDS + DEV_WAIT))   # #135: one 45 s budget for finding AND joining the dev Wi-Fi
+    until p="$(dev_profile "$ssid")"; do
+        # At boot NM may not have loaded every profile yet: look again until the budget is used up.
+        if [ "$temp" = temp ] || [ "$SECONDS" -ge "$DEV_END" ]; then
+            log "dev: no matching NetworkManager Wi-Fi profile${ssid:+ for the configured ssid}; starting the hotspot"
+            apply_product "$req" true fallback || true   # dev_fallback=true: the phone's Developer Wi-Fi page (#68)
+            return 1
+        fi
+        sleep "$DEV_RETRY_SLEEP"
+    done
     if [ "$temp" != temp ] && profiles | grep -qxF "$HOTSPOT_CON"; then hotspot_autoconnect no; fi
     if [ "$(active)" = "$p" ]; then
         log "dev: already on $p"
         write_state dev "$req" false false
         return 0
     fi
+    if on_client_wifi "$(active)" "$ssid"; then
+        log "dev: already on saved Wi-Fi $(active); keeping it"
+        write_state dev "$req" false false
+        return 0
+    fi
     if [ "$(active)" = "$HOTSPOT_CON" ]; then "$NMCLI" connection down "$HOTSPOT_CON" >/dev/null 2>&1 || true; fi
-    if "$NMCLI" --wait "$DEV_WAIT" connection up "$p" >/dev/null 2>&1 && [ "$(active)" = "$p" ]; then
+    if dev_up "$p" ${temp:+once}; then
         log "dev: connected ($p)${temp:+ until the next reboot}"
         write_state dev "$req" false false
         return 0
@@ -369,9 +420,48 @@ keyfile_escape() {   # GKeyFile value: backslash, and leading/trailing spaces
     printf '%s' "$v"
 }
 
+# #135: NetworkManager KEEPS a keyfile's file name when a profile is renamed (`connection modify ...
+# connection.id`, keyfile rename=false is NM's default). After a promotion the live MemoryFrame-home /
+# MemoryFrame-hotspot profile can therefore be backed by a file called *-pending*.nmconnection, so a
+# keyfile is NEVER removed by its name alone: profiles are deleted through NM by id (NM removes the file
+# that really backs it), and a leftover file is removed only while its id= line still names the
+# pending profile (e.g. a power cut before `connection load`). New pending keyfiles get a unique name,
+# so writing one can never overwrite the file of a live profile.
+remove_stale_keyfiles() {   # id
+    local id="$1" f
+    for f in "$NM_DIR/$id".nmconnection "$NM_DIR/$id"-*.nmconnection "$NM_DIR/$id"*.tmp; do
+        [ -f "$f" ] || continue
+        if [ ! -s "$f" ] || grep -qxF "id=$id" "$f" 2>/dev/null; then rm -f "$f"   # empty: cut before written
+        else log "kept $(basename "$f"): it now backs another profile"; fi
+    done
+}
+
+new_keyfile() {   # id -> prints a fresh, unique keyfile path in NM_DIR (created 0600, empty)
+    mkdir -p "$NM_DIR"
+    mktemp --suffix=.nmconnection "$NM_DIR/$1-XXXXXX"
+}
+
+write_keyfile() {   # path; content on stdin. tmp + mv, 0600 (root-only: it holds a password); checked steps
+    if ( umask 077; cat > "$1.tmp" && [ -s "$1.tmp" ] && chmod 0600 "$1.tmp" && sync -- "$1.tmp" && mv -f "$1.tmp" "$1" ); then
+        return 0
+    fi
+    rm -f "$1.tmp"
+    return 1
+}
+
+sync_nm_dir() {   # #135: make a promoted keyfile (renamed in place by NM) durable before we report success
+    sync -f "$NM_DIR" 2>/dev/null || sync 2>/dev/null || true
+}
+
+durable_install() {   # tmp final (same dir): 0600, fsync file, rename, fsync dir (power-cut safe, #135)
+    # A failed step before mv leaves final untouched; the dir fsync after mv is best effort.
+    chmod 0600 "$1" && sync -- "$1" && mv -f "$1" "$2" || return 1
+    sync -- "$(dirname "$2")" 2>/dev/null || sync 2>/dev/null || true
+}
+
 delete_pending_profile() {
     if profiles | grep -qxF "$PENDING_CON"; then "$NMCLI" connection delete "$PENDING_CON" >/dev/null 2>&1 || true; fi
-    rm -f "$NM_DIR/$PENDING_CON.nmconnection"
+    remove_stale_keyfiles "$PENDING_CON"
 }
 
 require_product() {
@@ -394,6 +484,7 @@ wifi_rollback() {
         "$NMCLI" --wait 30 connection up "$prev" >/dev/null 2>&1 || ok=1
     fi
     delete_pending_profile
+    sync_nm_dir
     rm -f "$PENDING"
     local err=false
     if [ "$ok" != 0 ]; then err=true; fi
@@ -437,19 +528,13 @@ wifi_apply() {
     fi
     printf '%s\n' "$prev" > "$PENDING"          # rollback restores exactly this
     delete_pending_profile
-    f="$NM_DIR/$PENDING_CON.nmconnection"
-    mkdir -p "$NM_DIR"
-    (
-        umask 077
-        {
-            printf '[connection]\nid=%s\ntype=wifi\ninterface-name=%s\nautoconnect=false\n\n' "$PENDING_CON" "$IFACE"
-            printf '[wifi]\nmode=ap\nband=bg\nchannel=6\nssid=%s\n\n' "$(ssid_bytes "$ssid")"
-            printf '[wifi-security]\nkey-mgmt=wpa-psk\nproto=rsn\npairwise=ccmp\ngroup=ccmp\npsk=%s\n\n' "$(keyfile_escape "$psk")"
-            printf '[ipv4]\nmethod=shared\naddress1=10.42.0.1/24\n\n[ipv6]\nmethod=disabled\n'
-        } > "$f.tmp"
-        chmod 0600 "$f.tmp"
-        mv "$f.tmp" "$f"
-    )
+    f="$(new_keyfile "$PENDING_CON")"
+    {
+        printf '[connection]\nid=%s\ntype=wifi\ninterface-name=%s\nautoconnect=false\n\n' "$PENDING_CON" "$IFACE"
+        printf '[wifi]\nmode=ap\nband=bg\nchannel=6\nssid=%s\n\n' "$(ssid_bytes "$ssid")"
+        printf '[wifi-security]\nkey-mgmt=wpa-psk\nproto=rsn\npairwise=ccmp\ngroup=ccmp\npsk=%s\n\n' "$(keyfile_escape "$psk")"
+        printf '[ipv4]\nmethod=shared\naddress1=10.42.0.1/24\n\n[ipv6]\nmethod=disabled\n'
+    } | write_keyfile "$f"
     psk=""
     if ! "$NMCLI" connection load "$f" >/dev/null 2>&1; then
         log "wifi change: could not load the new profile"; wifi_rollback || true; exit 4
@@ -492,6 +577,7 @@ wifi_commit() {
     "$NMCLI" connection modify "$HOTSPOT_CON" connection.autoconnect yes connection.autoconnect-priority 100 >/dev/null 2>&1 || true
     rm -f "$PENDING"
     if profiles | grep -qxF "$OLD_CON"; then "$NMCLI" connection delete "$OLD_CON" >/dev/null 2>&1 || true; fi
+    sync_nm_dir
     write_state product product false false
     log "wifi change kept"
 }
@@ -522,9 +608,97 @@ hex_to_bytes() {   # even-length lowercase/uppercase hex -> raw bytes on stdout
     for ((i = 0; i < ${#h}; i += 2)); do printf '%b' "\\x${h:i:2}"; done
 }
 
-delete_home_pending() {
+delete_home_pending() {   # #135: by id through NM, never a blind rm (see remove_stale_keyfiles)
     if profiles | grep -qxF "$HOME_PENDING"; then "$NMCLI" connection delete "$HOME_PENDING" >/dev/null 2>&1 || true; fi
-    rm -f "$NM_DIR/$HOME_PENDING.nmconnection"
+    remove_stale_keyfiles "$HOME_PENDING"
+    clean_home_temps
+}
+
+# #135: the tested Wi-Fi is saved under its OWN final file, MemoryFrame-home.nmconnection (root 0600):
+# temp file in the same dir -> fsync -> rename -> fsync the dir -> `nmcli connection load` -> verify the
+# file on disk and the live profile by UUID. It is never `connection modify`-ed afterwards (NM would
+# rewrite it with its own writer). The previous MemoryFrame-home is deleted by UUID only after the new one
+# is verified, and the pending profile last, so a power cut leaves at least one saved copy on disk.
+HOME_BAK=".$HOME_CON.bak"   # in NM_DIR; dot files are never loaded by NM
+
+promote_home() {   # pending keyfile path
+    local src="$1" final="$NM_DIR/$HOME_CON.nmconnection" bak="$NM_DIR/$HOME_BAK" uuid old
+    uuid="$(cat /proc/sys/kernel/random/uuid)"
+    old="$(prop "$HOME_CON" connection.uuid)"
+    # NOTE: called as `if ! promote_home`, so set -e is OFF in here: every step is checked explicitly.
+    # A failed or short copy must never replace a good final file (#135 review M1), and if NM then
+    # refuses the new file, the previous one is put back (#135 QA N1). Log lines say what really happened.
+    rm -f "$bak"
+    if [ -s "$final" ]; then
+        if ! { cp -p "$final" "$bak" && sync -- "$bak"; }; then
+            rm -f "$bak"; log "home-wifi: could not back up $final; nothing changed"; return 1
+        fi
+    fi
+    if ! stage_home "$src" "$uuid" "$final"; then
+        rm -f "$bak"; log "home-wifi: could not write $final; previous developer Wi-Fi kept"; return 1
+    fi
+    "$NMCLI" connection load "$final" >/dev/null 2>&1 || true
+    if ! home_saved "$final" "$uuid"; then restore_home_bak "NetworkManager did not load the new file"; return 1; fi
+    if [ -n "$old" ] && [ "$old" != "$uuid" ]; then
+        "$NMCLI" connection delete uuid "$old" >/dev/null 2>&1 || true
+        if [ ! -s "$final" ]; then   # the old profile was backed by the same path: write it once more
+            if stage_home "$src" "$uuid" "$final"; then "$NMCLI" connection load "$final" >/dev/null 2>&1 || true; fi
+            if ! home_saved "$final" "$uuid"; then restore_home_bak "saved file lost while replacing the old one"; return 1; fi
+        fi
+    fi
+    rm -f "$bak"
+    return 0
+}
+
+restore_home_bak() {   # why: put the previous MemoryFrame-home file back (durably) and reload it
+    local final="$NM_DIR/$HOME_CON.nmconnection" bak="$NM_DIR/$HOME_BAK"
+    if [ -s "$bak" ] && durable_install "$bak" "$final"; then
+        "$NMCLI" connection load "$final" >/dev/null 2>&1 || true
+        log "home-wifi: $1; previous developer Wi-Fi restored"
+    elif [ -s "$final" ]; then
+        log "home-wifi: $1; no previous file to restore: the new (tested) file stays and is used from the next boot"
+    else
+        log "home-wifi: $1; no developer Wi-Fi file saved"
+    fi
+    rm -f "$bak"
+}
+
+clean_home_temps() {   # #135 QA: no stray copy of the password may stay behind (failure paths, kill, boot)
+    local final="$NM_DIR/$HOME_CON.nmconnection" f
+    if [ -s "$NM_DIR/$HOME_BAK" ] && [ ! -s "$final" ]; then   # cut while replacing: previous file back
+        durable_install "$NM_DIR/$HOME_BAK" "$final" && log "home-wifi: previous developer Wi-Fi file restored"
+    fi
+    for f in "$NM_DIR/.$HOME_CON".*; do [ -e "$f" ] && rm -f "$f"; done
+    return 0
+}
+
+stage_home() {   # src uuid final: copy the tested pending keyfile as MemoryFrame-home and install it durably
+    # The password stays in the files: sed copies it, it is never in a shell variable or argv.
+    # Only a complete copy (non-empty, carrying our uuid= and id=) is installed; otherwise final is untouched.
+    local src="$1" uuid="$2" final="$3" tmp
+    tmp="$(mktemp "$NM_DIR/.$HOME_CON.XXXXXX")" || return 1   # dot file: NM never loads it
+    if sed -e "s/^id=.*/id=$HOME_CON/" -e "/^uuid=/d" -e "s/^\[connection\]\$/[connection]\nuuid=$uuid/" "$src" > "$tmp" \
+            && [ -s "$tmp" ] && grep -qxF "uuid=$uuid" "$tmp" && grep -qxF "id=$HOME_CON" "$tmp" \
+            && grep -q '^psk=' "$tmp" && durable_install "$tmp" "$final"; then
+        return 0
+    fi
+    rm -f "$tmp"
+    return 1
+}
+
+home_saved() {   # final uuid: on disk (non-empty, our UUID) AND live in NM under that UUID as MemoryFrame-home
+    [ -s "$1" ] && grep -qxF "uuid=$2" "$1" \
+        && [ "$("$NMCLI" -g connection.id connection show uuid "$2" 2>/dev/null)" = "$HOME_CON" ]
+}
+
+warn_empty_netplan() {   # #135: read-only. NM's netplan files can be left 0 bytes by a power cut
+    # (raspberrypi/trixie-feedback#99); the home profile then silently vanishes. /etc/netplan is never touched.
+    local f
+    for f in "$NETPLAN_DIR"/90-NM-*.yaml; do
+        if [ -f "$f" ] && [ ! -s "$f" ]; then
+            log "WARNING: $(basename "$f") is empty (0 bytes): its NetworkManager profile is gone; re-save the developer Wi-Fi from the phone"
+        fi
+    done
 }
 
 recover_home() {   # boot: never trust an untested profile; finish an interrupted rename
@@ -563,19 +737,13 @@ home_wifi() {
     HOME_REQUESTED="$(sed -n 's/.*"requested": "\([a-z-]*\)".*/\1/p' "$STATE")"
     home_state testing "" "$hex"
     delete_home_pending
-    f="$NM_DIR/$HOME_PENDING.nmconnection"
-    mkdir -p "$NM_DIR"
-    (
-        umask 077
-        {
-            printf '[connection]\nid=%s\ntype=wifi\ninterface-name=%s\nautoconnect=false\n\n' "$HOME_PENDING" "$IFACE"
-            printf '[wifi]\nmode=infrastructure\nssid=%s\n\n' "$(ssid_bytes "$ssid")"
-            printf '[wifi-security]\nkey-mgmt=wpa-psk\npsk=%s\n\n' "$(keyfile_escape "$psk")"
-            printf '[ipv4]\nmethod=auto\n\n[ipv6]\nmethod=auto\n'
-        } > "$f.tmp"
-        chmod 0600 "$f.tmp"
-        mv "$f.tmp" "$f"
-    )
+    f="$(new_keyfile "$HOME_PENDING")"
+    {
+        printf '[connection]\nid=%s\ntype=wifi\ninterface-name=%s\nautoconnect=false\n\n' "$HOME_PENDING" "$IFACE"
+        printf '[wifi]\nmode=infrastructure\nssid=%s\n\n' "$(ssid_bytes "$ssid")"
+        printf '[wifi-security]\nkey-mgmt=wpa-psk\npsk=%s\n\n' "$(keyfile_escape "$psk")"
+        printf '[ipv4]\nmethod=auto\n\n[ipv6]\nmethod=auto\n'
+    } | write_keyfile "$f"
     psk=""
     HOME_RESTORE_ARMED=true
     trap 'home_restore' EXIT
@@ -595,16 +763,14 @@ home_wifi() {
         done
     fi
     "$NMCLI" connection down "$HOME_PENDING" >/dev/null 2>&1 || true
+    if [ "$r" = ok ] && ! promote_home "$f"; then r=save_failed; fi
     if [ "$r" = ok ]; then
-        # power-cut safe: old -> -old, pending -> home, then delete -old (recover_home finishes it)
-        if profiles | grep -qxF "$HOME_CON"; then "$NMCLI" connection modify "$HOME_CON" connection.id "$HOME_OLD" >/dev/null 2>&1; fi
-        "$NMCLI" connection modify "$HOME_PENDING" connection.id "$HOME_CON" >/dev/null 2>&1
-        if profiles | grep -qxF "$HOME_OLD"; then "$NMCLI" connection delete "$HOME_OLD" >/dev/null 2>&1 || true; fi
         home_state saved ok "$hex"
         log "home-wifi: saved (ssid length ${#ssid})"
     else
         home_state failed "$r" "$hex"
-        log "home-wifi: test failed ($r); previous developer Wi-Fi kept"
+        if [ "$r" = save_failed ]; then log "home-wifi: tested OK but not saved (see above)"
+        else log "home-wifi: test failed ($r); previous developer Wi-Fi kept"; fi
     fi
     home_restore
     trap - EXIT
@@ -648,6 +814,7 @@ case "${1:-}" in
         fi
         recover_commit
         recover_home
+        warn_empty_netplan
         if [ -e "$PENDING" ] || profiles | grep -qxF "$PENDING_CON"; then
             log "unconfirmed Wi-Fi change found at boot: rolling back"
             delete_pending_profile; rm -f "$PENDING"

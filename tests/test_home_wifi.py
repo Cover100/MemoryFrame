@@ -219,6 +219,7 @@ def test_dev_prefers_memoryframe_home_and_boot_recovers(env):
     profile(env["d"], "MemoryFrame-home-old", ssid="Old")
     profile(env["d"], "MemoryFrame-home-pending", ssid="Untested")
     (env["boot"] / "memoryframe-mode.txt").write_text("dev\n")
+    (env["d"] / "active").write_text("\n")   # #135: an already-joined saved Wi-Fi would be kept instead
     r = run(env, "boot")
     assert r.returncode == 0, r.stderr
     p = env["d"] / "p"

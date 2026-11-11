@@ -43,6 +43,8 @@ All limits are agreed (Reed: S1 on 2026-11-01, the rest on 2026-11-02 as pass cr
 ## Results
 Measured on the Pi (memoryFrame) over Pi Connect. Card bytes come from `/sys/block/mmcblk0/stat`. Evidence is in `/home/box/shared/MemoryFrame-compare/sdwear-97/` on the team box.
 
+Figures are MiB (2^20 B); the agreed limits are read in the same unit, about 4.9% looser than decimal MB; no verdict is near a limit.
+
 | Scenario | Card MB/h before | Top process (MB/h) | Journal growth | Amplification | Card MB/h after | Pass |
 |---|---|---|---|---|---|---|
 | S1 (idle, 60 min) | 36.85 | after: rpi-connectd 0.71; jbd2 0.098; journald 0; Chromium none | none seen | n/a | 0.36 (2efb3d1, #119) | Yes |
@@ -52,7 +54,7 @@ Measured on the Pi (memoryFrame) over Pi Connect. Card bytes come from `/sys/blo
 
 Notes:
 1. S2 runs used the same load: 842 or 843 admin loops with no failures. The 78e2bb1 run had heavier brightness traffic (1,686 changes compared with 168 in the 7e16c4d run).
-2. Before #134, the harness wrote its own logs to the card. From #134 on, the scored files sit on verified tmpfs (`OFFCARD_OK`). So the S2 drop from about 48–60 to 4.33 MB/h comes from #133 (one reused SQLite connection per worker) together with the off-card harness. The app-only figure (~0.94 MB/h, i.e. 0.98 decimal MB/h; no WAL CLOSE_WRITE events while the WAL grew from 16,512 B to 140,112 B) is the direct evidence for the product fix. Sudo log bytes inside the window are not subtracted, so the figure is slightly high.
+2. App write_bytes was the same 480 KiB per 30 min in every S2 run (page-dirtying accounting, a lower bound), so it does not distinguish before/after. The evidence for #133 is the card delta at matched load together with zero WAL CLOSE_WRITE events while the WAL grew; the pre-#133 excess was unattributed to process counters (likely per-request open/close metadata commits via jbd2/kworker), and part of the drop is the off-card harness.
 3. S3 ran on 6711333, before #133. Its window was short (14:17:21 to 14:17:50), with sync plus 5 s before t1, so amplification may be understated. It is still well under the 4x limit. #133 reduces writes and does not touch the upload path.
 4. Journal: the size stayed at 24M through S2 and S3. The effective journald config on the Pi (run 20261111T073515, follow-up at 08:45) has `Storage=volatile` and `SystemMaxUse=50M`, and `journalctl --disk-usage` reports 24M. With volatile storage the journal is kept in RAM under `/run/log/journal`, so it writes nothing to the card, and `SystemMaxUse` has no effect. RAM use is still bounded by journald's default `RuntimeMaxUse`, which is 10% of the `/run` filesystem (capped at 4G). This meets #97's "journal capped" item, because the card limits (1 MB/h idle, 50 MB total) are met with zero card writes. Setting `RuntimeMaxUse` explicitly (for example 32M) would be optional hardening for RAM on a long-running frame, not a #97 blocker. The old `/var/log/journal` (about 17M) is a leftover on the card that is not written to.
 5. Still open, moved to #140 when #97 closed: the power-cut check (no loss of photos or settings) and S4.

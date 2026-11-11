@@ -48,14 +48,17 @@ def test_old_page_stylesheets_removed():
 
 def test_phone_css_is_lean_and_flat():
     flat = re.sub(r"/\*.*?\*/", "", CSS, flags=re.S)
-    # #141: the one shadow allowed is Wren's flat white inner line behind inset focus rings, light scheme only
-    light_focus = "box-shadow: inset 0 0 0 5px #fff;"
-    assert flat.count("box-shadow") == 1 and flat.count(light_focus) == 1
-    assert flat.index(light_focus) > flat.index("@media (prefers-color-scheme: light)")
-    flat = flat.replace(light_focus, "")
+    # #141: the only shadows allowed are Wren's flat inset focus lines, light scheme only: the white inner line, and the
+    # gold/white/dark ring overlay on photos
+    light_focus = ("box-shadow: inset 0 0 0 5px #fff;",
+                   "box-shadow: inset 0 0 0 3px var(--mfp-focus), inset 0 0 0 5px #fff, inset 0 0 0 7px var(--mfp-text);")
+    assert flat.count("box-shadow") == 2 and all(flat.count(f) == 1 for f in light_focus)
+    assert min(flat.index(f) for f in light_focus) > flat.index("@media (prefers-color-scheme: light)")
+    for f in light_focus:
+        flat = flat.replace(f, "")
     for bad in ("box-shadow", "gradient", "filter", "backdrop", "@import", "@font-face", "url(", "@keyframes", "animation"):
         assert bad not in flat, bad
-    assert len(CSS) < 26 * 1024                                                # #80 library grew it past 24 KB
+    assert len(CSS) < 27 * 1024    # #80 library grew it past 24 KB; #141 (Hale) raised 26 -> 27 KB for the light photo ring
     assert "var(--mfp-bg)" in (ROOT / "static" / "tokens.css").read_text()   # #141: phone tokens
     assert ".mf-phone .bar { background: var(--mfp-header)" in CSS           # forest header band (dark), white (light)
     # transitions only on transform (Shuffle knob, library tile inset) and opacity (#80 deleted-tile fade)

@@ -154,33 +154,81 @@ def test_light_inset_focus_rings_get_a_white_inner_line():
     light = phone[phone.index("@media (prefers-color-scheme: light)"):]
     rule = re.search(r"\.mf-phone :is\(([^)]*)\):focus-visible \{\s*box-shadow: inset 0 0 0 5px #fff; \}", light)
     assert rule, light
-    assert [x.strip() for x in rule.group(1).split(",")] == [
-        ".bar a", ".grid a", ".tile", ".seg button", ".tile .acts button", ".lib .vx", ".tplay", ".trim .bar .back"]
-    # a photo <img> paints over an inset shadow, so on photo tiles the white line is an outline on the img itself
-    assert ".mf-phone :is(.grid a, .tile):focus-visible img { outline: 2px solid var(--mfp-on-accent); outline-offset: -5px; }" in light
+    assert [x.strip() for x in rule.group(1).split(",")] == [".bar a", ".seg button", ".tile .acts button", ".lib .vx",
+                                                             ".tplay", ".trim .bar .back"]
+    # photos (Wren): an overlay above the img with gold 3px + white 2px + dark 2px, so >= 3.8:1 against any photo
+    assert ("box-shadow: inset 0 0 0 3px var(--mfp-focus), inset 0 0 0 5px #fff, inset 0 0 0 7px var(--mfp-text); }") in light
+    for sel in (".mf-phone .grid a:focus-visible::after", ".mf-phone:not(.selecting) .tile:focus-visible::after",
+                '.mf-phone.selecting .tile:not([aria-pressed="true"]):focus-visible::before'):
+        assert sel in light, sel
+    assert "focus-visible img" not in phone                                   # the c8e730c img outline is gone
     assert "box-shadow" not in phone[:phone.index("@media (prefers-color-scheme: light)")]   # dark rings unchanged
+    assert LIGHT["--mfp-text"] == "#1F2A24"                                    # Wren's dark band
 
 
-@pytest.mark.skipif(BROWSER is None, reason="no Chromium/Chrome installed")
-def test_light_focus_on_a_photo_tile_shows_gold_ring_and_white_inner_line(page, server, mf_app, lib):
-    """#141: Tab onto a Library photo tile in light: gold 3px ring at the edge, then a white line on the photo."""
-    import base64, io
+def _two_tone_jpeg():
+    """A photo with a clear light half (left, near white) and dark half (right, near black)."""
+    import io
     from PIL import Image
-    lib.add("c.jpg", PNG)
-    _scheme(page, "light")
-    _phone(page, server, mf_app, "admin/library")
-    js = "(()=>{const t=document.querySelector('.lib .tile'); return [...document.querySelectorAll('a,button,input,[tabindex]')].filter(e=>!e.disabled && e.offsetParent).indexOf(t)+1;})()"
+    im = Image.new("RGB", (800, 800), (235, 232, 225))
+    im.paste((25, 25, 30), (400, 0, 800, 800))
+    b = io.BytesIO()
+    im.save(b, "JPEG", quality=95)
+    return b.getvalue()
+
+
+def _tab_to(page, sel):
+    js = ("(()=>{const t=document.querySelector(%s); return [...document.querySelectorAll('a,button,input,[tabindex]')]"
+          ".filter(e=>!e.disabled && e.offsetParent).indexOf(t)+1;})()" % json.dumps(sel))
     for _ in range(evaluate(page, js)):
         for kind in ("keyDown", "keyUp"):
             page.call("Input.dispatchKeyEvent", {"type": kind, "key": "Tab", "code": "Tab", "windowsVirtualKeyCode": 9})
     page.pump(0.3)
-    assert evaluate(page, "document.activeElement === document.querySelector('.lib .tile') && document.activeElement.matches(':focus-visible')")
-    r = json.loads(evaluate(page, "JSON.stringify(document.querySelector('.lib .tile').getBoundingClientRect())"))
-    shot = page.call("Page.captureScreenshot", {"format": "png"})["result"]["data"]
-    im = Image.open(io.BytesIO(base64.b64decode(shot))).convert("RGB")
-    x, y = int(r["x"] + r["width"] / 2), int(r["y"])
-    assert im.getpixel((x, y + 1)) == (138, 106, 30)          # gold ring (#8A6A1E), 0-3 px inside the tile
-    assert im.getpixel((x, y + 4)) == (255, 255, 255)         # white inner line, 3-5 px, on top of the photo
+    assert evaluate(page, "document.activeElement === document.querySelector(%s) && "
+                          "document.activeElement.matches(':focus-visible')" % json.dumps(sel)), sel
+
+
+def _bands(page, sel):
+    """Pixels 1, 4 and 6 px inside the focused element's top edge, over the light (left) and dark (right) half."""
+    import base64, io
+    from PIL import Image
+    r = json.loads(evaluate(page, "JSON.stringify(document.querySelector(%s).getBoundingClientRect())" % json.dumps(sel)))
+    im = Image.open(io.BytesIO(base64.b64decode(page.call("Page.captureScreenshot", {"format": "png"})["result"]["data"]))).convert("RGB")
+    y = int(r["y"])
+    return {side: [im.getpixel((int(r["x"] + r["width"] * f), y + d)) for d in (1, 4, 6)]
+            for side, f in (("light", .25), ("dark", .75))}
+
+
+GOLD, WHITE, DARK = (138, 106, 30), (255, 255, 255), (31, 42, 36)
+
+
+@pytest.mark.no_media
+@pytest.mark.skipif(BROWSER is None, reason="no Chromium/Chrome installed")
+@pytest.mark.parametrize("path,sel", [("admin/library", ".lib .tile"), ("admin/", ".grid a")])
+def test_light_focus_on_a_photo_is_gold_white_dark_over_light_and_dark_areas(page, server, mf_app, lib, path, sel):
+    """#141 (Wren): on a focused Library photo tile and a focused home grid link in light mode, the ring sits above the
+    photo: gold 0-3 px, white 3-5 px, dark 5-7 px from the edge, the same over a light and a dark part of the photo."""
+    lib.add("split.jpg", _two_tone_jpeg())
+    _scheme(page, "light")
+    _phone(page, server, mf_app, path)
+    page.pump(0.5)
+    _tab_to(page, sel)
+    bands = _bands(page, sel)
+    assert bands == {"light": [GOLD, WHITE, DARK], "dark": [GOLD, WHITE, DARK]}, bands
+
+
+@pytest.mark.no_media
+@pytest.mark.skipif(BROWSER is None, reason="no Chromium/Chrome installed")
+def test_dark_focus_on_a_photo_is_unchanged(page, server, mf_app, lib):
+    """Dark keeps today's single brass ring (no overlay)."""
+    lib.add("split.jpg", _two_tone_jpeg())
+    _phone(page, server, mf_app, "admin/library")
+    page.pump(0.5)
+    _tab_to(page, ".lib .tile")
+    assert evaluate(page, "getComputedStyle(document.querySelector('.lib .tile'), '::after').content") == "none"
+    bands = _bands(page, ".lib .tile")
+    assert bands["light"][0] == bands["dark"][0] == (214, 179, 106)               # brass ring
+    assert bands["light"][2] != DARK and bands["dark"][1] != WHITE                # photo shows inside the ring
 
 
 # ---------------- headless Chrome: both schemes on real pages ----------------

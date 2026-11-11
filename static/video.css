@@ -1,28 +1,28 @@
 /* #102 video (phone/11-VIDEO.md, Wren's video.css). Only on Library and Upload when videos are on.
    Dark phone tokens only; no runtime blur, no animation. */
-.mf-phone .upnote { font-size: var(--mf-p-small); color: var(--mf-text-2); margin: 8px 2px 0; line-height: 1.35; }
+.mf-phone .upnote { font-size: var(--mf-p-small); color: var(--mfp-text-2); margin: 8px 2px 0; line-height: 1.35; }
 .mf-phone .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 6px; }
 .mf-phone .chip { all: unset; box-sizing: border-box; min-height: 48px; padding: 0 16px; border-radius: 24px; display: inline-flex;
-  align-items: center; gap: 8px; font-size: 16px; font-weight: 700; cursor: pointer; border: 1.5px solid var(--mf-oat); color: var(--mf-text); }
-.mf-phone .chip[aria-pressed="true"] { background: var(--mf-green); border-color: var(--mf-green); color: #fff; }
+  align-items: center; gap: 8px; font-size: 16px; font-weight: 700; cursor: pointer; border: 1.5px solid var(--mfp-outline); color: var(--mfp-text); }
+.mf-phone .chip[aria-pressed="true"] { background: var(--mfp-accent); border-color: var(--mfp-accent); color: var(--mfp-on-accent); }
 .mf-phone .chip[aria-pressed="true"]::before { content: "✓"; }
 .mf-phone .chip[aria-disabled="true"] { cursor: default; }
-.mf-phone .chip:focus-visible { outline: 3px solid var(--mf-brass); outline-offset: 2px; }
-.mf-phone .chiphint { font-size: var(--mf-p-small); color: var(--mf-text-2); margin: 0 0 10px; min-height: 1.3em; }
+.mf-phone .chip:focus-visible { outline: 3px solid var(--mfp-focus); outline-offset: 2px; }
+.mf-phone .chiphint { font-size: var(--mf-p-small); color: var(--mfp-text-2); margin: 0 0 10px; min-height: 1.3em; }
 .mf-phone .lib li.filtered { display: none; }
-.mf-phone .tile .badge { position: absolute; left: 6px; bottom: 6px; background: rgba(14, 19, 17, .82); color: var(--mf-linen);
+.mf-phone .tile .badge { position: absolute; left: 6px; bottom: 6px; background: var(--mfp-media-pill); color: var(--mfp-media-text);
   font-size: 14px; font-weight: 700; padding: 3px 7px; border-radius: 6px; line-height: 1.2; font-variant-numeric: tabular-nums; }
 .mf-phone .vtile { cursor: default; }
 .mf-phone .tile .state { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 6px; background: rgba(14, 19, 17, .72); color: var(--mf-linen); font-size: 14px; font-weight: 700; text-align: center; }
-.mf-phone .tile .state.fail { background: var(--mf-red-50); color: var(--mf-brick-text); justify-content: flex-start; padding-top: 10px; }
-.mf-phone .tile .spin { width: 22px; height: 22px; border-radius: 50%; border: 3px solid var(--mf-forest-700); border-top-color: var(--mf-leaf); }
+  gap: 6px; background: var(--mfp-media-veil); color: var(--mfp-media-text); font-size: 14px; font-weight: 700; text-align: center; }
+.mf-phone .tile .state.fail { background: var(--mfp-danger-bg); color: var(--mfp-danger-text); justify-content: flex-start; padding-top: 10px; }
+.mf-phone .tile .spin { width: 22px; height: 22px; border-radius: 50%; border: 3px solid var(--mfp-media-track); border-top-color: var(--mfp-media-ok); }
 .mf-phone .tile .acts { position: absolute; left: 0; right: 0; bottom: 10px; display: flex; justify-content: center; gap: 8px; }
 .mf-phone .tile .acts button { all: unset; box-sizing: border-box; flex: none; width: 48px; height: 48px; border-radius: 10px; display: flex;
-  align-items: center; justify-content: center; border: 1.5px solid var(--mf-oat); color: var(--mf-linen); background: var(--mf-ink); cursor: pointer; }
-.mf-phone .tile .acts .vremove { color: var(--mf-brick-text); }
+  align-items: center; justify-content: center; border: 1.5px solid var(--mfp-media-line); color: var(--mfp-media-text); background: var(--mfp-media-bg); cursor: pointer; }
+.mf-phone .tile .acts .vremove { color: var(--mfp-media-danger-text); }
 .mf-phone .tile .acts button:disabled { opacity: .5; cursor: default; }
-.mf-phone .tile .acts button:focus-visible { outline: 3px solid var(--mf-brass); outline-offset: -3px; }   /* the tile clips overflow */
+.mf-phone .tile .acts button:focus-visible { outline: 3px solid var(--mfp-focus); outline-offset: -3px; }   /* the tile clips overflow */
 .mf-phone.selecting .vtile { opacity: .5; }
 .mf-phone.selecting .vtile::after { content: none; }
 /* Large text (~130 %) makes tiles < 112 px: two 48 px buttons + 8 px gap no longer fit, so a failed tile
@@ -36,20 +36,20 @@
 @container (max-width: 340px) {
   .mf-phone .lib li[data-state="failed"] { grid-column: span 2; aspect-ratio: auto; height: calc((100cqw - 6px) / 3); }
 }
-.mf-phone #list .slow { display: block; font-size: var(--mf-p-small); color: var(--mf-text-2); margin-top: 2px; line-height: 1.35; }
+.mf-phone #list .slow { display: block; font-size: var(--mf-p-small); color: var(--mfp-text-2); margin-top: 2px; line-height: 1.35; }
 /* #103 conversion progress (13c upload row, 13d Library tile). The bar steps to each polled value (scaleX). */
 .mf-phone #list .vrow { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
 .mf-phone #list .vrow[hidden] { display: none; }
 .mf-phone #list .pct { flex: none; font-size: var(--mf-p-small); font-weight: 700; font-variant-numeric: tabular-nums; }
-.mf-phone #list .vbar { display: block; flex: 1; height: 8px; border-radius: 4px; background: var(--mf-forest-700); overflow: hidden; }
-.mf-phone #list .vbar > span { display: block; height: 100%; background: var(--mf-leaf); transform: scaleX(0); transform-origin: left;
+.mf-phone #list .vbar { display: block; flex: 1; height: 8px; border-radius: 4px; background: var(--mfp-track); overflow: hidden; }
+.mf-phone #list .vbar > span { display: block; height: 100%; background: var(--mfp-accent-text); transform: scaleX(0); transform-origin: left;
   transition: transform .3s ease-out; }
 .mf-phone #list .vacts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-.mf-phone #list .vcancel { min-height: 48px; padding: 0 18px; background: transparent; border: 1.5px solid var(--mf-oat); color: var(--mf-linen); }
-.mf-phone #list .vcancel.vrm { color: var(--mf-brick-text); }
-.mf-phone #list .vcancel:disabled { opacity: .6; border-color: var(--mf-forest-700); }
-.mf-phone #list .vcancel:focus-visible { outline: 3px solid var(--mf-brass); outline-offset: 2px; }
-.mf-phone #list li.muted .name, .mf-phone #list li.muted .msg { color: var(--mf-oat); opacity: .6; }
+.mf-phone #list .vcancel { min-height: 48px; padding: 0 18px; background: transparent; border: 1.5px solid var(--mfp-outline); color: var(--mfp-text); }
+.mf-phone #list .vcancel.vrm { color: var(--mfp-danger-text); }
+.mf-phone #list .vcancel:disabled { opacity: .6; border-color: var(--mfp-line); }
+.mf-phone #list .vcancel:focus-visible { outline: 3px solid var(--mfp-focus); outline-offset: 2px; }
+.mf-phone #list li.muted .name, .mf-phone #list li.muted .msg { color: var(--mfp-text-2); opacity: .6; }
 .mf-phone #list .slow[hidden] { display: none; }
 .mf-phone .tile .ring { width: 40px; height: 40px; flex: none; aspect-ratio: 1; }
 .mf-phone .tile .ring { border: 0; margin: 0; border-radius: 0; }   /* not the 07 Wi-Fi ring's 8 px border / margin */
@@ -72,14 +72,14 @@
     line-height: 1.2; text-align: center; }
 }
 .mf-phone .tile .ring circle { fill: none; stroke-width: 4; }
-.mf-phone .tile .ring .bg { stroke: var(--mf-forest-700); }
-.mf-phone .tile .ring .fg { stroke: var(--mf-leaf); stroke-linecap: round; }
-.mf-phone .tile .state .resumed { font-weight: 400; font-size: 12px; color: var(--mf-oat); }
+.mf-phone .tile .ring .bg { stroke: var(--mfp-media-track); }
+.mf-phone .tile .ring .fg { stroke: var(--mfp-media-ok); stroke-linecap: round; }
+.mf-phone .tile .state .resumed { font-weight: 400; font-size: 12px; color: var(--mfp-media-text-2); }
 .mf-phone .lib .vx { all: unset; box-sizing: border-box; position: absolute; top: 0; right: 0; width: 48px; height: 48px; display: flex;
-  align-items: center; justify-content: center; color: var(--mf-linen); cursor: pointer; z-index: 1; }
+  align-items: center; justify-content: center; color: var(--mfp-media-text); cursor: pointer; z-index: 1; }
 .mf-phone .lib .vx:disabled { opacity: .4; cursor: default; }
-.mf-phone .lib .vx:focus-visible { outline: 3px solid var(--mf-brass); outline-offset: -3px; }
-.mf-phone li[data-state="cancelling"] .state { color: var(--mf-oat); opacity: .6; }
+.mf-phone .lib .vx:focus-visible { outline: 3px solid var(--mfp-focus); outline-offset: -3px; }
+.mf-phone li[data-state="cancelling"] .state { color: var(--mfp-media-text-2); opacity: .6; }
 /* #126 (Wren): the home preview reuses the not-ready tile without the ×; a square 32 px ring, and when the
    tiles are too small for the label (360 px at 130 % text) the ring alone (the tile keeps its aria-label). */
 .mf-phone .grid { container-type: inline-size; }

@@ -93,33 +93,100 @@
 .mf-btn-accent { background: var(--mf-brass); color: var(--mf-ink); }
 .mf-btn-default { outline: var(--mf-ring-width) solid var(--mf-brass); outline-offset: 3px; }
 
-/* ---- Phone: the frame's dark theme (PHONE-DARK.md, decided 19 Oct 2026; replaces the paper palette) ----
-   Phone semantic tokens remapped to frame tokens on .mf-phone only, so the kiosk is untouched.
-   --mf-green is a fill only (2.6:1 as text on ink): green text uses --mf-accent-text; brick fills, brick-text text. */
+/* ---- Phone: follows the phone's own light/dark setting (#141, Wren's light-tokens.md, "Warm paper", 11 Nov 2026) ----
+   Phone-only --mfp-* tokens on .mf-phone; the frame (:root tokens above, .mf-btn*, style.css) never reads them.
+   Dark is the default and is exactly the PHONE-DARK.md mapping (19 Oct), so a browser with no preference looks as before;
+   light values only inside @media (prefers-color-scheme: light). --mfp-accent is a fill only in dark (2.6:1 as text on bg):
+   green text uses --mfp-accent-text; danger fills, danger-text text. --mfp-media-* sit on photos/video: dark in both. */
+:root { --mfp-bg: #0E1311; }          /* phone.css paints <html> with it: first paint / overscroll match the scheme */
 .mf-phone {
-  --mf-paper: var(--mf-ink);          /* page */
-  --mf-card: var(--mf-forest-800);    /* cards, rows, inputs, sheets */
-  --mf-line: var(--mf-forest-700);    /* hairlines, dividers */
-  --mf-text: var(--mf-linen);
-  --mf-text-2: var(--mf-oat);
-  --mf-green: var(--mf-forest-600);   /* primary fills (white text 7.3:1) */
-  --mf-green-50: var(--mf-forest-900);/* selected / success background */
-  --mf-accent-text: var(--mf-leaf);   /* green text, success, selected border */
-  --mf-red: var(--mf-brick);          /* destructive fills (white text 6.5:1) */
-  --mf-red-text: var(--mf-brick-text);/* destructive / error text */
-  --mf-red-50: #3A1F1B;               /* error box background */
-  --mf-warn-bg: var(--mf-walnut-900); /* warn box: walnut, brass border, linen text */
-  --mf-warn-line: var(--mf-brass);
-  --mf-warn-text: var(--mf-linen);
-  --mf-outline: var(--mf-oat);        /* outlined buttons and inputs: 1.5px, >= 6.6:1 on every dark surface */
-  --mf-focus: var(--mf-brass);        /* every focus ring */
-  --mf-scrim-phone: rgba(0, 0, 0, .6);   /* flat scrim behind the phone bottom sheet (no blur); only used inside .mf-phone */
-  --mf-tile-ring-fill: rgba(14, 19, 17, .5);  /* empty select ring on a photo tile: ~3:1 even on a white photo */
-  background: var(--mf-paper); color: var(--mf-text); font-family: var(--mf-font-phone); }
-.mf-phone button { font: inherit; background: var(--mf-green); color: #fff; border: 0; border-radius: var(--mf-r-md);
+  --mfp-bg: #0E1311;                  /* page (ink) */
+  --mfp-surface: #24382C;             /* cards, rows, inputs, sheets (forest-800) */
+  --mfp-header: #16261D;              /* top bar, selection toolbar (forest-900) */
+  --mfp-header-text: #F3EDE4;         /* bar title, back, icons (linen) */
+  --mfp-strip: #3A2C22;               /* status strip (walnut-900) */
+  --mfp-strip-text: #C9BBA8;          /* strip text (oat) */
+  --mfp-line: #2F4A3A;                /* hairlines, dividers: decorative only (forest-700) */
+  --mfp-outline: #C9BBA8;             /* outlined buttons and inputs: 1.5px, >= 3:1 (oat) */
+  --mfp-text: #F3EDE4;                /* body text (linen) */
+  --mfp-text-2: #C9BBA8;              /* secondary text (oat) */
+  --mfp-accent: #2A6140;              /* primary fills, chips on, segment on (forest-600; white text 7.3:1) */
+  --mfp-on-accent: #FFFFFF;           /* text and ticks on accent / danger fills */
+  --mfp-accent-text: #8FD1A4;         /* links, green text, success, selected border (leaf) */
+  --mfp-ok: #8FD1A4;                  /* small status dots / spinner arcs: leaf as a non-text mark */
+  --mfp-success-bg: #16261D;          /* selected / success background (forest-900) */
+  --mfp-danger: #A8352A;              /* destructive fill (brick; white text 6.5:1) */
+  --mfp-danger-text: #E7A097;         /* error text (brick-text) */
+  --mfp-danger-bg: #3A1F1B;           /* error box, strip.down */
+  --mfp-warn-bg: #3A2C22;             /* warning box (walnut-900) */
+  --mfp-warn-line: #D6B36A;           /* warning border, warning "!" disc (brass) */
+  --mfp-warn-text: #F3EDE4;           /* warning text (linen) */
+  --mfp-focus: #D6B36A;               /* every focus ring (brass) */
+  --mfp-gold: #D6B36A;                /* decorative gold: bar dot, Keep-Wi-Fi countdown ring (brass) */
+  --mfp-track: #2F4A3A;               /* progress / meter / trim track, empty ring (forest-700) */
+  --mfp-scrim: rgba(0, 0, 0, .6);     /* flat scrim behind the bottom sheet (no blur) */
+  --mfp-tile-ring-fill: rgba(14, 19, 17, .5);  /* empty select ring on a photo tile: ~3:1 even on a white photo */
+  /* #141 additions not in Wren's table (flagged on the PR): dark = today; light picked from the map's own colours */
+  --mfp-on-gold: #0E1311;             /* "!" on the warn-line disc (ink) */
+  --mfp-panel: #16261D;               /* Home Wi-Fi steps box (forest-900) */
+  --mfp-tile: #16261D;                /* library tile behind a photo still loading (forest-900) */
+  /* Same in both schemes: they sit on media or draw the frame itself */
+  --mfp-media-veil: rgba(14, 19, 17, .72);   /* preparing veil, trim play button */
+  --mfp-media-pill: rgba(14, 19, 17, .82);   /* video badge, trim timecode */
+  --mfp-media-bg: #0E1311;            /* buttons on a video tile (ink) */
+  --mfp-media-black: #000;            /* trim preview letterbox */
+  --mfp-media-text: #F3EDE4;          /* text and icons on media (linen) */
+  --mfp-media-text-2: #C9BBA8;        /* secondary text on media (oat) */
+  --mfp-media-line: #C9BBA8;          /* outlines of buttons on media (oat) */
+  --mfp-media-track: #2F4A3A;         /* spinner / ring track on media (forest-700) */
+  --mfp-media-ok: #8FD1A4;            /* spinner / ring arc on media (leaf) */
+  --mfp-media-danger-text: #E7A097;   /* Remove on a video tile (brick-text) */
+  --mfp-note-bg: #3A2C22;             /* Settings mini frame note = the frame's note card (walnut-900) */
+  --mfp-note-line: #5A4535;           /* (walnut) */
+  --mfp-note-text: #F3EDE4;           /* (linen) */
+  --mfp-note-quote: #D6B36A;          /* (brass) */
+  --mfp-illo-wood: #5A4535;           /* Pair hero: the frame drawn in its own colours (walnut) */
+  --mfp-illo-screen: #0E1311;         /* (ink) */
+  --mfp-illo-rim: #24382C;            /* (forest-800) */
+  --mfp-illo-panel: #16261D;          /* (forest-900) */
+  background: var(--mfp-bg); color: var(--mfp-text); font-family: var(--mf-font-phone); }
+@media (prefers-color-scheme: light) {
+  :root { --mfp-bg: #F6F1E9; }
+  .mf-phone {
+    --mfp-bg: #F6F1E9;                /* paper */
+    --mfp-surface: #FFFFFF;
+    --mfp-header: #FFFFFF;            /* + bottom --mfp-line */
+    --mfp-header-text: #1F2A24;
+    --mfp-strip: #EDE4D7;
+    --mfp-strip-text: #5E5146;
+    --mfp-line: #E2D8CA;
+    --mfp-outline: #857565;
+    --mfp-text: #1F2A24;
+    --mfp-text-2: #5E5146;
+    --mfp-accent: #2A6140;
+    --mfp-on-accent: #FFFFFF;
+    --mfp-accent-text: #2A6140;
+    --mfp-ok: #2F7A4B;
+    --mfp-success-bg: #E3EEE6;
+    --mfp-danger: #A8352A;
+    --mfp-danger-text: #A8352A;
+    --mfp-danger-bg: #F8E4E1;
+    --mfp-warn-bg: #FBF1DC;
+    --mfp-warn-line: #8A6A1E;
+    --mfp-warn-text: #6E4A10;
+    --mfp-focus: #8A6A1E;             /* dark gold: 4.5:1 on bg, 5.0:1 on white; rings keep their offset */
+    --mfp-gold: #8A6A1E;
+    --mfp-track: #E2D8CA;
+    --mfp-scrim: rgba(31, 42, 36, .45);
+    --mfp-on-gold: #FFFFFF;
+    --mfp-panel: #FFFFFF;
+    --mfp-tile: #EDE4D7;
+  }
+}
+.mf-phone button { font: inherit; background: var(--mfp-accent); color: var(--mfp-on-accent); border: 0; border-radius: var(--mf-r-md);
   min-height: var(--mf-touch-phone); }
-.mf-phone button.secondary, .mf-phone .seg button { background: var(--mf-card); color: var(--mf-text);
-  border: 1.5px solid var(--mf-outline); }
-.mf-phone .seg button[aria-checked="true"] { background: var(--mf-green); color: #fff; }
-.mf-phone button:focus-visible, .mf-phone a:focus-visible { outline: var(--mf-ring-width) solid var(--mf-focus); outline-offset: 3px; }
-.mf-phone a { color: var(--mf-accent-text); }
+.mf-phone button.secondary, .mf-phone .seg button { background: var(--mfp-surface); color: var(--mfp-text);
+  border: 1.5px solid var(--mfp-outline); }
+.mf-phone .seg button[aria-checked="true"] { background: var(--mfp-accent); color: var(--mfp-on-accent); }
+.mf-phone button:focus-visible, .mf-phone a:focus-visible { outline: var(--mf-ring-width) solid var(--mfp-focus); outline-offset: 3px; }
+.mf-phone a { color: var(--mfp-accent-text); }

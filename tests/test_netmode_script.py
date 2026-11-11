@@ -69,6 +69,7 @@ case "$1 $2" in
         && [ -f "$D/p/$3/keyfile" ] && [ ! -f "$D/nowrite" ]; then sed "s/^id=.*/id=$3/" "$D/p/$3/keyfile" > "$f"; fi;;
   "connection load")
     for path in "${@:3}"; do
+    [ -f "$D/norebind" ] && continue   # #137 test: an NM that ignores the load (profile stays on its old file)
     if [ ! -e "$path" ]; then   # #137: file gone: its profile goes, unless it was re-bound to another file
       for q in "$D"/p/*/; do q="${q%/}"; [ "$(cat "$q/file" 2>/dev/null)" = "$path" ] || continue
         [ "$(cat "$D/active")" = "$(basename "$q")" ] && : > "$D/active"; rm -rf "$q"; done
@@ -79,7 +80,6 @@ case "$1 $2" in
       echo "$lf_name $((lf_n - 1))" > "$D/loadfail"; echo "Error: failed to load connection" >&2; exit 4
     fi
     n="$(sed -n 's/^id=//p' "$path")"; u="$(sed -n 's/^uuid=//p' "$path")"
-    if [ -f "$D/norebind" ]; then u=""; fi   # #137 test: an NM that does not move a profile to a new file
     if [ -n "$u" ] && [ -d "$D/p/$n" ] && [ "$(cat "$D/p/$n/uuid" 2>/dev/null)" = "$u" ]; then
       # #137: same uuid from another file = the SAME profile, now backed by this file (stays active)
       echo "$path" > "$D/p/$n/file"; cp "$path" "$D/p/$n/keyfile"; echo "$path" >> "$D/rebound"; continue

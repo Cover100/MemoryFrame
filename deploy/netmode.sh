@@ -587,8 +587,9 @@ wifi_commit() {
 # MemoryFrame-home (#135): temp in NM_DIR -> fsync -> rename -> fsync dir -> load -> verify file + live UUID.
 # The UUID is KEPT (wifi.py reconcile matches the app's new_uuid with netmode.json hotspot_uuid), so this is
 # a storage move, not a new profile: the old file (NM keeps a *-pending-* name on rename) is removed and both
-# paths are loaded in ONE `connection load`, and NM re-binds the live, even active, profile to the new file
-# without re-activating it (no hotspot restart). Only files in NM_DIR are touched (never netplan or /run).
+# paths are loaded in ONE `connection load`: NM (keyfile plugin >= 1.20) unloads a missing file's storage and
+# keeps the profile on the other file with that UUID (same dir: newer mtime wins), so the live, even active,
+# profile is re-bound without re-activation (no hotspot restart). Only files in NM_DIR are touched.
 hotspot_file() {   # uuid -> the file NetworkManager says backs that profile (empty if none)
     "$NMCLI" -g UUID,FILENAME connection show 2>/dev/null | sed -n "s|^$1:||p" | head -n1
 }
@@ -603,7 +604,8 @@ save_hotspot() {   # boot and wifi-commit; never fails the caller (the profile s
     uuid="$(prop "$HOTSPOT_CON" connection.uuid)"
     [[ $uuid =~ ^[0-9A-Za-z-]{1,64}$ ]] || return 0
     src="$(hotspot_file "$uuid")"
-    case "$src" in "$NM_DIR"/*.nmconnection) ;; *) return 0 ;; esac   # netplan/OS profile: not ours
+    case "$src" in "$NM_DIR"/*.nmconnection) ;; "") return 0 ;;
+        *) log "hotspot: backed by $src (netplan/OS profile); left as it is"; return 0 ;; esac
     if [ ! -s "$src" ]; then   # memory only (its file was removed): NM writes it back to its own file
         prio="$(prop "$HOTSPOT_CON" connection.autoconnect-priority)"
         "$NMCLI" connection modify "$HOTSPOT_CON" connection.autoconnect-priority "$(( ${prio:-0} + 1 ))" >/dev/null 2>&1 || true
@@ -623,8 +625,11 @@ save_hotspot() {   # boot and wifi-commit; never fails the caller (the profile s
         rm -f "$src"; sync_nm_dir
         "$NMCLI" connection load "$final" "$src" >/dev/null 2>&1 || true
     fi
-    for f in "$NM_DIR/$PENDING_CON"-*.nmconnection; do   # a power cut before the old file was removed
-        if [ -f "$f" ] && grep -qxF "uuid=$uuid" "$f"; then rm -f "$f"; sync_nm_dir; "$NMCLI" connection load "$f" >/dev/null 2>&1 || true; fi
+    for f in "$NM_DIR/$PENDING_CON"-*.nmconnection; do   # a power cut before the old file was removed:
+        # NM prefers the newer file (final), so this old copy only shadows it; unloaded once NM uses final
+        if [ -f "$f" ] && grep -qxF "uuid=$uuid" "$f" && [ "$(hotspot_file "$uuid")" = "$final" ]; then
+            rm -f "$f"; sync_nm_dir; "$NMCLI" connection load "$f" >/dev/null 2>&1 || true
+        fi
     done
     if hotspot_saved "$final" "$uuid"; then log "hotspot: saved in $(basename "$final")"; return 0; fi
     if [ -s "$final" ] && grep -qxF "uuid=$uuid" "$final"; then

@@ -1,9 +1,8 @@
-/* Restyle PR C: the phone site on the dark frame theme (.mf-phone, tokens.css; DIRECTION.md, #70 phone mocks 01-08,
-   04-settings-v2, 04b). One stylesheet for every phone page. Dark frame theme + Atkinson Hyperlegible (PHONE-DARK.md, user 19 Oct; /frame-fonts.css, block); flat colours:
+/* Restyle PR C: the phone site (.mf-phone, tokens.css --mfp-*; DIRECTION.md, #70 phone mocks 01-08, 04-settings-v2, 04b).
+   One stylesheet for every phone page. Dark (PHONE-DARK.md) or light (#141) + Atkinson (/frame-fonts.css, block); flat colours:
    no shadows, gradients, blur or animations; light DOM. Inline style attributes are blocked by the CSP. */
-/* #141: the phone site follows the phone's light/dark setting (tokens.css --mfp-*). Declaring both schemes keeps
-   force-darkening browsers (#83, Samsung Internet) off our own dark palette, and form controls/scrollbars match.
-   <html> gets the scheme's page colour itself, so the first paint and any overscroll already match. */
+/* #141: follows the phone's light/dark setting (--mfp-*). Both schemes declared: no force-darkening (#83);
+   <html> painted with the scheme's page colour for the first paint and overscroll. */
 :root { color-scheme: light dark; background-color: var(--mfp-bg); }
 .mf-phone, .mf-phone * { box-sizing: border-box; }
 html, body.mf-phone { margin: 0; }
@@ -319,8 +318,7 @@ body.mf-phone.sheet-open { overflow: hidden; }   /* polish (Wren N5): the page b
 /* 08 Can't reach the frame */
 .mf-phone .big-ico { background: var(--mfp-danger-bg); color: var(--mfp-danger-text); }
 
-/* #141 light focus rule (Wren): --mfp-focus is 1.4:1 next to the green fill, so rings that must sit inside an element
-   (overflow:hidden tiles, photos, segments, the header) get a white inner line in light so they stay >= 3:1. Dark: unchanged. */
+/* #141 (Wren): light inset rings get a white inner line (gold is 1.4:1 on green). Dark unchanged. */
 @media (prefers-color-scheme: light) {
   .mf-phone .bar a:focus-visible, .mf-phone .grid a:focus-visible, .mf-phone .tile:focus-visible,
   .mf-phone .seg button:focus-visible, .mf-phone .tile .acts button:focus-visible, .mf-phone .lib .vx:focus-visible,

@@ -755,7 +755,7 @@ def test_dark_tokens_and_outline_rules_in_css():
                  ("danger-text", "brick-text"), ("outline", "oat"), ("focus", "brass")):
         assert re.search(rf"--mfp-{k}: {frame['--mf-' + v]};", block), k
     assert "--mfp-danger-bg: #3A1F1B;" in block and "--mfp-scrim: rgba(0, 0, 0, .6);" in block
-    flat = re.sub(r"/\*.*?\*/", "", CSS + tokens[tokens.index("/* ---- Phone"):], flags=re.S)
+    flat = re.sub(r"/\*.*?\*/", "", CSS + tokens[tokens.index("/* ---- Phone: follows"):], flags=re.S)
     assert not re.search(r"(?<![-\w])color: var\(--mfp-(accent|danger)\)", flat)          # fills only
     assert not re.search(r"outline[^;]*var\(--mfp-accent\)", flat)
     for sel in (r"\.mf-phone \.btn-neutral, \.mf-phone button\.secondary", r"\.mf-phone \.msgKeep", r"\.mf-phone \.field",

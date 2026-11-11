@@ -578,8 +578,59 @@ wifi_commit() {
     rm -f "$PENDING"
     if profiles | grep -qxF "$OLD_CON"; then "$NMCLI" connection delete "$OLD_CON" >/dev/null 2>&1 || true; fi
     sync_nm_dir
+    save_hotspot || true   # #137: its own final file, same UUID, no restart
     write_state product product false false
     log "wifi change kept"
+}
+
+# #137: the hotspot profile gets its OWN durable final file, MemoryFrame-hotspot.nmconnection, like
+# MemoryFrame-home (#135): temp in NM_DIR -> fsync -> rename -> fsync dir -> load -> verify file + live UUID.
+# The UUID is KEPT (wifi.py reconcile matches the app's new_uuid with netmode.json hotspot_uuid), so this is
+# a storage move, not a new profile: the old file (NM keeps a *-pending-* name on rename) is removed and both
+# paths are loaded in ONE `connection load`, and NM re-binds the live, even active, profile to the new file
+# without re-activating it (no hotspot restart). Only files in NM_DIR are touched (never netplan or /run).
+hotspot_file() {   # uuid -> the file NetworkManager says backs that profile (empty if none)
+    "$NMCLI" -g UUID,FILENAME connection show 2>/dev/null | sed -n "s|^$1:||p" | head -n1
+}
+
+hotspot_saved() {   # final uuid: on disk (non-empty, our uuid= and id=) AND live in NM from that file
+    [ -s "$1" ] && grep -qxF "uuid=$2" "$1" && grep -qxF "id=$HOTSPOT_CON" "$1" \
+        && [ "$(hotspot_file "$2")" = "$1" ] && [ "$(prop "$HOTSPOT_CON" connection.uuid)" = "$2" ]
+}
+
+save_hotspot() {   # boot and wifi-commit; never fails the caller (the profile stays where it was)
+    local final="$NM_DIR/$HOTSPOT_CON.nmconnection" uuid src tmp prio f
+    uuid="$(prop "$HOTSPOT_CON" connection.uuid)"
+    [[ $uuid =~ ^[0-9A-Za-z-]{1,64}$ ]] || return 0
+    src="$(hotspot_file "$uuid")"
+    case "$src" in "$NM_DIR"/*.nmconnection) ;; *) return 0 ;; esac   # netplan/OS profile: not ours
+    if [ ! -s "$src" ]; then   # memory only (its file was removed): NM writes it back to its own file
+        prio="$(prop "$HOTSPOT_CON" connection.autoconnect-priority)"
+        "$NMCLI" connection modify "$HOTSPOT_CON" connection.autoconnect-priority "$(( ${prio:-0} + 1 ))" >/dev/null 2>&1 || true
+        "$NMCLI" connection modify "$HOTSPOT_CON" connection.autoconnect-priority "${prio:-0}" >/dev/null 2>&1 || true
+        if [ ! -s "$src" ]; then log "hotspot: profile is in memory only and could not be written out"; return 1; fi
+        log "hotspot: profile was in memory only; written back to $(basename "$src")"
+    fi
+    if [ "$src" != "$final" ]; then
+        if [ -s "$final" ] && ! grep -qxF "uuid=$uuid" "$final"; then   # e.g. the old hotspot not deleted yet
+            log "hotspot: $(basename "$final") still backs another profile; kept in $(basename "$src")"; return 1
+        fi
+        tmp="$(mktemp "$NM_DIR/.$HOTSPOT_CON.XXXXXX")" || { log "hotspot: no temp file; kept in $(basename "$src")"; return 1; }
+        if ! { sed -e "s/^id=.*/id=$HOTSPOT_CON/" -e "/^uuid=/d" -e "s/^\[connection\]\$/[connection]\nuuid=$uuid/" "$src" > "$tmp" \
+                && grep -qxF "uuid=$uuid" "$tmp" && grep -qxF "id=$HOTSPOT_CON" "$tmp" && durable_install "$tmp" "$final"; }; then
+            rm -f "$tmp"; log "hotspot: could not write $(basename "$final"); kept in $(basename "$src")"; return 1
+        fi
+        rm -f "$src"; sync_nm_dir
+        "$NMCLI" connection load "$final" "$src" >/dev/null 2>&1 || true
+    fi
+    for f in "$NM_DIR/$PENDING_CON"-*.nmconnection; do   # a power cut before the old file was removed
+        if [ -f "$f" ] && grep -qxF "uuid=$uuid" "$f"; then rm -f "$f"; sync_nm_dir; "$NMCLI" connection load "$f" >/dev/null 2>&1 || true; fi
+    done
+    if hotspot_saved "$final" "$uuid"; then log "hotspot: saved in $(basename "$final")"; return 0; fi
+    if [ -s "$final" ] && grep -qxF "uuid=$uuid" "$final"; then
+        log "hotspot: saved in $(basename "$final"), but NetworkManager has not switched to it; it is used from the next boot"
+    else log "hotspot: $(basename "$final") could not be verified"; fi
+    return 1
 }
 
 # ---------- #68: developer (home) Wi-Fi from the phone, dev fallback only ----------
@@ -664,7 +715,9 @@ restore_home_bak() {   # why new_uuid: undo a failed save. Previous file back (d
         if load_home "$final"; then log "home-wifi: $1; previous developer Wi-Fi restored"
         else log "home-wifi: $1; previous developer Wi-Fi file restored but NetworkManager did not load it"; fi
     else   # #138 M1: never remove the last good copy; boot (clean_home_temps) puts it back if final is gone
-        HOME_BAK_KEEP=1; log "home-wifi: $1; could not put the previous developer Wi-Fi file back; backup kept"
+        # #137 double fault: the untested new file must not be used at the next boot (the phone said "failed")
+        rm -f "$final"
+        HOME_BAK_KEEP=1; log "home-wifi: $1; could not put the previous developer Wi-Fi file back; new file removed, backup kept"
     fi
 }
 
@@ -836,6 +889,7 @@ case "${1:-}" in
             log "unconfirmed Wi-Fi change found at boot: rolling back"
             delete_pending_profile; rm -f "$PENDING"
         fi
+        save_hotspot || true   # #137: migrate a hotspot still in a *-pending-* file or in memory only
         # Boot never fails the unit (no reboot loop); the state file carries the outcome.
         # MF-51: product (hotspot) on every boot unless memoryframe-mode.txt says dev (persistent
         # dev). A missing file means product; install.sh writes "dev" on a Pi found on home Wi-Fi.

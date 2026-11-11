@@ -23,6 +23,17 @@ if [ -f "$D/crash_at" ] && [[ "$*" == *" modify "* || "$*" == *" delete "* ]]; t
 fi
 [ "$1" = --wait ] && shift 2
 [ "$1" = -e ] && shift 2
+# #135: "connection show|delete uuid U" -> the profile name with that uuid (exit 10 if none)
+if [ "$2 $3" = "connection delete" ] || [ "$3 $4" = "connection show" ] || [ "$1 $2" = "connection delete" ]; then
+  for i in 3 4 5; do
+    if [ "${!i}" = uuid ]; then
+      j=$((i + 1)); u="${!j}"; n=""
+      for q in "$D"/p/*/; do q="${q%/}"; [ "$(cat "$q/uuid" 2>/dev/null || echo "uuid-$(basename "$q")")" = "$u" ] && n="$(basename "$q")"; done
+      [ -n "$n" ] || exit 10
+      set -- "${@:1:$((i - 1))}" "$n"; break
+    fi
+  done
+fi
 case "$1 $2" in
   "-g NAME") ls "$D/p"; exit 0;;
   "-g GENERAL.CONNECTION") cat "$D/active"; exit 0;;
@@ -34,6 +45,7 @@ if [ "$1" = -g ] && [ "$3 $4" = "connection show" ]; then
     802-11-wireless.ssid) cat "$f/ssid";; connection.autoconnect) cat "$f/autoconnect";;
     connection.timestamp) cat "$f/ts" 2>/dev/null || echo 0;;
     connection.uuid) cat "$f/uuid" 2>/dev/null || echo "uuid-$5";;
+    connection.id) echo "$5";;
     connection.interface-name) cat "$f/ifname" 2>/dev/null;;
   esac; exit 0
 fi
@@ -41,16 +53,34 @@ case "$1 $2" in
   "connection modify")
     if [ "$4" = connection.id ]; then
       mv "$D/p/$3" "$D/p/$5"; [ "$(cat "$D/active")" = "$3" ] && echo "$5" > "$D/active"
+      # like NM (keyfile rename=false): the backing file KEEPS its name, only its id= line changes
+      [ -f "$D/p/$5/file" ] && f="$(cat "$D/p/$5/file")" && [ -f "$f" ] && sed -i "s/^id=.*/id=$5/" "$f"
     else echo "$5" > "$D/p/$3/autoconnect"; [ -n "$7" ] && echo "$7" > "$D/p/$3/prio"; fi;;
   "connection load")
-    n="$(sed -n 's/^id=//p' "$3")"; mkdir -p "$D/p/$n"
-    echo 802-11-wireless > "$D/p/$n/type"; echo ap > "$D/p/$n/mode"; echo no > "$D/p/$n/autoconnect"
-    echo "uuid-new-$RANDOM$RANDOM" > "$D/p/$n/uuid"
+    if [ -f "$D/loadfail" ] && read -r lf_name lf_n < "$D/loadfail" && [ "$(basename "$3")" = "$lf_name" ] \
+        && [ "$lf_n" -gt 0 ]; then   # #135 QA: NM refuses this file (N more times)
+      echo "$lf_name $((lf_n - 1))" > "$D/loadfail"; echo "Error: failed to load connection" >&2; exit 4
+    fi
+    n="$(sed -n 's/^id=//p' "$3")"
+    # a same-named profile from ANOTHER file stays a separate profile (as in NM), found by uuid only
+    if [ -d "$D/p/$n" ] && [ "$(cat "$D/p/$n/file" 2>/dev/null)" != "$3" ]; then mv "$D/p/$n" "$D/p/$n~dup"; fi
+    if [ -f "$D/loadbadid" ] && [ "$(basename "$3")" = "$(cat "$D/loadbadid")" ]; then n="$n~bad"; rm -f "$D/loadbadid"; fi   # #137 N4 (once)
+    mkdir -p "$D/p/$n"
+    m="$(sed -n 's/^mode=//p' "$3")"
+    echo 802-11-wireless > "$D/p/$n/type"; echo "${m:-ap}" > "$D/p/$n/mode"; echo no > "$D/p/$n/autoconnect"
+    echo "$3" > "$D/p/$n/file"                        # #135: file-backed (survives reboot() only if it exists)
+    u="$(sed -n 's/^uuid=//p' "$3")"; echo "${u:-uuid-new-$RANDOM$RANDOM}" > "$D/p/$n/uuid"
     cp "$3" "$D/p/$n/keyfile";;
-  "connection delete") rm -rf "$D/p/$3"; [ "$(cat "$D/active")" = "$3" ] && : > "$D/active";;
+  "connection delete") [ -f "$D/p/$3/file" ] && rm -f "$(cat "$D/p/$3/file")"; rm -rf "$D/p/$3"; [ "$(cat "$D/active")" = "$3" ] && : > "$D/active";;
   "connection up")
     [ -d "$D/p/$3" ] || exit 10
     grep -qxF "$3" "$D/fail" 2>/dev/null && { : > "$D/active"; exit 4; }   # NM drops the old one
+    if [ -f "$D/blockn/$3" ] && [ "$(cat "$D/blockn/$3")" -gt 0 ]; then   # #135: SSID never seen: blocks, times out
+      echo $(( $(cat "$D/blockn/$3") - 1 )) > "$D/blockn/$3"; sleep 1; echo "Error: Timeout expired" >&2; exit 3
+    fi
+    if [ -f "$D/failn/$3" ] && [ "$(cat "$D/failn/$3")" -gt 0 ]; then   # #135: not ready yet at boot
+      echo $(( $(cat "$D/failn/$3") - 1 )) > "$D/failn/$3"; echo "Error: device wlan0 not available because device is not ready" >&2; exit 10
+    fi
     echo "$3" > "$D/active";;
   "connection down") [ "$(cat "$D/active")" = "$3" ] && : > "$D/active";;
 esac
@@ -87,12 +117,29 @@ def env(tmp_path):
     boot.mkdir()
     (tmp_path / "boot_id").write_text("boot-1\n")
     e = dict(os.environ, STUB_DIR=str(d), MEMORYFRAME_NM_DIR=str(tmp_path / "nm"), NMCLI=str(nm), MEMORYFRAME_BOOT_DIR=str(boot),
-             MEMORYFRAME_STATE_DIR=str(state), MEMORYFRAME_DEV_WAIT="1",
+             MEMORYFRAME_STATE_DIR=str(state), MEMORYFRAME_DEV_WAIT="1", MEMORYFRAME_DEV_RETRY_SLEEP="0.2",
              MEMORYFRAME_BOOT_ID_FILE=str(tmp_path / "boot_id"),
              MEMORYFRAME_HOTSPOT_SH=str(tmp_path / "hotspot.sh"), IW=str(d / "iw"),
              SYSTEMD_RUN=str(d / "systemd-run"), MEMORYFRAME_VAR_DIR=str(tmp_path / "var"),
              MEMORYFRAME_CONFIRM_POLL="0.1", PATH=f"{d}:{os.environ['PATH']}")
     return {"d": d, "boot": boot, "state": state, "env": e, "tmp": tmp_path}
+
+
+def reboot(env):
+    """#135: power cycle. NM forgets everything in memory: a profile loaded from a keyfile survives only
+    if that file still exists in NM_DIR (stub-made profiles without a file stand for netplan/OS ones).
+    /run (state dir) is a tmpfs, wlan0 starts unconnected."""
+    for p in list((env["d"] / "p").iterdir()):
+        f = p / "file"
+        if f.exists() and not Path(f.read_text().strip()).exists():
+            shutil.rmtree(p)
+    shutil.rmtree(env["state"], ignore_errors=True)
+    (env["d"] / "active").write_text("\n")
+
+
+def keyfiles(env, prefix=""):
+    d = env["tmp"] / "nm"
+    return sorted(f for f in d.glob(prefix + "*.nmconnection")) if d.exists() else []
 
 
 def run(env, *args, input=None):
@@ -377,7 +424,7 @@ def test_apply_reads_stdin_keeps_old_and_never_logs(on_hotspot):
     r = run(env, "wifi-apply", input=f"Café Frame\n{NEWPW}\n")
     assert r.returncode == 0, r.stderr
     assert active(env) == PENDING and HOT in os.listdir(env["d"] / "p")
-    kf = (env["tmp"] / "nm" / f"{PENDING}.nmconnection")
+    [kf] = keyfiles(env, PENDING)
     assert oct(kf.stat().st_mode & 0o777) == "0o600"
     body = kf.read_text()
     assert "psk=n3w pass\\\\word!" in body and "mode=ap" in body and "autoconnect=false" in body
@@ -410,7 +457,7 @@ def test_rollback_restores_old_and_deletes_pending(on_hotspot):
     run(env, "wifi-apply", input=f"New\n{NEWPW}\n")
     assert run(env, "wifi-rollback").returncode == 0
     assert active(env) == HOT and PENDING not in os.listdir(env["d"] / "p")
-    assert not (env["tmp"] / "nm" / f"{PENDING}.nmconnection").exists()
+    assert keyfiles(env, PENDING) == []
     assert not (env["state"] / "wifi-change-pending").exists()
 
 
@@ -492,6 +539,135 @@ def test_boot_dev_undoes_previous_product(env):
     run(env, "boot")
     assert active(env) == HOME and ac(env, HOT) == "no" and ac(env, HOME) == "yes" and ac(env, OTHER) == "yes"
 
+
+
+def _counter(env, kind, n, name=HOME):
+    (env["d"] / kind).mkdir(exist_ok=True)
+    (env["d"] / kind / name).write_text(f"{n}\n")
+
+
+def _dev_boot(env, wait="10"):
+    (env["boot"] / "memoryframe-mode.txt").write_text("dev\n")
+    (env["d"] / "active").write_text("\n")
+    after_product(env)
+    env["env"]["MEMORYFRAME_DEV_WAIT"] = wait
+    return env
+
+
+def _ends_dev(env, r, on=HOME):
+    assert r.returncode == 0 and active(env) == on, r.stderr
+    s = state(env)
+    assert s["mode"] == "dev" and s["requested"] == "dev" and s["dev_fallback"] is False
+    assert ac(env, HOT) == "no"
+    assert (env["boot"] / "memoryframe-mode.txt").read_text() == "dev\n"
+
+
+def ups(env, name=HOME):
+    return [l for l in (env["d"] / "log").read_text().splitlines() if l.endswith("connection up " + name)]
+
+
+def test_boot_dev_fail_then_succeed(env):   # #135: first try fails, the retry joins
+    _dev_boot(env)
+    _counter(env, "failn", 1)
+    r = run(env, "boot")
+    _ends_dev(env, r)
+    assert len(ups(env)) == 2
+
+
+def test_boot_dev_waits_for_device_not_ready(env):   # #135: "device not ready" twice, then ready
+    _dev_boot(env)
+    _counter(env, "failn", 2)
+    r = run(env, "boot")
+    _ends_dev(env, r)
+    assert "not ready" in r.stderr and len(ups(env)) == 3
+    assert any("device wifi rescan ifname wlan0" in l for l in (env["d"] / "log").read_text().splitlines())
+
+
+def test_boot_dev_try_blocks_then_succeeds_with_capped_wait(env):   # #135: --wait is capped per try
+    _dev_boot(env)
+    env["env"]["MEMORYFRAME_DEV_TRY_WAIT"] = "7"
+    _counter(env, "blockn", 1)
+    r = run(env, "boot")
+    _ends_dev(env, r)
+    assert all(l.startswith("nmcli --wait 7 ") for l in ups(env)) and len(ups(env)) == 2
+
+
+@pytest.mark.parametrize("already", [HOME, OTHER])   # same network as MemoryFrame-home, or another one
+def test_boot_dev_keeps_any_client_wifi_already_up(env, already):   # #135 H2, owner decision
+    _dev_boot(env)
+    profile(env["d"], "MemoryFrame-home", ssid="Oversclan_5G", ac="no")   # #68 phone profile
+    (env["d"] / "active").write_text(already + "\n")                    # NM autoconnected it first
+    r = run(env, "boot")
+    _ends_dev(env, r, on=already)
+    assert ups(env, "MemoryFrame-home") == [] and ups(env, HOT) == []
+    assert "keeping it" in r.stderr
+    assert foreign_modifies(env) == []
+
+
+def test_boot_dev_wired_or_hotspot_active_is_not_dev(env):   # only a Wi-Fi CLIENT profile counts
+    _dev_boot(env)
+    (env["d"] / "active").write_text(HOT + "\n")
+    r = run(env, "boot")
+    _ends_dev(env, r, on=HOME)
+
+
+def test_boot_dev_never_ready_falls_back_bounded(env):   # #135: bounded, mode file untouched
+    _dev_boot(env, wait="2")
+    _counter(env, "failn", 1000)
+    r = run(env, "boot")
+    assert r.returncode == 0 and active(env) == HOT
+    s = state(env)
+    assert s["mode"] == "product" and s["requested"] == "dev" and s["dev_fallback"] is True
+    assert (env["boot"] / "memoryframe-mode.txt").read_text() == "dev\n"
+    assert 2 <= len(ups(env)) < 100 and "did not connect" in r.stderr
+
+
+def test_dev_temp_single_try(env):   # #135: dev-temp unchanged (unit TimeoutStartSec=90)
+    (env["d"] / "active").write_text(HOT + "\n")
+    _counter(env, "failn", 1)
+    env["env"]["MEMORYFRAME_DEV_TEMP_WAIT"] = "10"
+    r = run(env, "dev-temp")
+    assert r.returncode == 1 and active(env) == HOT
+    assert len(ups(env)) == 1 and ups(env)[0].startswith("nmcli --wait 10 ")
+    assert not (env["boot"] / "memoryframe-mode.txt").exists()
+
+
+def test_boot_retry_fits_unit_timeout():   # #135: worst case computed from the script's own constants
+    import re
+    src = SCRIPT.read_text()
+    unit = (ROOT / "deploy" / "memoryframe-netmode.service").read_text()
+
+    def num(pattern, text=src):
+        m = re.search(pattern, text)
+        assert m, pattern
+        return int(m.group(1))
+
+    dev_wait = num(r'DEV_WAIT="\$\{MEMORYFRAME_DEV_WAIT:-(\d+)\}"')
+    try_wait = num(r'DEV_TRY_WAIT="\$\{MEMORYFRAME_DEV_TRY_WAIT:-(\d+)\}"')
+    retry_sleep = num(r'DEV_RETRY_SLEEP="\$\{MEMORYFRAME_DEV_RETRY_SLEEP:-(\d+)\}"')
+    min_try = num(r'\[ "\$wait" -ge (\d+) \] \|\| wait=\1')            # last try waits at least this
+    restore_wait = num(r'(?m)^RESTORE_WAIT=(\d+)')
+    ap = src[src.index("apply_product() {"):src.index("left_by_product() {")]
+    hotspot_tries = len(re.search(r'for try in ([\d ]+); do', ap).group(1).split())
+    hotspot_wait = num(r'--wait (\d+) connection up "\$HOTSPOT_CON"', ap)
+    assert '--wait "$RESTORE_WAIT" connection up "$prev"' in ap and '--wait "$DEV_WAIT" connection up "$prev"' not in ap
+    timeout = num(r'TimeoutStartSec=(\d+)', unit)
+    assert (dev_wait, timeout) == (45, 150)                     # owner: 45 s before the hotspot; unit unchanged
+    assert try_wait <= dev_wait and min_try <= try_wait
+    # dev: budget + last try (>= min_try) + one retry sleep; hotspot tries; restore of the previous link
+    worst = dev_wait + min_try + retry_sleep + hotspot_tries * hotspot_wait + restore_wait
+    assert worst < timeout, worst
+    assert "After=sys-subsystem-net-devices-wlan0.device" in unit
+    assert "Wants=sys-subsystem" not in unit and "Requires=sys-subsystem" not in unit
+
+
+def test_hotspot_failure_restore_wait_is_capped(env):   # #135 review M2
+    (env["boot"] / "memoryframe-mode.txt").write_text("product\n")
+    (env["d"] / "fail").write_text(HOT + "\n")                # both hotspot tries fail, HOME was active
+    env["env"]["MEMORYFRAME_DEV_WAIT"] = "45"
+    r = run(env, "boot")
+    assert r.returncode == 0 and state(env)["hotspot_error"] is True
+    assert f"nmcli --wait 15 connection up {HOME}" in (env["d"] / "log").read_text().splitlines()
 
 
 # ---------- Tester #40 (2): never modify a non-MemoryFrame profile ----------

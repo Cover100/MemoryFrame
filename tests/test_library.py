@@ -182,10 +182,12 @@ def test_delete_db_failure_keeps_files_and_row(paired, item, mf_app, monkeypatch
             return getattr(self._c, k)
 
     monkeypatch.setattr(mfdb, "connect", lambda p: FailingDelete(real_connect(p)))
+    mfdb.dispose_worker_connection()  # #132: reuse would keep the pre-patch connection
     mf_app.config["PROPAGATE_EXCEPTIONS"] = False
     r = paired.delete(f"/api/v1/media/{item['id']}", environ_base=PHONE)
     assert r.status_code == 500
     monkeypatch.setattr(mfdb, "connect", real_connect)
+    mfdb.dispose_worker_connection()
     assert all(os.path.exists(f) for f in files)                 # restored from the trash
     assert stored_name(mf_app, item["id"]) == name               # row kept
     assert os.listdir(os.path.join(d, "tmp", "trash")) == []
@@ -251,9 +253,11 @@ def test_crash_after_move_before_db_delete_restores_on_restart(paired, item, mf_
             return getattr(self._c, k)
 
     monkeypatch.setattr(mfdb, "connect", lambda p: CrashOnDelete(real_connect(p)))
+    mfdb.dispose_worker_connection()  # #132: reuse would keep the pre-patch connection
     with pytest.raises(Crash):
         paired.delete(f"/api/v1/media/{item['id']}", environ_base=PHONE)
     monkeypatch.setattr(mfdb, "connect", real_connect)
+    mfdb.dispose_worker_connection()
     trash = os.path.join(mf_app.config["DATA_DIR"], "tmp", "trash")
     assert sorted(f[:2] for f in os.listdir(trash)) == ["0-", "1-", "2-"]
     assert not any(os.path.exists(f) for f in _files(mf_app, name))      # mid-delete state

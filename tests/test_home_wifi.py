@@ -105,6 +105,19 @@ def test_status_never_has_a_password(paired, hw, tmp_path):
     assert j == {"state": "saved", "reason": "ok", "ts": 5, "ssid": "Home Net"}
 
 
+def test_status_passes_save_failed_reason(paired, hw, tmp_path):   # #137
+    (tmp_path / "home-wifi.json").write_text(json.dumps({"state": "failed", "reason": "save_failed", "ts": 6,
+                                                         "ssid_hex": "Home Net".encode().hex()}))
+    j = paired.get("/admin/home-wifi/status", environ_base=PHONE).get_json()
+    assert j["state"] == "failed" and j["reason"] == "save_failed"
+
+
+def test_js_labels_save_failed():   # #137: "Couldn't save", not "Couldn't connect" (the network worked)
+    js = (ROOT / "static/homewifi.js").read_text()
+    assert 's.reason === "save_failed"' in js and '"Couldn\'t save"' in js
+    assert "save_failed: \"The network worked, but the frame couldn't save it. Your saved network did not change.\"" in js
+
+
 def test_sentinel_never_logged_or_stored(paired, hw, mf_app, caplog, tmp_path):
     with caplog.at_level(logging.DEBUG):
         r = post(paired, GOOD)
@@ -219,6 +232,7 @@ def test_dev_prefers_memoryframe_home_and_boot_recovers(env):
     profile(env["d"], "MemoryFrame-home-old", ssid="Old")
     profile(env["d"], "MemoryFrame-home-pending", ssid="Untested")
     (env["boot"] / "memoryframe-mode.txt").write_text("dev\n")
+    (env["d"] / "active").write_text("\n")   # #135: an already-joined saved Wi-Fi would be kept instead
     r = run(env, "boot")
     assert r.returncode == 0, r.stderr
     p = env["d"] / "p"

@@ -48,11 +48,16 @@ def test_old_page_stylesheets_removed():
 
 def test_phone_css_is_lean_and_flat():
     flat = re.sub(r"/\*.*?\*/", "", CSS, flags=re.S)
+    # #141: the one shadow allowed is Wren's flat white inner line behind inset focus rings, light scheme only
+    light_focus = "box-shadow: inset 0 0 0 5px #fff;"
+    assert flat.count("box-shadow") == 1 and flat.count(light_focus) == 1
+    assert flat.index(light_focus) > flat.index("@media (prefers-color-scheme: light)")
+    flat = flat.replace(light_focus, "")
     for bad in ("box-shadow", "gradient", "filter", "backdrop", "@import", "@font-face", "url(", "@keyframes", "animation"):
         assert bad not in flat, bad
     assert len(CSS) < 26 * 1024                                                # #80 library grew it past 24 KB
-    assert "var(--mf-paper)" in (ROOT / "static" / "tokens.css").read_text()
-    assert ".mf-phone .bar { background: var(--mf-forest-900)" in CSS          # forest header band
+    assert "var(--mfp-bg)" in (ROOT / "static" / "tokens.css").read_text()   # #141: phone tokens
+    assert ".mf-phone .bar { background: var(--mfp-header)" in CSS           # forest header band (dark), white (light)
     # transitions only on transform (Shuffle knob, library tile inset) and opacity (#80 deleted-tile fade)
     for m in re.finditer(r"transition:\s*([^;]+);", flat):
         assert m.group(1).split()[0] in ("transform", "opacity"), m.group(0)
@@ -260,7 +265,7 @@ def test_phone_pages_use_the_frame_font_css_with_block(client):
 def test_phone_font_family_and_buttons_inherit():
     tokens = (ROOT / "static" / "tokens.css").read_text()
     assert '--mf-font-phone: "MF Frame", "Atkinson Hyperlegible", system-ui, -apple-system,' in tokens   # system fallback
-    assert re.search(r"\.mf-phone \{[^}]*background: var\(--mf-paper\); color: var\(--mf-text\); font-family: var\(--mf-font-phone\); \}", tokens)
+    assert re.search(r"\.mf-phone \{[^}]*background: var\(--mfp-bg\); color: var\(--mfp-text\); font-family: var\(--mf-font-phone\); \}", tokens)
     assert re.search(r"\.mf-phone button \{ font: inherit;", tokens)
     assert re.search(r"\.mf-phone \.btn, \.mf-phone button \{[^}]*font: inherit;", CSS)
     assert "frame-fonts.css" not in (ROOT / "templates" / "settings.html").read_text()
@@ -604,11 +609,14 @@ def test_wifi_sheet_warning_keeps_wi_fi_whole(paired, monkeypatch, tmp_path):
     assert sheet.count('<span class="nw">Wi-Fi</span>') == 4 and "Wi-Fi" not in sheet.replace('<span class="nw">Wi-Fi</span>', ""), sheet
 
 
-# ---------------- PHONE-DARK.md (6621607): dark frame theme on every phone page ----------------
+# ---------------- PHONE-DARK.md (6621607) dark theme; #141: light only when the phone asks for it ----------------
 
 DARK_VIEWS = ["admin/", "admin/library", "admin/upload", "admin/settings", "admin/wifi/", "pair", "admin/nope"]
 OLD_LIGHT = {"rgb(255, 255, 255)", "rgb(246, 241, 233)", "rgb(227, 238, 230)", "rgb(248, 228, 225)", "rgb(251, 241, 220)",
              "rgb(226, 216, 202)"}
+# #141: in the light scheme the reverse holds: no dark phone surface is left, except media overlays (they sit on photos)
+OLD_DARK = {"rgb(14, 19, 17)", "rgb(22, 38, 29)", "rgb(36, 56, 44)", "rgb(58, 44, 34)", "rgb(58, 31, 27)", "rgb(47, 74, 58)"}
+MEDIA = ".tile .badge, .tile .state, .tile .acts, .tprev, .lib .vx, .hero"   # .hero draws the frame itself
 CONTRAST_JS = """JSON.stringify((()=>{
   const lum = c => { const v = c.match(/[\\d.]+/g).slice(0,3).map(Number).map(x=>{x/=255; return x<=0.03928?x/12.92:Math.pow((x+0.055)/1.055,2.4);});
                      return 0.2126*v[0]+0.7152*v[1]+0.0722*v[2]; };
@@ -627,10 +635,18 @@ CONTRAST_JS = """JSON.stringify((()=>{
   return out; })())"""
 
 
+def _scheme(page, scheme):
+    page.call("Emulation.setEmulatedMedia", {"features": [{"name": "prefers-color-scheme", "value": scheme}]})
+
+
 @pytest.mark.skipif(BROWSER is None, reason="no Chromium/Chrome installed")
-def test_dark_theme_every_page_no_light_surfaces_and_text_aa(page, server, mf_app, lib, monkeypatch, tmp_path):
-    """Checklist 1, 3, 6, 10: no paper/white surfaces, every visible text >= 4.5:1 (AA) on its real background."""
+@pytest.mark.parametrize("scheme", ["dark", "light"])
+def test_dark_theme_every_page_no_light_surfaces_and_text_aa(page, server, mf_app, lib, monkeypatch, tmp_path, scheme):
+    """Checklist 1, 3, 6, 10 (PHONE-DARK.md), adapted for #141: with the phone in DARK mode there is still no
+    paper/white surface; in LIGHT mode no dark phone surface is left (media overlays excepted). Either way every
+    visible text is >= 4.5:1 (AA) on its real background."""
     import json
+    _scheme(page, scheme)
     monkeypatch.setenv("MEMORYFRAME_NETMODE_STATE", str(tmp_path / "nm.json"))
     (tmp_path / "nm.json").write_text('{"mode": "product"}')
     lib.add("c.jpg", PNG)
@@ -650,10 +666,15 @@ def test_dark_theme_every_page_no_light_surfaces_and_text_aa(page, server, mf_ap
                 page.pump(0.2)
             light = json.loads(evaluate(page, """JSON.stringify([...document.querySelectorAll('body, body *')].filter(e=>e.offsetParent || e===document.body)
                 .map(e=>[e.tagName+'.'+e.className, getComputedStyle(e).backgroundColor]))"""))
-            bad = [x for x in light if x[1] in OLD_LIGHT]
-            assert bad == [], (path, st, bad[:5])
+            if scheme == "dark":
+                bad = [x for x in light if x[1] in OLD_LIGHT]
+            else:
+                media = set(json.loads(evaluate(page, f"""JSON.stringify([...document.querySelectorAll('body *')]
+                    .filter(e=>e.closest('{MEDIA}')).map(e=>e.tagName+'.'+e.className))""")))
+                bad = [x for x in light if x[1] in OLD_DARK and x[0] not in media]
+            assert bad == [], (scheme, path, st, bad[:5])
             low = json.loads(evaluate(page, CONTRAST_JS))
-            assert low == [], (path, st, low[:6])
+            assert low == [], (scheme, path, st, low[:6])
     assert page.exceptions() == []
 
 
@@ -723,23 +744,25 @@ def test_keyboard_focus_rings_are_brass_on_dark(page, server, mf_app, lib, path,
 
 
 def test_dark_tokens_and_outline_rules_in_css():
-    """Checklist 3, 4, 11: the PHONE-DARK.md mapping, oat 1.5px outlines, --mf-green only as a fill, flat CSS."""
+    """Checklist 3, 4, 11: the PHONE-DARK.md mapping (now the dark --mfp-* values, #141), oat 1.5px outlines,
+    the accent only as a fill, flat CSS."""
     tokens = (ROOT / "static" / "tokens.css").read_text()
+    frame = dict(re.findall(r"(--mf-[\w-]+):\s*(#[0-9A-Fa-f]{6})", tokens[:tokens.index("/* ---- Phone")]))
     block = tokens[tokens.index(".mf-phone {\n"):]
     block = block[:block.index("}")]
-    for k, v in (("paper", "ink"), ("card", "forest-800"), ("line", "forest-700"), ("text", "linen"), ("text-2", "oat"),
-                 ("green", "forest-600"), ("green-50", "forest-900"), ("accent-text", "leaf"), ("red", "brick"),
-                 ("red-text", "brick-text"), ("outline", "oat"), ("focus", "brass")):
-        assert re.search(rf"--mf-{k}: var\(--mf-{v}\);", block), k
-    assert "--mf-red-50: #3A1F1B;" in block and "--mf-scrim-phone: rgba(0, 0, 0, .6);" in block
+    for k, v in (("bg", "ink"), ("surface", "forest-800"), ("line", "forest-700"), ("text", "linen"), ("text-2", "oat"),
+                 ("accent", "forest-600"), ("success-bg", "forest-900"), ("accent-text", "leaf"), ("danger", "brick"),
+                 ("danger-text", "brick-text"), ("outline", "oat"), ("focus", "brass")):
+        assert re.search(rf"--mfp-{k}: {frame['--mf-' + v]};", block), k
+    assert "--mfp-danger-bg: #3A1F1B;" in block and "--mfp-scrim: rgba(0, 0, 0, .6);" in block
     flat = re.sub(r"/\*.*?\*/", "", CSS + tokens[tokens.index("/* ---- Phone"):], flags=re.S)
-    assert not re.search(r"(?<![-\w])color: var\(--mf-(green|red)\)", flat)          # fills only
-    assert not re.search(r"outline[^;]*var\(--mf-green\)", flat)
+    assert not re.search(r"(?<![-\w])color: var\(--mfp-(accent|danger)\)", flat)          # fills only
+    assert not re.search(r"outline[^;]*var\(--mfp-accent\)", flat)
     for sel in (r"\.mf-phone \.btn-neutral, \.mf-phone button\.secondary", r"\.mf-phone \.msgKeep", r"\.mf-phone \.field",
                 r"\.mf-phone \.code", r"\.mf-phone #frameMessage", r"\.mf-phone \.btn-onbar"):
-        assert re.search(sel + r" \{[^}]*border: 1\.5px solid var\(--mf-outline\)", flat), sel
-    # white only as text on fills, plus the Library select tick (a ring + check that must read on any photo, per 09-LIBRARY.md)
-    assert "#fff;" not in re.sub(r"color: #fff;|border: (2px )?solid #fff;", "", flat)
+        assert re.search(sel + r" \{[^}]*border: 1\.5px solid var\(--mfp-outline\)", flat), sel
+    # white only as the Library select ring (must read on any photo, per 09-LIBRARY.md) and the light inset-focus line
+    assert "#fff;" not in re.sub(r"border: 2px solid #fff;|box-shadow: inset 0 0 0 5px #fff;", "", flat)
 
 
 def test_no_non_breaking_hyphen_and_every_visible_wi_fi_is_wrapped():
@@ -797,7 +820,8 @@ def test_phone_wifi_is_empty_when_unpaired(client, mf_app):
 def test_home_storage_meter_is_8px_on_a_forest_700_track():
     flat = re.sub(r"/\*.*?\*/", "", CSS, flags=re.S)
     assert not re.search(r"\.on-dark \.track \{[^}]*(height|background)", flat)
-    assert "--mf-line: var(--mf-forest-700)" in (ROOT / "static" / "tokens.css").read_text()
+    assert "--mfp-track: #2F4A3A;" in (ROOT / "static" / "tokens.css").read_text()   # forest-700 (dark)
+    assert re.search(r"\.mf-phone \.track \{[^}]*background: var\(--mfp-track\)", flat)
 
 
 PARTIALS |= {"_upload_button.html"}                # the shared Upload button macro (Photos and home)

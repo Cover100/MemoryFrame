@@ -83,12 +83,12 @@ def test_site_only_caption_never_leaves_code_alone(page, server, mf_app, net, mo
 def test_n2_last_hard_coded_colours_are_tokens():
     flat = _flat(PHONE_CSS)
     assert "#2a2a2a" not in flat.lower() and "rgba(" not in flat and "rgb(" not in flat
-    assert "border: 3px solid var(--mf-forest-800)" in flat
-    assert "background: var(--mf-scrim-phone)" in flat
-    assert len(re.findall(r"--mf-scrim-phone:", TOKENS)) == 1             # #92: defined once, in the dark .mf-phone block
-    assert re.search(r"\.mf-phone \{[^}]*--mf-scrim-phone:\s*rgba\(0, 0, 0, \.6\);", TOKENS)
+    assert "border: 3px solid var(--mfp-illo-rim)" in flat                # #141: --mf-forest-800 via the phone token
+    assert "background: var(--mfp-scrim)" in flat
+    assert len(re.findall(r"--mfp-scrim:", TOKENS)) == 2              # #92/#141: once in .mf-phone (dark), once in light
+    assert re.search(r"\.mf-phone \{[^}]*--mfp-scrim:\s*rgba\(0, 0, 0, \.6\);", TOKENS)
     others = set(re.findall(r"#[0-9a-fA-F]{3,6}\b", flat))
-    assert others <= {"#fff"}, others                              # white on fills only (matches tokens.css)
+    assert others <= {"#fff"}, others                              # white: photo select ring, light inset-focus line
 
 
 def test_n4_per_tile_delete_styling_is_gone_with_the_old_library():
@@ -100,7 +100,7 @@ def test_n4_per_tile_delete_styling_is_gone_with_the_old_library():
     for t in ("library.html", "admin_home.html"):
         assert 'class="actions"' not in (ROOT / "templates" / t).read_text()
     # the selection UI separates the destructive control from Cancel: outlined/transparent vs brick fill
-    assert re.search(r"\.mf-phone \.btn-danger \{ background: var\(--mf-red\)", flat)
+    assert re.search(r"\.mf-phone \.btn-danger \{ background: var\(--mfp-danger\)", flat)
     assert ".mf-phone .toolbar .btn-neutral { background: transparent; }" in flat
 
 

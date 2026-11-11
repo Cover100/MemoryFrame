@@ -150,40 +150,56 @@ def _phone_pages(client, paired):
     return pages
 
 
-def test_every_phone_page_declares_dark_scheme_and_theme_colour(client, paired):
+THEME_METAS = ('<meta name="color-scheme" content="light dark">',
+               '<meta name="theme-color" media="(prefers-color-scheme: light)" content="#FFFFFF">',
+               '<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#16261D">')
+
+
+def test_every_phone_page_follows_the_os_scheme_and_theme_colour(client, paired):
+    """#141 (was: declares dark): both schemes declared, one theme-color per scheme, no forced dark."""
     pages = _phone_pages(client, paired)
     assert len(pages) >= 6
     for r in pages:
         html = r.get_data(as_text=True)
         assert 'class="mf-phone"' in html, r.request.path
-        assert '<meta name="color-scheme" content="dark">' in html, r.request.path
-        assert '<meta name="supported-color-schemes" content="dark">' in html, r.request.path
-        assert '<meta name="theme-color" content="#16261D">' in html, r.request.path
+        for meta in THEME_METAS:
+            assert html.count(meta) == 1, (r.request.path, meta)
+        assert html.count('name="theme-color"') == 2 and 'content="dark"' not in html, r.request.path
+        assert "supported-color-schemes" not in html and "only dark" not in html, r.request.path
 
 
-def test_unpaired_phone_pages_declare_dark_scheme(client):
+def test_unpaired_phone_pages_follow_the_os_scheme(client):
     lan = {"REMOTE_ADDR": "10.42.0.23"}
     for u in ("/pair", "/admin/nope", "/pair/nope"):
         html = client.get(u, environ_base=lan).get_data(as_text=True)
-        assert 'class="mf-phone"' in html and '<meta name="color-scheme" content="dark">' in html, u
+        assert 'class="mf-phone"' in html and all(m in html for m in THEME_METAS), u
     bad = client.post("/pair", data={"code": "x"}, environ_base=lan)   # the pairing error page
     assert 'class="mf-phone"' in bad.get_data(as_text=True) and bad.status_code in (400, 429)
 
 
 def test_theme_colour_is_the_header_token():
+    """#141: each scheme's theme-color is that scheme's --mfp-header (the bar), so the browser chrome joins the bar."""
     css = (STATIC / "tokens.css").read_text()
-    forest900 = re.search(r"--mf-forest-900:\s*(#[0-9A-Fa-f]{6})", css).group(1).upper()
+    flat = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+    light = flat[flat.index("@media (prefers-color-scheme: light)"):]
+    dark_hdr = re.search(r"\.mf-phone \{[^}]*--mfp-header:\s*(#[0-9A-Fa-f]{6})", css).group(1).upper()
+    light_hdr = re.search(r"--mfp-header:\s*(#[0-9A-Fa-f]{6})", light).group(1).upper()
+    assert dark_hdr == re.search(r"--mf-forest-900:\s*(#[0-9A-Fa-f]{6})", css).group(1).upper()
     tmpl = (STATIC.parent / "templates" / "_phone.html").read_text()
-    assert re.search(r'name="theme-color" content="%s"' % forest900, tmpl)
+    assert re.search(r'name="theme-color" media="\(prefers-color-scheme: dark\)" content="%s"' % dark_hdr, tmpl)
+    assert re.search(r'name="theme-color" media="\(prefers-color-scheme: light\)" content="%s"' % light_hdr, tmpl)
     phone = (STATIC / "phone.css").read_text()
-    assert re.search(r"\.mf-phone \.bar \{[^}]*background: var\(--mf-forest-900\)", phone)
+    assert re.search(r"\.mf-phone \.bar \{[^}]*background: var\(--mfp-header\)", phone)
 
 
-def test_phone_css_root_is_dark_and_painted():
+def test_phone_css_root_follows_the_scheme_and_is_painted():
+    """#141 (was: only dark): both schemes, and <html> painted with the scheme's page colour (first paint, overscroll)."""
     phone = (STATIC / "phone.css").read_text()
     root = re.search(r"(?m)^:root \{([^}]*)\}", phone).group(1)
-    assert "color-scheme: dark" in root
-    assert "background-color: var(--mf-ink)" in root
+    assert "color-scheme: light dark;" in root and "only" not in root
+    assert "background-color: var(--mfp-bg)" in root
+    assert re.search(r"(?m)^:root \{ --mfp-bg: #0E1311; \}", TOKENS)                      # dark default
+    assert re.search(r"prefers-color-scheme: light\) \{\n  :root \{ --mfp-bg: #F6F1E9; \}", TOKENS)
     assert "style=" not in (STATIC.parent / "templates" / "_phone.html").read_text()   # CSP: no inline style
 
 

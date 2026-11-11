@@ -318,9 +318,9 @@ body.mf-phone.sheet-open { overflow: hidden; }   /* polish (Wren N5): the page b
 /* 08 Can't reach the frame */
 .mf-phone .big-ico { background: var(--mfp-danger-bg); color: var(--mfp-danger-text); }
 
-/* #141 (Wren): light inset rings get a white inner line (gold is 1.4:1 on green). Dark unchanged. */
+/* #141 (Wren): light inset rings get a white inner line (gold is 1.4:1 on green); on photos, an img outline. */
 @media (prefers-color-scheme: light) {
-  .mf-phone .bar a:focus-visible, .mf-phone .grid a:focus-visible, .mf-phone .tile:focus-visible,
-  .mf-phone .seg button:focus-visible, .mf-phone .tile .acts button:focus-visible, .mf-phone .lib .vx:focus-visible,
-  .mf-phone .tplay:focus-visible, .mf-phone .trim .bar .back:focus-visible { box-shadow: inset 0 0 0 5px #fff; }
+  .mf-phone :is(.bar a, .grid a, .tile, .seg button, .tile .acts button, .lib .vx, .tplay, .trim .bar .back):focus-visible {
+    box-shadow: inset 0 0 0 5px #fff; }
+  .mf-phone :is(.grid a, .tile):focus-visible img { outline: 2px solid var(--mfp-on-accent); outline-offset: -5px; }
 }

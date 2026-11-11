@@ -152,9 +152,35 @@ def test_gold_is_never_text_colour():
 def test_light_inset_focus_rings_get_a_white_inner_line():
     phone = _FLAT((STATIC / "phone.css").read_text())
     light = phone[phone.index("@media (prefers-color-scheme: light)"):]
-    for sel in (".bar a", ".grid a", ".tile", ".seg button", ".tile .acts button", ".lib .vx", ".tplay", ".trim .bar .back"):
-        assert f".mf-phone {sel}:focus-visible" in light, sel
-    assert "box-shadow: inset 0 0 0 5px #fff;" in light
+    rule = re.search(r"\.mf-phone :is\(([^)]*)\):focus-visible \{\s*box-shadow: inset 0 0 0 5px #fff; \}", light)
+    assert rule, light
+    assert [x.strip() for x in rule.group(1).split(",")] == [
+        ".bar a", ".grid a", ".tile", ".seg button", ".tile .acts button", ".lib .vx", ".tplay", ".trim .bar .back"]
+    # a photo <img> paints over an inset shadow, so on photo tiles the white line is an outline on the img itself
+    assert ".mf-phone :is(.grid a, .tile):focus-visible img { outline: 2px solid var(--mfp-on-accent); outline-offset: -5px; }" in light
+    assert "box-shadow" not in phone[:phone.index("@media (prefers-color-scheme: light)")]   # dark rings unchanged
+
+
+@pytest.mark.skipif(BROWSER is None, reason="no Chromium/Chrome installed")
+def test_light_focus_on_a_photo_tile_shows_gold_ring_and_white_inner_line(page, server, mf_app, lib):
+    """#141: Tab onto a Library photo tile in light: gold 3px ring at the edge, then a white line on the photo."""
+    import base64, io
+    from PIL import Image
+    lib.add("c.jpg", PNG)
+    _scheme(page, "light")
+    _phone(page, server, mf_app, "admin/library")
+    js = "(()=>{const t=document.querySelector('.lib .tile'); return [...document.querySelectorAll('a,button,input,[tabindex]')].filter(e=>!e.disabled && e.offsetParent).indexOf(t)+1;})()"
+    for _ in range(evaluate(page, js)):
+        for kind in ("keyDown", "keyUp"):
+            page.call("Input.dispatchKeyEvent", {"type": kind, "key": "Tab", "code": "Tab", "windowsVirtualKeyCode": 9})
+    page.pump(0.3)
+    assert evaluate(page, "document.activeElement === document.querySelector('.lib .tile') && document.activeElement.matches(':focus-visible')")
+    r = json.loads(evaluate(page, "JSON.stringify(document.querySelector('.lib .tile').getBoundingClientRect())"))
+    shot = page.call("Page.captureScreenshot", {"format": "png"})["result"]["data"]
+    im = Image.open(io.BytesIO(base64.b64decode(shot))).convert("RGB")
+    x, y = int(r["x"] + r["width"] / 2), int(r["y"])
+    assert im.getpixel((x, y + 1)) == (138, 106, 30)          # gold ring (#8A6A1E), 0-3 px inside the tile
+    assert im.getpixel((x, y + 4)) == (255, 255, 255)         # white inner line, 3-5 px, on top of the photo
 
 
 # ---------------- headless Chrome: both schemes on real pages ----------------

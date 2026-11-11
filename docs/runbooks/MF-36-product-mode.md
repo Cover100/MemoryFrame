@@ -57,8 +57,12 @@ connection, but do it by hand first: the guard only runs when install.sh runs.)
     at the next reboot; the new save writes `MemoryFrame-home.nmconnection` and then persists.
   - #137: after a hotspot name/password change is kept (and at boot, for a frame changed by older code),
     the hotspot profile is moved to its own file `MemoryFrame-hotspot.nmconnection` (root 0600, fsync-ed),
-    with the same UUID and without restarting the hotspot. A hotspot profile from netplan or the OS (e.g. the
-    first one made by `hotspot.sh`) is left as it is. Check: `nmcli -g NAME,UUID,FILENAME connection show`.
+    with the same UUID and without restarting the hotspot. NetworkManager must accept the new file first; if
+    it doesn't, the new file is removed and the hotspot stays in its old file (retried at the next boot). The
+    profile `hotspot.sh` creates (`nmcli connection add con-name MemoryFrame-hotspot`) normally already is
+    `MemoryFrame-hotspot.nmconnection`, so nothing moves; only a hotspot that NetworkManager stores in netplan
+    (or outside `/etc/NetworkManager/system-connections`) is left as it is. Check (read-only):
+    `nmcli -g NAME,UUID,FILENAME connection show` (`GENERAL.FILENAME` is not valid on the Pi's nmcli).
 
 ## Files on the boot partition (`/boot/firmware`, the "bootfs" drive on a PC)
 

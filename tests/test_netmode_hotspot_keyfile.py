@@ -163,22 +163,70 @@ def test_failed_write_keeps_the_hotspot_where_it_was_and_logs_it(on_hotspot):
     assert r.returncode == 0 and active(env) == HOT and backing(env, HOT)[0].name == FINAL, r.stderr
 
 
-def test_nm_not_switching_is_logged_truthfully_and_the_file_is_used_after_reboot(on_hotspot):
+def _assert_kept_on_old_file(env, c):
+    """#143 M1: NM did not take the final file -> final removed, the old file kept, the hotspot still live from it."""
+    assert c.returncode == 0, c.stderr                                    # the change itself is kept
+    assert "NetworkManager did not take MemoryFrame-hotspot.nmconnection; removed it, the hotspot stays in " \
+        "MemoryFrame-AP-pending-" in c.stderr
+    assert "saved in" not in c.stderr and "next boot" not in c.stderr
+    assert not (env["tmp"] / "nm" / FINAL).exists() and list((env["tmp"] / "nm").glob(".*")) == []
+    [old] = keyfiles(env, PENDING)
+    assert old.stat().st_size > 0 and f"id={HOT}\n" in old.read_text()
+    assert p(env, HOT).exists() and (p(env, HOT) / "file").read_text().strip() == str(old) and active(env) == HOT
+    return old
+
+
+def test_nm_not_switching_keeps_the_old_file_and_logs_it(on_hotspot):
     env = on_hotspot
-    run(env, "wifi-apply", input=f"Frame One\n{NEWPW}\n")
-    (env["d"] / "norebind").write_text("")   # an NM that keeps the profile on the old (removed) file
-    c = run(env, "wifi-commit")
-    assert c.returncode == 0
-    assert "NetworkManager has not switched to it; it is used from the next boot" in c.stderr
-    assert "hotspot: saved in MemoryFrame-hotspot.nmconnection\n" not in c.stderr + "\n"
-    final = env["tmp"] / "nm" / FINAL
-    assert final.stat().st_size > 0 and keyfiles(env, PENDING) == []      # on disk once, under the final name
-    assert active(env) == HOT                                              # live profile untouched
+    uuid = re.search(r"^uuid=(.+)$", run(env, "wifi-apply", input=f"Frame One\n{NEWPW}\n").stdout, re.M).group(1)
+    (env["d"] / "norebind").write_text("")   # an NM that loads nothing (the profile stays on its old file)
+    _assert_kept_on_old_file(env, run(env, "wifi-commit"))
     (env["d"] / "norebind").unlink()
-    reboot(env)                                    # the profile pointed at the removed file: gone from memory
-    assert not p(env, HOT).exists()
-    subprocess.run([env["env"]["NMCLI"], "connection", "load", str(final)], env=env["env"], check=True)   # NM start-up scan
-    assert run(env, "boot").returncode == 0 and active(env) == HOT and backing(env, HOT) == [final]
+    reboot(env)
+    assert run(env, "boot").returncode == 0 and active(env) == HOT          # boot finishes the move
+    assert backing(env, HOT)[0].name == FINAL and (p(env, HOT) / "uuid").read_text().strip() == uuid
+
+
+def test_nm_rejecting_the_final_file_never_loses_the_hotspot(on_hotspot):   # #143 M1 (Sage)
+    env = on_hotspot
+    uuid = re.search(r"^uuid=(.+)$", run(env, "wifi-apply", input=f"Frame One\n{NEWPW}\n").stdout, re.M).group(1)
+    (env["d"] / "loadfail").write_text(f"{FINAL} 1\n")                     # NM refuses only the final file, once
+    _assert_kept_on_old_file(env, run(env, "wifi-commit"))
+    assert (p(env, HOT) / "uuid").read_text().strip() == uuid and state(env)["hotspot_uuid"] == uuid
+    reboot(env)                                                             # nothing was lost on disk either
+    r = run(env, "boot")
+    assert r.returncode == 0 and active(env) == HOT, r.stderr
+    assert backing(env, HOT)[0].name == FINAL and (p(env, HOT) / "uuid").read_text().strip() == uuid
+
+
+def test_nmcli_without_filename_column_still_moves_and_verifies(on_hotspot):   # #135: Pi nmcli (NM 1.52.1)
+    env = on_hotspot
+    (env["d"] / "nofilename").write_text("")
+    uuid, c, _ = change(env)
+    [kf] = backing(env, HOT)
+    assert kf.name == FINAL and f"uuid={uuid}\n" in kf.read_text() and keyfiles(env, PENDING) == []
+    assert "hotspot: saved in MemoryFrame-hotspot.nmconnection" in c.stderr and active(env) == HOT
+    assert (p(env, HOT) / "file").read_text().strip() == str(kf)
+    reboot(env)
+    assert run(env, "boot").returncode == 0 and active(env) == HOT and (p(env, HOT) / "uuid").read_text().strip() == uuid
+
+
+def test_nmcli_without_filename_rejecting_final_keeps_the_old_file(on_hotspot):
+    env = on_hotspot
+    (env["d"] / "nofilename").write_text("")
+    run(env, "wifi-apply", input=f"Frame One\n{NEWPW}\n")
+    (env["d"] / "loadfail").write_text(f"{FINAL} 1\n")
+    _assert_kept_on_old_file(env, run(env, "wifi-commit"))
+
+
+def test_leftover_hotspot_temp_is_removed_at_boot(on_hotspot):   # Sage N1: it holds the password
+    env = on_hotspot
+    nm = env["tmp"] / "nm"
+    nm.mkdir(exist_ok=True)
+    stray = nm / ".MemoryFrame-hotspot.Zz9Yy8"
+    stray.write_text(f"[connection]\nid={HOT}\n[wifi-security]\npsk=secret\n")
+    assert run(env, "boot").returncode == 0
+    assert not stray.exists()
 
 
 def test_final_file_of_another_profile_is_never_overwritten(on_hotspot):
@@ -197,4 +245,7 @@ def test_save_hotspot_never_restarts_waits_or_deletes():   # boot budget and the
     for bad in ("--wait", "sleep", "connection up", "connection down", "connection delete", "/etc/netplan",
                 "memoryframe-mode", "MODE_FILE", "cmdline"):
         assert bad not in body, bad
-    assert body.count("connection load") == 2
+    # #143 M1: the final file is loaded ALONE and checked before the old file is removed
+    assert 'connection load "$final" "$src"' not in body
+    i_load = body.index('if ! "$NMCLI" connection load "$final" >/dev/null 2>&1 || ! hotspot_saved "$final" "$uuid"; then')
+    assert i_load < body.index('rm -f "$src"; sync_nm_dir') < body.index('"$NMCLI" connection load "$src"')

@@ -36,7 +36,8 @@ if [ "$2 $3" = "connection delete" ] || [ "$3 $4" = "connection show" ] || [ "$1
 fi
 case "$1 $2" in
   "-g NAME") ls "$D/p"; exit 0;;
-  "-g UUID,FILENAME")   # #137: the file backing each profile (empty: none)
+  "-g UUID,FILENAME")   # #137: the file backing each profile (empty: none); some nmcli builds lack FILENAME
+    [ -f "$D/nofilename" ] && { echo "Error: invalid field 'FILENAME'" >&2; exit 2; }
     for q in "$D"/p/*/; do q="${q%/}"; echo "$(cat "$q/uuid" 2>/dev/null || echo "uuid-$(basename "$q")"):$(cat "$q/file" 2>/dev/null)"; done; exit 0;;
   "-g GENERAL.CONNECTION") cat "$D/active"; exit 0;;
 esac
@@ -68,20 +69,26 @@ case "$1 $2" in
     if [ "$4" != connection.id ] && [ -f "$D/p/$3/file" ] && f="$(cat "$D/p/$3/file")" && [ ! -s "$f" ] \
         && [ -f "$D/p/$3/keyfile" ] && [ ! -f "$D/nowrite" ]; then sed "s/^id=.*/id=$3/" "$D/p/$3/keyfile" > "$f"; fi;;
   "connection load")
-    for path in "${@:3}"; do
+    rc=0
+    for path in "${@:3}"; do   # like NM: each path on its own; a failing one does not stop the others
     [ -f "$D/norebind" ] && continue   # #137 test: an NM that ignores the load (profile stays on its old file)
-    if [ ! -e "$path" ]; then   # #137: file gone: its profile goes, unless it was re-bound to another file
-      for q in "$D"/p/*/; do q="${q%/}"; [ "$(cat "$q/file" 2>/dev/null)" = "$path" ] || continue
+    if [ ! -e "$path" ]; then   # #137: file gone: that storage is unloaded; the profile falls back to another
+      for q in "$D"/p/*/; do q="${q%/}"   # file with its uuid still on disk (shadow), else it goes
+        [ -f "$q/shadow" ] && grep -vxF "$path" "$q/shadow" > "$q/shadow.n"; [ -f "$q/shadow.n" ] && mv "$q/shadow.n" "$q/shadow"
+        [ "$(cat "$q/file" 2>/dev/null)" = "$path" ] || continue
+        alt=""; while read -r a; do [ -s "$a" ] && alt="$a"; done < <(cat "$q/shadow" 2>/dev/null)
+        if [ -n "$alt" ]; then echo "$alt" > "$q/file"; continue; fi
         [ "$(cat "$D/active")" = "$(basename "$q")" ] && : > "$D/active"; rm -rf "$q"; done
       continue
     fi
     if [ -f "$D/loadfail" ] && read -r lf_name lf_n < "$D/loadfail" && [ "$(basename "$path")" = "$lf_name" ] \
         && [ "$lf_n" -gt 0 ]; then   # #135 QA: NM refuses this file (N more times)
-      echo "$lf_name $((lf_n - 1))" > "$D/loadfail"; echo "Error: failed to load connection" >&2; exit 4
+      echo "$lf_name $((lf_n - 1))" > "$D/loadfail"; echo "Error: failed to load connection" >&2; rc=4; continue
     fi
     n="$(sed -n 's/^id=//p' "$path")"; u="$(sed -n 's/^uuid=//p' "$path")"
     if [ -n "$u" ] && [ -d "$D/p/$n" ] && [ "$(cat "$D/p/$n/uuid" 2>/dev/null)" = "$u" ]; then
       # #137: same uuid from another file = the SAME profile, now backed by this file (stays active)
+      cat "$D/p/$n/file" >> "$D/p/$n/shadow" 2>/dev/null
       echo "$path" > "$D/p/$n/file"; cp "$path" "$D/p/$n/keyfile"; echo "$path" >> "$D/rebound"; continue
     fi
     # a same-named profile from ANOTHER file stays a separate profile (as in NM), found by uuid only
@@ -93,7 +100,8 @@ case "$1 $2" in
     echo "$path" > "$D/p/$n/file"                        # #135: file-backed (survives reboot() only if it exists)
     u="$(sed -n 's/^uuid=//p' "$path")"; echo "${u:-uuid-new-$RANDOM$RANDOM}" > "$D/p/$n/uuid"
     cp "$path" "$D/p/$n/keyfile"
-    done;;
+    done
+    [ "$rc" = 0 ] || exit "$rc";;
   "connection delete") [ -f "$D/p/$3/file" ] && rm -f "$(cat "$D/p/$3/file")"; rm -rf "$D/p/$3"; [ "$(cat "$D/active")" = "$3" ] && : > "$D/active";;
   "connection up")
     [ -d "$D/p/$3" ] || exit 10

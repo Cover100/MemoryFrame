@@ -1,9 +1,9 @@
 /* Restyle PR C: the phone site (.mf-phone, tokens.css --mfp-*; DIRECTION.md, #70 phone mocks 01-08, 04-settings-v2, 04b).
    One stylesheet for every phone page. Dark (PHONE-DARK.md) or light (#141) + Atkinson (/frame-fonts.css, block); flat colours:
    no shadows, gradients, blur or animations; light DOM. Inline style attributes are blocked by the CSP. */
-/* #141: follows the phone's light/dark setting (--mfp-*). Both schemes declared: no force-darkening (#83);
-   <html> painted with the scheme's page colour for the first paint and overscroll. */
-:root { color-scheme: light dark; background-color: var(--mfp-bg); }
+/* #146 inverted: OS light -> dark scheme, OS dark -> light. color-scheme = scheme shown; light "only": no
+   force-darkening (#83). <html> painted with the page colour for first paint and overscroll. */
+:root { color-scheme: dark; background-color: var(--mfp-bg); }
 .mf-phone, .mf-phone * { box-sizing: border-box; }
 html, body.mf-phone { margin: 0; }
 body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh; -webkit-font-smoothing: antialiased;
@@ -320,7 +320,8 @@ body.mf-phone.sheet-open { overflow: hidden; }   /* polish (Wren N5): the page b
 
 /* #141 (Wren): light inset rings get a white inner line (gold is 1.4:1 on green); on photos the ring is an
    overlay above the img, gold/white/dark (>= 3.8:1 on any photo), keeping select mode's ::before/::after. */
-@media (prefers-color-scheme: light) {
+@media (prefers-color-scheme: dark) {
+  :root { color-scheme: light only; }
   .mf-phone :is(.bar a, .seg button, .tile .acts button, .lib .vx, .tplay, .trim .bar .back):focus-visible {
     box-shadow: inset 0 0 0 5px #fff; }
   .mf-phone .grid a:focus-visible::after, .mf-phone:not(.selecting) .tile:focus-visible::after,

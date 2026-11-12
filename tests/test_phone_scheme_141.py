@@ -1,5 +1,6 @@
-"""#141: the phone follows the phone's own light/dark setting with Wren's "Warm paper" map (light-tokens.md, 11 Nov 2026).
-Dark (the default) must stay exactly the PHONE-DARK.md look; light values live only under prefers-color-scheme: light;
+"""#141: the phone follows the phone's own light/dark setting with Wren's "Warm paper" map (light-tokens.md, 11 Nov 2026),
+INVERTED by #146: a phone set to light shows dark, a phone set to dark shows Warm paper.
+Dark (the default) must stay exactly the PHONE-DARK.md look; light values live only under prefers-color-scheme: dark (#146);
 media overlays stay dark in both; the frame never reads a phone token."""
 import json
 import re
@@ -8,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from test_frontend_browser import BROWSER, evaluate, page, server  # noqa: F401  (fixtures)
-from test_restyle_c_phone import PNG, _phone, _scheme
+from test_restyle_c_phone import OS_PREF, PNG, WARM_PAPER_MEDIA, _phone, _scheme
 
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "static"
@@ -57,7 +58,7 @@ def _defs(block):
 
 
 DARK_DEFS = _defs(_block(_FLAT(TOKENS), ".mf-phone {"))
-LIGHT_MEDIA = _FLAT(TOKENS)[_FLAT(TOKENS).index("@media (prefers-color-scheme: light)"):]
+LIGHT_MEDIA = _FLAT(TOKENS)[_FLAT(TOKENS).index(WARM_PAPER_MEDIA):]
 LIGHT_DEFS = _defs(_block(LIGHT_MEDIA, ".mf-phone {"))
 
 
@@ -78,11 +79,12 @@ def test_light_values_are_wrens_map_and_only_inside_the_light_media_query():
     assert LIGHT_DEFS == LIGHT
     assert set(LIGHT) | SAME_IN_BOTH == set(PREVIOUS) and not set(LIGHT) & SAME_IN_BOTH   # media etc. never switch
     flat = _FLAT(TOKENS)
-    outside = flat[:flat.index("@media (prefers-color-scheme: light)")]
+    outside = flat[:flat.index(WARM_PAPER_MEDIA)]
     for k, v in LIGHT.items():                       # no light-only colour leaks into the dark default
         if v not in PREVIOUS.values():
             assert not re.search(rf"--mfp-[\w-]+:\s*{re.escape(v)};", outside), (k, v)
-    assert flat.count("@media (prefers-color-scheme: light)") == 1
+    assert flat.count(WARM_PAPER_MEDIA) == 1
+    assert "prefers-color-scheme: light" not in flat                 # #146: OS light shows the default (dark)
     for f in PHONE_FILES:                            # phone CSS sets no colour of its own (tokens only)
         css = _FLAT((STATIC / f).read_text())
         assert not re.search(r"rgba?\(|hsla?\(", css), f
@@ -151,7 +153,7 @@ def test_gold_is_never_text_colour():
 
 def test_light_inset_focus_rings_get_a_white_inner_line():
     phone = _FLAT((STATIC / "phone.css").read_text())
-    light = phone[phone.index("@media (prefers-color-scheme: light)"):]
+    light = phone[phone.index(WARM_PAPER_MEDIA):]
     rule = re.search(r"\.mf-phone :is\(([^)]*)\):focus-visible \{\s*box-shadow: inset 0 0 0 5px #fff; \}", light)
     assert rule, light
     assert [x.strip() for x in rule.group(1).split(",")] == [".bar a", ".seg button", ".tile .acts button", ".lib .vx",
@@ -162,7 +164,7 @@ def test_light_inset_focus_rings_get_a_white_inner_line():
                 '.mf-phone.selecting .tile:not([aria-pressed="true"]):focus-visible::before'):
         assert sel in light, sel
     assert "focus-visible img" not in phone                                   # the c8e730c img outline is gone
-    assert "box-shadow" not in phone[:phone.index("@media (prefers-color-scheme: light)")]   # dark rings unchanged
+    assert "box-shadow" not in phone[:phone.index(WARM_PAPER_MEDIA)]   # dark rings unchanged
     assert LIGHT["--mfp-text"] == "#1F2A24"                                    # Wren's dark band
 
 
@@ -291,10 +293,10 @@ def test_browser_dark_and_light_on_every_phone_page(page, server, mf_app, lib, m
         _scheme(page, scheme)
         for path in ("admin/", "admin/library", "admin/upload", "admin/settings", "admin/wifi/", "pair"):
             _phone(page, server, mf_app, path)
-            assert evaluate(page, "matchMedia('(prefers-color-scheme: %s)').matches" % scheme), (scheme, path)
+            assert evaluate(page, "matchMedia('(prefers-color-scheme: %s)').matches" % OS_PREF[scheme]), (scheme, path)
             assert _css(page, "html", "backgroundColor") == bg and _css(page, "body", "backgroundColor") == bg, (scheme, path)
             assert _css(page, ".bar", "backgroundColor") == bar and _css(page, "body", "color") == text, (scheme, path)
-            assert _css(page, "html", "colorScheme") == "light dark", (scheme, path)
+            assert _css(page, "html", "colorScheme") == {"dark": "dark", "light": "light only"}[scheme], (scheme, path)
         seen[scheme] = _vars(page, media)                 # media overlays, mini frame note, pair hero
         assert all(seen[scheme].values()), seen[scheme]
     assert seen["light"] == seen["dark"]

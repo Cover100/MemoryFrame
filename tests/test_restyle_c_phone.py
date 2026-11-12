@@ -64,9 +64,9 @@ def test_phone_css_is_lean_and_flat():
     light_focus = {"box-shadow: inset 0 0 0 5px #fff;": 1,
                    "box-shadow: inset 0 0 0 3px var(--mfp-focus), inset 0 0 0 5px #fff, inset 0 0 0 7px var(--mfp-text);": 2}
     assert flat.count("box-shadow") == 3 and all(flat.count(f) == n for f, n in light_focus.items())
-    light = _block(flat, "@media (prefers-color-scheme: light)")   # the whole block, up to its matching brace
+    light = _block(flat, WARM_PAPER_MEDIA)   # the whole Warm paper block (#146: under OS dark), to its matching brace
     for f, n in light_focus.items():                               # INSIDE the light block, not merely after it opens
-        assert light.count(f) == n, f"not inside the light prefers-color-scheme block: {f}"
+        assert light.count(f) == n, f"not inside the Warm paper (OS dark) block: {f}"
     for f in light_focus:
         flat = flat.replace(f, "")
     for bad in ("box-shadow", "gradient", "filter", "backdrop", "@import", "@font-face", "url(", "@keyframes", "animation"):
@@ -651,8 +651,15 @@ CONTRAST_JS = """JSON.stringify((()=>{
   return out; })())"""
 
 
+# #146: the mapping is INVERTED (owner's request): a phone set to light shows the dark scheme, a phone set to dark shows
+# Warm paper light. Tests name the scheme SHOWN; OS_PREF is the phone setting that shows it.
+OS_PREF = {"dark": "light", "light": "dark"}
+WARM_PAPER_MEDIA = "@media (prefers-color-scheme: dark)"   # the block holding Warm paper light
+
+
 def _scheme(page, scheme):
-    page.call("Emulation.setEmulatedMedia", {"features": [{"name": "prefers-color-scheme", "value": scheme}]})
+    """Show `scheme` ("dark" / "light"): emulate the phone setting that maps to it (#146: inverted)."""
+    page.call("Emulation.setEmulatedMedia", {"features": [{"name": "prefers-color-scheme", "value": OS_PREF[scheme]}]})
 
 
 @pytest.mark.skipif(BROWSER is None, reason="no Chromium/Chrome installed")

@@ -73,16 +73,21 @@ def test_hotspot_failure_at_boot_keeps_previous(env):
 
 
 def test_install_guard_writes_dev_on_home_wifi(env, tmp_path):
-    log = install(tmp_path, env)
+    """#94: now the UPGRADE pin (a dev Pi re-installed on home Wi-Fi, no mode file); fresh writes product."""
+    log = install(tmp_path, env, upgrade=True)
     assert re.search(r"tee \S*/boot/memoryframe-mode\.txt", log), log
+    assert (env["boot"] / "memoryframe-mode.txt").read_text() == "dev\n"
 
 
 def test_install_guard_skips_when_file_exists_or_on_hotspot(env, tmp_path):
+    """An existing file is never written. #94: with no file on the hotspot, install now writes product
+    explicitly (was: no write, which netmode.sh also reads as product)."""
     (env["boot"] / "memoryframe-mode.txt").write_text("product\n")
-    assert "memoryframe-mode.txt" not in install(tmp_path, env)
+    assert "memoryframe-mode.txt" not in install(tmp_path, env, upgrade=True)
     (env["boot"] / "memoryframe-mode.txt").unlink()
     (env["d"] / "active").write_text(HOT + "\n")
-    assert "memoryframe-mode.txt" not in install(tmp_path, env)
+    assert re.search(r"tee \S*/memoryframe-mode\.txt", install(tmp_path, env, upgrade=True))
+    assert (env["boot"] / "memoryframe-mode.txt").read_text() == "product\n"
 
 
 # ---------- app endpoint ----------

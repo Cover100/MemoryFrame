@@ -18,8 +18,9 @@
 #   memoryframe-mode.txt      one word: product | dev. Missing/empty/other -> PRODUCT (hotspot)
 #                             at every boot (MF-51). "dev" forces developer Wi-Fi persistently on
 #                             every boot (the dev Pi's guard and the offline recovery path).
-#                             install.sh writes "dev" only when the Pi is on a home Wi-Fi client
-#                             connection and no mode file exists; it never changes an existing file.
+#                             install.sh never changes an existing file; with none (#94) it writes
+#                             "product" on a fresh install, its --mode dev|product value, or on an
+#                             upgrade the live mode ("dev" if on a home Wi-Fi client connection).
 #                             `netmode.sh dev-temp` (frame's hidden Developer Wi-Fi) writes nothing:
 #                             home Wi-Fi until the next reboot only.
 #   memoryframe-dev-wifi.txt  optional, only  ssid=<name>: which EXISTING NetworkManager
@@ -919,7 +920,7 @@ case "${1:-}" in
         save_hotspot || true   # #137: migrate a hotspot still in a *-pending-* file or in memory only
         # Boot never fails the unit (no reboot loop); the state file carries the outcome.
         # MF-51: product (hotspot) on every boot unless memoryframe-mode.txt says dev (persistent
-        # dev). A missing file means product; install.sh writes "dev" on a Pi found on home Wi-Fi.
+        # dev). A missing file means product; install.sh pins "dev" on an upgraded Pi found on home Wi-Fi (#94).
         if [ "$(requested_mode)" = dev ]; then
             log "boot: memoryframe-mode.txt = dev: developer Wi-Fi"
             apply_dev || true

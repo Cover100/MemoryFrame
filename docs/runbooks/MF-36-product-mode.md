@@ -10,8 +10,10 @@ on its next reboot and lose home Wi-Fi and Pi Connect. Before pulling/deploying 
     echo dev | sudo tee /boot/firmware/memoryframe-mode.txt
     sudo deploy/netmode.sh status        # expect: armed for next boot: dev (memoryframe-mode.txt = dev)
 
-(`install.sh` also writes `dev` when there is no mode file and wlan0 is on a home Wi-Fi
-connection, but do it by hand first: the guard only runs when install.sh runs.)
+(#94: `install.sh` never changes an existing mode file. With none, an upgrade pins the live mode (`dev`
+when wlan0 is on a home Wi-Fi connection, else `product`), a fresh install writes `product`, and
+`--mode dev|product` writes that instead. Still write `dev` by hand first: the pin only runs when
+install.sh runs, and a Pi that is on the hotspot or off Wi-Fi at that moment is pinned to `product`.)
 
 ## Behaviour
 

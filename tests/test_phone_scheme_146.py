@@ -1,6 +1,6 @@
-"""#146 (owner's request via Quinn, 12 Nov 2026): the phone colour-scheme mapping is INVERTED. A phone set to LIGHT
-shows the dark scheme; a phone set to DARK shows Warm paper light (#141). Only the mapping changed: no colour values,
-no toggle; the frame screen / slideshow never read a phone token. These tests emulate the raw OS setting (not the
+"""#146 (owner's request via Quinn, 12 Nov 2026) inverted the phone colour-scheme mapping; #148 (owner's request,
+12 Nov 5:40 pm) supersedes it: the phone ALWAYS shows Warm paper light (#141), whatever the phone's OS setting.
+Still mapping only: no colour values, no toggle; the frame screen / slideshow never read a phone token. These tests emulate the raw OS setting (not the
 shown-scheme helper), so they pin the mapping itself, plus the browser chrome (theme-color) and the UA's own
 colour scheme (form controls, scrollbars: the Canvas system colour) to the scheme actually shown."""
 import json
@@ -11,10 +11,9 @@ from test_frontend_browser import BROWSER, evaluate, page, server  # noqa: F401 
 from test_restyle_c_phone import PNG, _phone
 
 # raw OS setting -> what must be shown: page bg, bar bg (= theme-color), body text, root color-scheme, UA Canvas dark?
-SHOWN = {
-    "light": ("rgb(14, 19, 17)", "rgb(22, 38, 29)", "rgb(243, 237, 228)", "dark", True),          # dark scheme
-    "dark": ("rgb(246, 241, 233)", "rgb(255, 255, 255)", "rgb(31, 42, 36)", "light only", False),  # Warm paper
-}
+# #148: Warm paper in both (was #146: OS light -> dark scheme "dark"/Canvas dark, OS dark -> Warm paper)
+WARM_PAPER = ("rgb(246, 241, 233)", "rgb(255, 255, 255)", "rgb(31, 42, 36)", "light only", False)
+SHOWN = {"light": WARM_PAPER, "dark": WARM_PAPER}
 _PROBE = """(()=>{
   const css = s => getComputedStyle(document.querySelector(s));
   const metas = [...document.querySelectorAll('meta[name="theme-color"]')].filter(m => matchMedia(m.media).matches);

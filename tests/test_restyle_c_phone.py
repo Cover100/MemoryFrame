@@ -59,14 +59,17 @@ def _block(css, opener):
 
 def test_phone_css_is_lean_and_flat():
     flat = re.sub(r"/\*.*?\*/", "", CSS, flags=re.S)
-    # #141: the only shadows allowed are Wren's flat inset focus lines, light scheme only: the white inner line (once),
-    # and the gold/white/dark ring overlay (twice: photos/grid links, and the li of a selected+focused tile)
+    # #141: the only shadows allowed are Wren's flat inset focus lines: the white inner line (once), and the
+    # gold/white/dark ring overlay (twice: photos/grid links, and the li of a selected+focused tile). #148: Warm paper is
+    # the only scheme, so they sit in the #141 focus-ring section (no media query any more), never before it.
     light_focus = {"box-shadow: inset 0 0 0 5px #fff;": 1,
                    "box-shadow: inset 0 0 0 3px var(--mfp-focus), inset 0 0 0 5px #fff, inset 0 0 0 7px var(--mfp-text);": 2}
     assert flat.count("box-shadow") == 3 and all(flat.count(f) == n for f, n in light_focus.items())
-    light = _block(flat, WARM_PAPER_MEDIA)   # the whole Warm paper block (#146: under OS dark), to its matching brace
-    for f, n in light_focus.items():                               # INSIDE the light block, not merely after it opens
-        assert light.count(f) == n, f"not inside the Warm paper (OS dark) block: {f}"
+    assert "prefers-color-scheme" not in flat and "@media (prefers" not in flat   # #148: one scheme, no switching
+    rings = flat[flat.index(".mf-phone :is(.bar a, .seg button"):]                 # the #141 focus-ring section
+    assert "@media" not in rings and "box-shadow" not in flat[:flat.index(".mf-phone :is(.bar a, .seg button")]
+    for f, n in light_focus.items():                               # INSIDE the focus-ring section, all of them
+        assert rings.count(f) == n, f"not in the #141 focus-ring section: {f}"
     for f in light_focus:
         flat = flat.replace(f, "")
     for bad in ("box-shadow", "gradient", "filter", "backdrop", "@import", "@font-face", "url(", "@keyframes", "animation"):
@@ -625,19 +628,20 @@ def test_wifi_sheet_warning_keeps_wi_fi_whole(paired, monkeypatch, tmp_path):
     assert sheet.count('<span class="nw">Wi-Fi</span>') == 4 and "Wi-Fi" not in sheet.replace('<span class="nw">Wi-Fi</span>', ""), sheet
 
 
-# ---------------- PHONE-DARK.md (6621607) dark theme; #141: light only when the phone asks for it ----------------
+# ---------------- PHONE-DARK.md (6621607) dark theme; #141 Warm paper light; #148: Warm paper is the only scheme ----------------
 
 DARK_VIEWS = ["admin/", "admin/library", "admin/upload", "admin/settings", "admin/wifi/", "pair", "admin/nope"]
 OLD_LIGHT = {"rgb(255, 255, 255)", "rgb(246, 241, 233)", "rgb(227, 238, 230)", "rgb(248, 228, 225)", "rgb(251, 241, 220)",
              "rgb(226, 216, 202)"}
-# #141: in the light scheme the reverse holds: no dark phone surface is left, except media overlays (they sit on photos)
+# OLD_LIGHT: the light surfaces the dark scheme had to avoid (kept for reference: #148 retired the dark phone scheme).
+# #141/#148: in Warm paper no dark phone surface is left, except media overlays (they sit on photos)
 OLD_DARK = {"rgb(14, 19, 17)", "rgb(22, 38, 29)", "rgb(36, 56, 44)", "rgb(58, 44, 34)", "rgb(58, 31, 27)", "rgb(47, 74, 58)"}
 MEDIA = ".tile .badge, .tile .state, .tile .acts, .tprev, .lib .vx, .hero"   # .hero draws the frame itself
 CONTRAST_JS = """JSON.stringify((()=>{
   const lum = c => { const v = c.match(/[\\d.]+/g).slice(0,3).map(Number).map(x=>{x/=255; return x<=0.03928?x/12.92:Math.pow((x+0.055)/1.055,2.4);});
                      return 0.2126*v[0]+0.7152*v[1]+0.0722*v[2]; };
   const alpha = c => { const m = c.match(/[\\d.]+/g); return m.length > 3 ? Number(m[3]) : 1; };
-  const bgOf = e => { for(; e; e = e.parentElement){ const b = getComputedStyle(e).backgroundColor; if(alpha(b) === 1) return b; } return 'rgb(14, 19, 17)'; };
+  const bgOf = e => { for(; e; e = e.parentElement){ const b = getComputedStyle(e).backgroundColor; if(alpha(b) === 1) return b; } return 'rgb(246, 241, 233)'; };
   const out = [];
   document.querySelectorAll('body *').forEach(e=>{
     if(!e.offsetParent && getComputedStyle(e).position !== 'fixed') return;
@@ -651,23 +655,22 @@ CONTRAST_JS = """JSON.stringify((()=>{
   return out; })())"""
 
 
-# #146: the mapping is INVERTED (owner's request): a phone set to light shows the dark scheme, a phone set to dark shows
-# Warm paper light. Tests name the scheme SHOWN; OS_PREF is the phone setting that shows it.
-OS_PREF = {"dark": "light", "light": "dark"}
-WARM_PAPER_MEDIA = "@media (prefers-color-scheme: dark)"   # the block holding Warm paper light
+# #148 (owner's request): the phone ALWAYS shows Warm paper light, whatever the phone's OS setting (#146's inverted
+# mapping and the dark phone scheme are gone). Scheme tests now run once per OS setting and expect Warm paper in both.
+OS_MODES = ("light", "dark")
 
 
-def _scheme(page, scheme):
-    """Show `scheme` ("dark" / "light"): emulate the phone setting that maps to it (#146: inverted)."""
-    page.call("Emulation.setEmulatedMedia", {"features": [{"name": "prefers-color-scheme", "value": OS_PREF[scheme]}]})
+def _scheme(page, os_pref):
+    """Emulate the phone's OS colour-scheme setting ("light" / "dark"); the page must look the same either way (#148)."""
+    page.call("Emulation.setEmulatedMedia", {"features": [{"name": "prefers-color-scheme", "value": os_pref}]})
 
 
 @pytest.mark.skipif(BROWSER is None, reason="no Chromium/Chrome installed")
-@pytest.mark.parametrize("scheme", ["dark", "light"])
+@pytest.mark.parametrize("scheme", OS_MODES)
 def test_dark_theme_every_page_no_light_surfaces_and_text_aa(page, server, mf_app, lib, monkeypatch, tmp_path, scheme):
-    """Checklist 1, 3, 6, 10 (PHONE-DARK.md), adapted for #141: with the phone in DARK mode there is still no
-    paper/white surface; in LIGHT mode no dark phone surface is left (media overlays excepted). Either way every
-    visible text is >= 4.5:1 (AA) on its real background."""
+    """Checklist 1, 3, 6, 10 (PHONE-DARK.md), adapted for #141 and #148: whatever the phone's OS setting (`scheme`
+    is the emulated OS light/dark setting), the page is Warm paper: no dark phone surface is left (media overlays
+    excepted), and every visible text is >= 4.5:1 (AA) on its real background."""
     import json
     _scheme(page, scheme)
     monkeypatch.setenv("MEMORYFRAME_NETMODE_STATE", str(tmp_path / "nm.json"))
@@ -689,12 +692,9 @@ def test_dark_theme_every_page_no_light_surfaces_and_text_aa(page, server, mf_ap
                 page.pump(0.2)
             light = json.loads(evaluate(page, """JSON.stringify([...document.querySelectorAll('body, body *')].filter(e=>e.offsetParent || e===document.body)
                 .map(e=>[e.tagName+'.'+e.className, getComputedStyle(e).backgroundColor]))"""))
-            if scheme == "dark":
-                bad = [x for x in light if x[1] in OLD_LIGHT]
-            else:
-                media = set(json.loads(evaluate(page, f"""JSON.stringify([...document.querySelectorAll('body *')]
-                    .filter(e=>e.closest('{MEDIA}')).map(e=>e.tagName+'.'+e.className))""")))
-                bad = [x for x in light if x[1] in OLD_DARK and x[0] not in media]
+            media = set(json.loads(evaluate(page, f"""JSON.stringify([...document.querySelectorAll('body *')]
+                .filter(e=>e.closest('{MEDIA}')).map(e=>e.tagName+'.'+e.className))""")))
+            bad = [x for x in light if x[1] in OLD_DARK and x[0] not in media]
             assert bad == [], (scheme, path, st, bad[:5])
             low = json.loads(evaluate(page, CONTRAST_JS))
             assert low == [], (scheme, path, st, low[:6])
@@ -778,7 +778,7 @@ def test_dark_tokens_and_outline_rules_in_css():
                  ("danger-text", "brick-text"), ("outline", "oat"), ("focus", "brass")):
         assert re.search(rf"--mfp-{k}: {frame['--mf-' + v]};", block), k
     assert "--mfp-danger-bg: #3A1F1B;" in block and "--mfp-scrim: rgba(0, 0, 0, .6);" in block
-    flat = re.sub(r"/\*.*?\*/", "", CSS + tokens[tokens.index("/* ---- Phone: follows"):], flags=re.S)
+    flat = re.sub(r"/\*.*?\*/", "", CSS + tokens[tokens.index("/* ---- Phone:"):], flags=re.S)
     assert not re.search(r"(?<![-\w])color: var\(--mfp-(accent|danger)\)", flat)          # fills only
     assert not re.search(r"outline[^;]*var\(--mfp-accent\)", flat)
     for sel in (r"\.mf-phone \.btn-neutral, \.mf-phone button\.secondary", r"\.mf-phone \.msgKeep", r"\.mf-phone \.field",

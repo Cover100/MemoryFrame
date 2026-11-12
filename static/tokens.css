@@ -93,44 +93,49 @@
 .mf-btn-accent { background: var(--mf-brass); color: var(--mf-ink); }
 .mf-btn-default { outline: var(--mf-ring-width) solid var(--mf-brass); outline-offset: 3px; }
 
-/* ---- Phone: always Warm paper light (#148, owner's request; #141 Wren's light-tokens.md "Warm paper", 11 Nov 2026) ----
-   Phone-only --mfp-* tokens on .mf-phone; the frame (:root tokens above, .mf-btn*, style.css) never reads them, so the
-   frame screen and slideshow stay dark. No colour-scheme media query: the phone's OS light/dark setting is ignored
-   (#146's inverted mapping and the dark phone scheme are gone). --mfp-accent is a fill (green text uses --mfp-accent-text);
-   danger fills, danger-text text. --mfp-media-*, --mfp-note-*, --mfp-illo-* sit on photos/video or draw the frame: dark. */
-:root { --mfp-bg: #F6F1E9; }          /* phone.css paints <html> with it: first paint / overscroll = paper */
+/* ---- Phone: always "Forest night" (#148 option A, Wren's 148-scheme-options, user's choice 12 Nov 2026) ----
+   Phone-only --mfp-* tokens on .mf-phone; the frame (:root tokens above, .mf-btn*, style.css) never reads them.
+   The frame's own forest-on-ink dark theme (the PHONE-DARK.md mapping, 19 Oct) whatever the phone's OS setting: no
+   colour-scheme media query, no toggle. Declared dark (phone.css color-scheme "only dark", meta dark) so browsers that
+   honour it never force-darken it, and already dark so Samsung's forced dark has almost nothing left to change.
+   --mfp-accent is a fill only (2.6:1 as text on bg): green text uses --mfp-accent-text; danger fills, danger-text text. */
+:root { --mfp-bg: #0E1311; }          /* phone.css paints <html> with it: first paint / overscroll match the scheme */
 .mf-phone {
-  --mfp-bg: #F6F1E9;                  /* paper */
-  --mfp-surface: #FFFFFF;
-  --mfp-header: #FFFFFF;              /* + bottom --mfp-line */
-  --mfp-header-text: #1F2A24;
-  --mfp-strip: #EDE4D7;
-  --mfp-strip-text: #5E5146;
-  --mfp-line: #E2D8CA;
-  --mfp-outline: #857565;
-  --mfp-text: #1F2A24;
-  --mfp-text-2: #5E5146;
-  --mfp-accent: #2A6140;
-  --mfp-on-accent: #FFFFFF;
-  --mfp-accent-text: #2A6140;
-  --mfp-ok: #2F7A4B;
-  --mfp-success-bg: #E3EEE6;
-  --mfp-danger: #A8352A;
-  --mfp-danger-text: #A8352A;
-  --mfp-danger-bg: #F8E4E1;
-  --mfp-warn-bg: #FBF1DC;
-  --mfp-warn-line: #8A6A1E;
-  --mfp-warn-text: #6E4A10;
-  --mfp-focus: #8A6A1E;               /* dark gold: 4.5:1 on bg, 5.0:1 on white; rings keep their offset */
-  --mfp-gold: #8A6A1E;
-  --mfp-track: #E2D8CA;
-  --mfp-scrim: rgba(31, 42, 36, .45);
+  --mfp-bg: #0E1311;                  /* page (ink) */
+  --mfp-surface: #24382C;             /* cards, rows, inputs, sheets (forest-800) */
+  --mfp-header: #16261D;              /* top bar, selection toolbar (forest-900) */
+  --mfp-header-text: #F3EDE4;         /* bar title, back, icons (linen) */
+  --mfp-strip: #3A2C22;               /* status strip (walnut-900) */
+  --mfp-strip-text: #C0B29E;          /* strip text (#148 A: oat nudged out of Samsung's dim zone) */
+  --mfp-line: #2F4A3A;                /* hairlines, dividers: decorative only (forest-700) */
+  --mfp-outline: #C9BBA8;             /* outlined buttons and inputs: 1.5px, >= 3:1 (oat) */
+  --mfp-text: #F3EDE4;                /* body text (linen) */
+  --mfp-text-2: #C0B29E;              /* secondary text (#148 A: oat nudged out of Samsung's dim zone) */
+  --mfp-accent: #2A6140;              /* primary fills, chips on, segment on (forest-600; white text 7.3:1) */
+  --mfp-on-accent: #FFFFFF;           /* text and ticks on accent / danger fills */
+  --mfp-accent-text: #8FD1A4;         /* links, green text, success, selected border (leaf) */
+  --mfp-ok: #8FD1A4;                  /* small status dots / spinner arcs: leaf as a non-text mark */
+  --mfp-success-bg: #16261D;          /* selected / success background (forest-900) */
+  --mfp-danger: #A8352A;              /* destructive fill (brick; white text 6.5:1) */
+  --mfp-danger-text: #E7A097;         /* error text (brick-text) */
+  --mfp-danger-bg: #3A1F1B;           /* error box, strip.down */
+  --mfp-warn-bg: #3A2C22;             /* warning box (walnut-900) */
+  --mfp-warn-line: #D6B36A;           /* warning border, warning "!" disc (brass) */
+  --mfp-warn-text: #F3EDE4;           /* warning text (linen) */
+  --mfp-focus: #D6B36A;               /* every focus ring (brass) */
+  --mfp-gold: #D6B36A;                /* decorative gold: bar dot, Keep-Wi-Fi countdown ring (brass) */
+  --mfp-track: #2F4A3A;               /* progress / meter / trim track, empty ring (forest-700) */
+  --mfp-scrim: rgba(0, 0, 0, .6);     /* flat scrim behind the bottom sheet (no blur) */
   --mfp-tile-ring-fill: rgba(14, 19, 17, .5);  /* empty select ring on a photo tile: ~3:1 even on a white photo */
-  /* #141 additions not in Wren's table (flagged on the PR), picked from the map's own colours */
-  --mfp-on-gold: #FFFFFF;
-  --mfp-panel: #FFFFFF;
-  --mfp-tile: #EDE4D7;
-  /* Dark on purpose (as before, unchanged): they sit on media or draw the frame itself */
+  /* #141 additions (flagged on the PR) */
+  --mfp-on-gold: #0E1311;             /* "!" on the warn-line disc (ink) */
+  --mfp-panel: #16261D;               /* Home Wi-Fi steps box (forest-900) */
+  --mfp-tile: #16261D;                /* library tile behind a photo still loading (forest-900) */
+  /* #148 A: the #141 photo focus ring's light and dark bands (gold / ring-light / ring-band); oat/ink >= 3.16:1 on any
+     photo, and oat survives forced dark where a white box-shadow gets inverted */
+  --mfp-ring-light: #C9BBA8;          /* (oat) */
+  --mfp-ring-band: #0E1311;           /* (ink) */
+  /* Media / frame drawings: they sit on photos or draw the frame itself */
   --mfp-media-veil: rgba(14, 19, 17, .72);   /* preparing veil, trim play button */
   --mfp-media-pill: rgba(14, 19, 17, .82);   /* video badge, trim timecode */
   --mfp-media-bg: #0E1311;            /* buttons on a video tile (ink) */

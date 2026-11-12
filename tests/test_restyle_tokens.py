@@ -151,14 +151,15 @@ def _phone_pages(client, paired):
 
 
 # #146: inverted: OS light shows the dark scheme (bar #16261D), OS dark shows Warm paper (bar #FFFFFF)
-# #148: Warm paper only: meta color-scheme "light only", ONE theme-color (the Warm paper bar #FFFFFF), no media split
-THEME_METAS = ('<meta name="color-scheme" content="light only">',
-               '<meta name="theme-color" content="#FFFFFF">')
+# PR149: Warm paper only ("light only", #FFFFFF). #148 A (final): Forest night only: meta color-scheme "dark" (Wren),
+# ONE theme-color (the Forest night bar #16261D), no media split
+THEME_METAS = ('<meta name="color-scheme" content="dark">',
+               '<meta name="theme-color" content="#16261D">')
 
 
 def test_every_phone_page_follows_the_os_scheme_and_theme_colour(client, paired):
     """#141 (was: declares dark): both schemes declared, one theme-color per scheme, no forced dark.
-    #148: light only (Warm paper is the only scheme): one theme-color without a media query."""
+    #148 A: dark only (Forest night is the only scheme): one theme-color without a media query."""
     pages = _phone_pages(client, paired)
     assert len(pages) >= 6
     for r in pages:
@@ -166,9 +167,9 @@ def test_every_phone_page_follows_the_os_scheme_and_theme_colour(client, paired)
         assert 'class="mf-phone"' in html, r.request.path
         for meta in THEME_METAS:
             assert html.count(meta) == 1, (r.request.path, meta)
-        assert html.count('name="theme-color"') == 1 and 'content="dark"' not in html, r.request.path
+        assert html.count('name="theme-color"') == 1 and 'content="light' not in html, r.request.path
         assert "prefers-color-scheme" not in html and 'content="light dark"' not in html, r.request.path
-        assert "supported-color-schemes" not in html and "only dark" not in html, r.request.path
+        assert "supported-color-schemes" not in html and "only dark" not in html, r.request.path   # meta: plain "dark"
 
 
 def test_unpaired_phone_pages_follow_the_os_scheme(client):
@@ -182,11 +183,12 @@ def test_unpaired_phone_pages_follow_the_os_scheme(client):
 
 def test_theme_colour_is_the_header_token():
     """#141: the theme-color is the scheme's --mfp-header (the bar), so the browser chrome joins the bar;
-    #148: one scheme, so one theme-color: the Warm paper bar, in every OS setting."""
+    #148 A: one scheme, so one theme-color: the Forest night bar (forest-900), in every OS setting."""
     css = (STATIC / "tokens.css").read_text()
     flat = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
     hdr = re.search(r"\.mf-phone \{[^}]*--mfp-header:\s*(#[0-9A-Fa-f]{6})", flat).group(1).upper()
-    assert hdr == "#FFFFFF" and flat.count("--mfp-header:") == 1                     # Warm paper bar, the only one
+    assert hdr == "#16261D" and flat.count("--mfp-header:") == 1                     # Forest night bar, the only one
+    assert hdr == re.search(r"--mf-forest-900:\s*(#[0-9A-Fa-f]{6})", flat).group(1).upper()   # the frame's forest-900
     tmpl = (STATIC.parent / "templates" / "_phone.html").read_text()
     assert re.findall(r'<meta name="theme-color"[^>]*>', tmpl) == ['<meta name="theme-color" content="%s">' % hdr]
     phone = (STATIC / "phone.css").read_text()
@@ -195,14 +197,14 @@ def test_theme_colour_is_the_header_token():
 
 def test_phone_css_root_follows_the_scheme_and_is_painted():
     """#141 (was: only dark): both schemes, and <html> painted with the scheme's page colour (first paint, overscroll).
-    #146: color-scheme is the scheme SHOWN. #148: Warm paper only, so root color-scheme is "light only" ("only": the
-    UA must not force-darken the page on a dark-mode phone, #83), and <html> is painted paper."""
+    #146: color-scheme is the scheme SHOWN. #148 A: Forest night only, so root color-scheme is "only dark" (Wren:
+    declared dark, so browsers that honour it never force-darken it, #83), and <html> is painted ink."""
     phone = (STATIC / "phone.css").read_text()
     root = re.search(r"(?m)^:root \{([^}]*)\}", phone).group(1)
-    assert "color-scheme: light only;" in root and "dark" not in root
+    assert "color-scheme: only dark;" in root and "light" not in root
     assert len(re.findall(r"(?<![-\w])color-scheme:", phone)) == 1 and "prefers-color-scheme" not in phone
     assert "background-color: var(--mfp-bg)" in root
-    assert re.findall(r"(?m)^:root \{ --mfp-bg: (#\w+); \}", TOKENS) == ["#F6F1E9"]          # paper, unconditional
+    assert re.findall(r"(?m)^:root \{ --mfp-bg: (#\w+); \}", TOKENS) == ["#0E1311"]          # ink, unconditional
     assert "prefers-color-scheme" not in TOKENS
     assert "style=" not in (STATIC.parent / "templates" / "_phone.html").read_text()   # CSP: no inline style
 

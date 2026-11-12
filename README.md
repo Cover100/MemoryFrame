@@ -305,8 +305,10 @@ There is one owner (D6), who may pair several phones.
   reboot; nothing is written to disk, so the next boot is product again. If home Wi-Fi fails, the
   hotspot comes back.
 - **Persistent developer mode** (the developer's Pi only): `dev` in `/boot/firmware/memoryframe-mode.txt`
-  (or `sudo deploy/netmode.sh dev`). `install.sh` writes `dev` only when there is no mode file and
-  wlan0 is on a home connection; it never changes an existing file.
+  (or `sudo deploy/netmode.sh dev`). `install.sh` never changes an existing mode file. With no file (#94):
+  a fresh install writes `product` (use `./deploy/install.sh --mode dev` for a new dev Pi; `--mode product`
+  also works), and an upgrade pins the live mode (`dev` if wlan0 is on a home connection, else `product`),
+  so a deploy never changes the mode. Install never switches the network itself.
 - `deploy/netmode.sh status` shows `armed for next boot:` and `current mode:`.
 - Dev Wi-Fi credentials stay in the existing NetworkManager profile; boot-partition files never hold
   a password. Full details and recovery: [docs/runbooks/MF-36-product-mode.md](docs/runbooks/MF-36-product-mode.md).

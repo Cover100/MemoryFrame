@@ -8,18 +8,32 @@
 # Options:
 #   --extra-hosts LIST   extra Host names/IPs the app answers (comma list, e.g. 192.168.50.124);
 #                        "" removes them. Also taken from $MEMORYFRAME_EXTRA_HOSTS. Omit to keep.
+#   --mode dev|product   #94: the boot mode to write to memoryframe-mode.txt on bootfs when that file does
+#                        NOT exist yet (a fresh install defaults to product; a dev Pi uses --mode dev).
+#                        An existing mode file is never changed, with or without --mode.
 set -euo pipefail
 
 EXTRA_HOSTS_SET=0
+MODE_ARG=""
+MODE_SET=0
 EXTRA_HOSTS="${MEMORYFRAME_EXTRA_HOSTS-}"
 [ -n "${MEMORYFRAME_EXTRA_HOSTS+x}" ] && EXTRA_HOSTS_SET=1
 while [ $# -gt 0 ]; do
     case "$1" in
         --extra-hosts) EXTRA_HOSTS="${2-}"; EXTRA_HOSTS_SET=1; shift 2 || shift ;;
         --extra-hosts=*) EXTRA_HOSTS="${1#*=}"; EXTRA_HOSTS_SET=1; shift ;;
+        --mode) MODE_ARG="${2-}"; MODE_SET=1; shift 2 || shift ;;
+        --mode=*) MODE_ARG="${1#*=}"; MODE_SET=1; shift ;;
         *) echo "Unknown option: $1" >&2; exit 2 ;;
     esac
 done
+# #94: checked before anything is changed.
+if [ "$MODE_SET" = 1 ]; then
+    case "$MODE_ARG" in
+        dev|product) ;;
+        *) echo "Invalid --mode '$MODE_ARG': use --mode dev or --mode product. Nothing was changed." >&2; exit 2 ;;
+    esac
+fi
 
 SRC_DIR="$(cd "$(dirname "$0")/.." && pwd)"     # the git checkout (desktop user's)
 APP_DIR="${MEMORYFRAME_OPT_DIR:-/opt/memoryframe}"   # what runs (root-owned)
@@ -29,6 +43,8 @@ DESKTOP_USER="$(id -un)"                           # runs the kiosk browser
 HEALTH_URL="http://127.0.0.1:5000/healthz"
 HEALTH_WAIT="${MEMORYFRAME_HEALTH_WAIT:-30}"
 MIGRATE=/usr/local/sbin/memoryframe-migrate
+UNIT="${MFM_UNITS:-/etc/systemd/system}/memoryframe.service"   # same path and test as memoryframe-migrate.sh save_pack
+MODE_FILE="${MEMORYFRAME_BOOT_DIR:-/boot/firmware}/memoryframe-mode.txt"
 
 # Write a root-owned file atomically: render to a temp file first (a failing sed stops here, set -e), then
 # install it next to the target and rename over it. A cut leaves the old or the new file, never half of one.
@@ -74,6 +90,10 @@ echo "== Service user and rollback pack (#69)"
 DATA_DIR=/var/lib/memoryframe
 sudo install -o root -g root -m 0755 "$SRC_DIR/deploy/memoryframe-migrate.sh" "$MIGRATE"
 sudo install -o root -g root -m 0755 "$SRC_DIR/deploy/memoryframe-cli.sh" /usr/local/sbin/memoryframe-cli
+# #94: fresh install or upgrade, decided once before anything changes, with save-pack's own signal (the
+# installed unit). Not the code dir: a half-done install can leave $APP_DIR without the unit.
+IS_UPGRADE=0
+[ -f "$UNIT" ] && IS_UPGRADE=1
 # Upgrade only, once: old unit + rule + data owner + a photo backup, before anything changes.
 sudo "$MIGRATE" save-pack
 sudo "$MIGRATE" ensure-user
@@ -244,14 +264,35 @@ fi
 sudo rm -f /etc/sudoers.d/memoryframe /etc/sudoers.d/memoryframe-poweroff
 sudo systemctl daemon-reload
 sudo systemctl enable --now run-mfkiosk.mount
-# MF-51 deploy guard: boot now defaults to product (hotspot). A Pi that is on a home Wi-Fi
-# client connection and has no mode file is a dev Pi: write "dev" so its next reboot keeps
-# home Wi-Fi (and Pi Connect). An existing mode file is never changed.
-MODE_FILE="${MEMORYFRAME_BOOT_DIR:-/boot/firmware}/memoryframe-mode.txt"
-CUR_WIFI="$("${NMCLI:-nmcli}" -g GENERAL.CONNECTION device show "${MEMORYFRAME_IFACE:-wlan0}" 2>/dev/null || true)"
-if [ ! -e "$MODE_FILE" ] && [ -n "$CUR_WIFI" ] && [ "$CUR_WIFI" != "MemoryFrame-hotspot" ]; then
-    echo "MF-51: on home Wi-Fi ($CUR_WIFI) with no mode file: writing 'dev' to $MODE_FILE so reboots keep home Wi-Fi"
-    printf 'dev\n' | sudo tee "$MODE_FILE" >/dev/null
+# #94 boot mode (read by netmode.sh at the NEXT boot; nothing is switched now, #40):
+#  - an existing memoryframe-mode.txt is NEVER changed (with or without --mode);
+#  - no file + --mode dev|product: write that;
+#  - no file, fresh install: write "product" (the hotspot);
+#  - no file, upgrade: pin the LIVE mode so a deploy never changes it: "dev" if wlan0 is on a home
+#    (non-hotspot) Wi-Fi connection, else "product".
+if [ -e "$MODE_FILE" ]; then
+    if [ "$MODE_SET" = 1 ]; then
+        echo "Boot mode: $MODE_FILE exists: left unchanged (--mode $MODE_ARG ignored)"
+    else
+        echo "Boot mode: $MODE_FILE exists: left unchanged"
+    fi
+elif [ ! -d "$(dirname "$MODE_FILE")" ]; then
+    echo "WARNING: boot partition $(dirname "$MODE_FILE") not found: no mode file written (boot defaults to product)." >&2
+else
+    if [ "$MODE_SET" = 1 ]; then
+        NEW_MODE="$MODE_ARG"; WHY="--mode $MODE_ARG"
+    elif [ "$IS_UPGRADE" = 0 ]; then
+        NEW_MODE=product; WHY="fresh install"
+    else
+        CUR_WIFI="$("${NMCLI:-nmcli}" -g GENERAL.CONNECTION device show "${MEMORYFRAME_IFACE:-wlan0}" 2>/dev/null || true)"
+        if [ -n "$CUR_WIFI" ] && [ "$CUR_WIFI" != "MemoryFrame-hotspot" ]; then
+            NEW_MODE=dev; WHY="upgrade, on home Wi-Fi ($CUR_WIFI) now: kept"
+        else
+            NEW_MODE=product; WHY="upgrade, not on home Wi-Fi now: kept"
+        fi
+    fi
+    echo "Boot mode: no $MODE_FILE: writing '$NEW_MODE' ($WHY)"
+    printf '%s\n' "$NEW_MODE" | sudo tee "$MODE_FILE" >/dev/null
 fi
 # MF-36: applied at the NEXT boot (enabling does not switch the network now).
 sudo systemctl enable memoryframe-netmode.service

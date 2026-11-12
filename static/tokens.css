@@ -93,10 +93,10 @@
 .mf-btn-accent { background: var(--mf-brass); color: var(--mf-ink); }
 .mf-btn-default { outline: var(--mf-ring-width) solid var(--mf-brass); outline-offset: 3px; }
 
-/* ---- Phone: follows the phone's own light/dark setting (#141, Wren's light-tokens.md, "Warm paper", 11 Nov 2026) ----
+/* ---- Phone: follows the phone's light/dark setting INVERTED (#146; #141 Wren's light-tokens.md "Warm paper") ----
    Phone-only --mfp-* tokens on .mf-phone; the frame (:root tokens above, .mf-btn*, style.css) never reads them.
-   Dark is the default and is exactly the PHONE-DARK.md mapping (19 Oct), so a browser with no preference looks as before;
-   light values only inside @media (prefers-color-scheme: light). --mfp-accent is a fill only in dark (2.6:1 as text on bg):
+   Dark is the default and is exactly the PHONE-DARK.md mapping (19 Oct): phones set to LIGHT (or no preference) get it.
+   Warm paper light values only inside @media (prefers-color-scheme: dark), i.e. phones set to DARK (owner's request, #146). --mfp-accent is a fill only in dark (2.6:1 as text on bg):
    green text uses --mfp-accent-text; danger fills, danger-text text. --mfp-media-* sit on photos/video: dark in both. */
 :root { --mfp-bg: #0E1311; }          /* phone.css paints <html> with it: first paint / overscroll match the scheme */
 .mf-phone {
@@ -150,7 +150,7 @@
   --mfp-illo-rim: #24382C;            /* (forest-800) */
   --mfp-illo-panel: #16261D;          /* (forest-900) */
   background: var(--mfp-bg); color: var(--mfp-text); font-family: var(--mf-font-phone); }
-@media (prefers-color-scheme: light) {
+@media (prefers-color-scheme: dark) {
   :root { --mfp-bg: #F6F1E9; }
   .mf-phone {
     --mfp-bg: #F6F1E9;                /* paper */

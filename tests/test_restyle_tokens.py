@@ -150,9 +150,10 @@ def _phone_pages(client, paired):
     return pages
 
 
+# #146: inverted: OS light shows the dark scheme (bar #16261D), OS dark shows Warm paper (bar #FFFFFF)
 THEME_METAS = ('<meta name="color-scheme" content="light dark">',
-               '<meta name="theme-color" media="(prefers-color-scheme: light)" content="#FFFFFF">',
-               '<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#16261D">')
+               '<meta name="theme-color" media="(prefers-color-scheme: light)" content="#16261D">',
+               '<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#FFFFFF">')
 
 
 def test_every_phone_page_follows_the_os_scheme_and_theme_colour(client, paired):
@@ -178,28 +179,34 @@ def test_unpaired_phone_pages_follow_the_os_scheme(client):
 
 
 def test_theme_colour_is_the_header_token():
-    """#141: each scheme's theme-color is that scheme's --mfp-header (the bar), so the browser chrome joins the bar."""
+    """#141: each scheme's theme-color is that scheme's --mfp-header (the bar), so the browser chrome joins the bar;
+    #146: inverted, so the OS-light theme-color is the dark bar and the OS-dark one the Warm paper bar."""
     css = (STATIC / "tokens.css").read_text()
     flat = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
-    light = flat[flat.index("@media (prefers-color-scheme: light)"):]
+    light = flat[flat.index("@media (prefers-color-scheme: dark)"):]
     dark_hdr = re.search(r"\.mf-phone \{[^}]*--mfp-header:\s*(#[0-9A-Fa-f]{6})", css).group(1).upper()
     light_hdr = re.search(r"--mfp-header:\s*(#[0-9A-Fa-f]{6})", light).group(1).upper()
     assert dark_hdr == re.search(r"--mf-forest-900:\s*(#[0-9A-Fa-f]{6})", css).group(1).upper()
     tmpl = (STATIC.parent / "templates" / "_phone.html").read_text()
-    assert re.search(r'name="theme-color" media="\(prefers-color-scheme: dark\)" content="%s"' % dark_hdr, tmpl)
-    assert re.search(r'name="theme-color" media="\(prefers-color-scheme: light\)" content="%s"' % light_hdr, tmpl)
+    assert re.search(r'name="theme-color" media="\(prefers-color-scheme: light\)" content="%s"' % dark_hdr, tmpl)
+    assert re.search(r'name="theme-color" media="\(prefers-color-scheme: dark\)" content="%s"' % light_hdr, tmpl)
     phone = (STATIC / "phone.css").read_text()
     assert re.search(r"\.mf-phone \.bar \{[^}]*background: var\(--mfp-header\)", phone)
 
 
 def test_phone_css_root_follows_the_scheme_and_is_painted():
-    """#141 (was: only dark): both schemes, and <html> painted with the scheme's page colour (first paint, overscroll)."""
+    """#141 (was: only dark): both schemes, and <html> painted with the scheme's page colour (first paint, overscroll).
+    #146: color-scheme is the scheme SHOWN: dark by default (OS light), "light only" under OS dark ("only": the UA
+    must not force-darken the Warm paper page, #83)."""
     phone = (STATIC / "phone.css").read_text()
     root = re.search(r"(?m)^:root \{([^}]*)\}", phone).group(1)
-    assert "color-scheme: light dark;" in root and "only" not in root
+    assert "color-scheme: dark;" in root and "only" not in root and "light" not in root
+    assert re.search(r"(?m)^@media \(prefers-color-scheme: dark\) \{\n  :root \{ color-scheme: light only; \}", phone)
+    assert phone.count("color-scheme:") == 2 and "prefers-color-scheme: light" not in phone
     assert "background-color: var(--mfp-bg)" in root
     assert re.search(r"(?m)^:root \{ --mfp-bg: #0E1311; \}", TOKENS)                      # dark default
-    assert re.search(r"prefers-color-scheme: light\) \{\n  :root \{ --mfp-bg: #F6F1E9; \}", TOKENS)
+    assert re.search(r"prefers-color-scheme: dark\) \{\n  :root \{ --mfp-bg: #F6F1E9; \}", TOKENS)
+    assert "prefers-color-scheme: light" not in TOKENS
     assert "style=" not in (STATIC.parent / "templates" / "_phone.html").read_text()   # CSP: no inline style
 
 

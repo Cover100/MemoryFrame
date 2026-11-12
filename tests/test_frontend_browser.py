@@ -88,9 +88,10 @@ def page(server):
         # The frame's screen is exactly 800x480; don't depend on how this Chrome sizes its window.
         cdp.call("Emulation.setDeviceMetricsOverride",
                  {"width": 800, "height": 480, "deviceScaleFactor": 1, "mobile": False})
-        # #141: phone pages follow prefers-color-scheme; headless Chrome reports light, so pin dark (today's look,
-        # and the scheme the frame's own pages are designed for). Light-scheme tests switch it explicitly.
-        cdp.call("Emulation.setEmulatedMedia", {"features": [{"name": "prefers-color-scheme", "value": "dark"}]})
+        # #141/#146: phone pages follow prefers-color-scheme, INVERTED (#146): OS light shows the dark scheme. Pin OS
+        # light so phone pages show the dark scheme (today's look, and what the frame's own pages are designed for).
+        # Light-scheme tests switch it explicitly via test_restyle_c_phone._scheme.
+        cdp.call("Emulation.setEmulatedMedia", {"features": [{"name": "prefers-color-scheme", "value": "light"}]})
         cdp.call("Page.navigate", {"url": server})
         yield cdp
     finally:

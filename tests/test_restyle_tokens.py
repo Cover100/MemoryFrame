@@ -202,7 +202,7 @@ def test_phone_css_root_follows_the_scheme_and_is_painted():
     root = re.search(r"(?m)^:root \{([^}]*)\}", phone).group(1)
     assert "color-scheme: dark;" in root and "only" not in root and "light" not in root
     assert re.search(r"(?m)^@media \(prefers-color-scheme: dark\) \{\n  :root \{ color-scheme: light only; \}", phone)
-    assert phone.count("color-scheme:") == 2 and "prefers-color-scheme: light" not in phone
+    assert len(re.findall(r"(?<![-\w])color-scheme:", phone)) == 2 and "prefers-color-scheme: light" not in phone
     assert "background-color: var(--mfp-bg)" in root
     assert re.search(r"(?m)^:root \{ --mfp-bg: #0E1311; \}", TOKENS)                      # dark default
     assert re.search(r"prefers-color-scheme: dark\) \{\n  :root \{ --mfp-bg: #F6F1E9; \}", TOKENS)

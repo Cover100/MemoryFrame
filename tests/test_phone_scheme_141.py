@@ -231,6 +231,43 @@ def test_dark_focus_on_a_photo_is_unchanged(page, server, mf_app, lib):
     assert bands["light"][2] != DARK and bands["dark"][1] != WHITE                # photo shows inside the ring
 
 
+def _rgb(css):
+    return tuple(int(v) for v in re.findall(r"\d+", css)[:3])
+
+
+@pytest.mark.no_media
+@pytest.mark.skipif(BROWSER is None, reason="no Chromium/Chrome installed")
+def test_light_selected_and_focused_tile_gets_the_three_bands_and_keeps_its_tick(page, server, mf_app, lib):
+    """#141 (Wren polish): a tile that is selected AND focused in select mode gets the same gold/white/dark ring,
+    inside the 3 px green selected edge (3-6 / 6-8 / 8-10 px), over the light and the dark half; the green edge, the
+    filled select circle and the white tick still render."""
+    import base64, io
+    from PIL import Image
+    lib.add("split.jpg", _two_tone_jpeg())
+    _scheme(page, "light")
+    _phone(page, server, mf_app, "admin/library")
+    page.pump(0.5)
+    evaluate(page, "document.querySelector('.lib .tile').click(); document.activeElement.blur(); 1")   # select it
+    page.pump(0.3)
+    assert evaluate(page, "document.body.classList.contains('selecting') || "
+                          "!!document.querySelector('.mf-phone.selecting')") is True
+    assert evaluate(page, "document.querySelector('.lib .tile').getAttribute('aria-pressed')") == "true"
+    _tab_to(page, ".lib .tile")
+    r = json.loads(evaluate(page, "JSON.stringify(document.querySelector('.lib .tile').getBoundingClientRect())"))
+    green = _rgb(evaluate(page, "getComputedStyle(document.querySelector('.lib .tile')).borderTopColor"))
+    disc = _rgb(evaluate(page, "getComputedStyle(document.querySelector('.lib .tile'), '::after').backgroundColor"))
+    tick = _rgb(evaluate(page, "getComputedStyle(document.querySelector('.lib .tile'), '::before').borderLeftColor"))
+    im = Image.open(io.BytesIO(base64.b64decode(page.call("Page.captureScreenshot", {"format": "png"})["result"]["data"]))).convert("RGB")
+    x0, y0, w = int(r["x"]), int(r["y"]), int(r["width"])
+    bands = {side: [im.getpixel((x0 + int(w * f), y0 + d)) for d in (1, 4, 7, 9)] for side, f in (("light", .5), ("dark", .8))}
+    assert bands == {"light": [green, GOLD, WHITE, DARK], "dark": [green, GOLD, WHITE, DARK]}, bands
+    assert im.getpixel((x0 + 1, y0 + int(r["height"]) // 2)) == green               # green edge on the side too
+    box = [im.getpixel((x0 + i, y0 + j)) for i in range(9, 35) for j in range(9, 35)]   # circle 26 px at 6 px + border
+    assert box.count(disc) > 150, (disc, box.count(disc))                           # filled circle, above the ring
+    assert sum(1 for c in box if c == tick) > 10                                    # the tick
+    assert evaluate(page, "getComputedStyle(document.querySelector('.lib .tile')).outlineColor") == "rgba(0, 0, 0, 0)"
+
+
 # ---------------- headless Chrome: both schemes on real pages ----------------
 
 def _vars(page, names):

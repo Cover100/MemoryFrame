@@ -46,14 +46,27 @@ def test_old_page_stylesheets_removed():
         assert not (ROOT / "static" / old).exists()
 
 
+def _block(css, opener):
+    """The text of the block that starts at `opener` (e.g. an @media), from its "{" to the matching "}"."""
+    i = css.index("{", css.index(opener))
+    depth = 0
+    for j in range(i, len(css)):
+        depth += {"{": 1, "}": -1}.get(css[j], 0)
+        if depth == 0:
+            return css[i:j + 1]
+    raise AssertionError(f"unbalanced braces after {opener!r}")
+
+
 def test_phone_css_is_lean_and_flat():
     flat = re.sub(r"/\*.*?\*/", "", CSS, flags=re.S)
-    # #141: the only shadows allowed are Wren's flat inset focus lines, light scheme only: the white inner line, and the
-    # gold/white/dark ring overlay on photos
-    light_focus = ("box-shadow: inset 0 0 0 5px #fff;",
-                   "box-shadow: inset 0 0 0 3px var(--mfp-focus), inset 0 0 0 5px #fff, inset 0 0 0 7px var(--mfp-text);")
-    assert flat.count("box-shadow") == 2 and all(flat.count(f) == 1 for f in light_focus)
-    assert min(flat.index(f) for f in light_focus) > flat.index("@media (prefers-color-scheme: light)")
+    # #141: the only shadows allowed are Wren's flat inset focus lines, light scheme only: the white inner line (once),
+    # and the gold/white/dark ring overlay (twice: photos/grid links, and the li of a selected+focused tile)
+    light_focus = {"box-shadow: inset 0 0 0 5px #fff;": 1,
+                   "box-shadow: inset 0 0 0 3px var(--mfp-focus), inset 0 0 0 5px #fff, inset 0 0 0 7px var(--mfp-text);": 2}
+    assert flat.count("box-shadow") == 3 and all(flat.count(f) == n for f, n in light_focus.items())
+    light = _block(flat, "@media (prefers-color-scheme: light)")   # the whole block, up to its matching brace
+    for f, n in light_focus.items():                               # INSIDE the light block, not merely after it opens
+        assert light.count(f) == n, f"not inside the light prefers-color-scheme block: {f}"
     for f in light_focus:
         flat = flat.replace(f, "")
     for bad in ("box-shadow", "gradient", "filter", "backdrop", "@import", "@font-face", "url(", "@keyframes", "animation"):

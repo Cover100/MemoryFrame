@@ -327,5 +327,11 @@ body.mf-phone.sheet-open { overflow: hidden; }   /* polish (Wren N5): the page b
   .mf-phone.selecting .tile:not([aria-pressed="true"]):focus-visible::before { content: ""; position: absolute; inset: 0;
     z-index: 2; pointer-events: none; border-radius: inherit;
     box-shadow: inset 0 0 0 3px var(--mfp-focus), inset 0 0 0 5px #fff, inset 0 0 0 7px var(--mfp-text); }
-  .mf-phone.selecting .tile[aria-pressed="true"]:focus-visible { outline-offset: -6px; }
+  .mf-phone.selecting .tile[aria-pressed="true"]:focus-visible { outline-color: transparent; }
+  /* selected+focused: ::after/::before are circle/tick, so the li draws the ring inside the green edge */
+  .mf-phone.selecting .lib li:has(> .tile[aria-pressed="true"]:focus-visible)::after { content: ""; position: absolute;
+    inset: 3px; z-index: 2; pointer-events: none;
+    box-shadow: inset 0 0 0 3px var(--mfp-focus), inset 0 0 0 5px #fff, inset 0 0 0 7px var(--mfp-text); }
+  .mf-phone.selecting .tile[aria-pressed="true"]:focus-visible::after { z-index: 3; }
+  .mf-phone.selecting .tile[aria-pressed="true"]:focus-visible::before { z-index: 4; }
 }

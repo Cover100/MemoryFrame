@@ -1,9 +1,9 @@
 /* Restyle PR C: the phone site (.mf-phone, tokens.css --mfp-*; DIRECTION.md, #70 phone mocks 01-08, 04-settings-v2, 04b).
-   One stylesheet for every phone page. Warm paper (#141, only scheme #148) + Atkinson (/frame-fonts.css, block); flat colours:
+   One stylesheet for every phone page. Forest night (#148 A: dark only) + Atkinson (/frame-fonts.css, block); flat colours:
    no shadows, gradients, blur or animations; light DOM. Inline style attributes are blocked by the CSP. */
-/* #148: always Warm paper, whatever the phone's OS setting: color-scheme light "only" (UA controls light, no
-   force-darkening, #83). <html> painted with the page colour for first paint and overscroll. */
-:root { color-scheme: light only; background-color: var(--mfp-bg); }
+/* #148 A: always Forest night, whatever the OS setting: declared "only dark" (UA controls dark; no force-darkening,
+   #83). <html> painted with the page colour for first paint and overscroll. */
+:root { color-scheme: only dark; background-color: var(--mfp-bg); }
 .mf-phone, .mf-phone * { box-sizing: border-box; }
 html, body.mf-phone { margin: 0; }
 body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh; -webkit-font-smoothing: antialiased;
@@ -318,18 +318,22 @@ body.mf-phone.sheet-open { overflow: hidden; }   /* polish (Wren N5): the page b
 /* 08 Can't reach the frame */
 .mf-phone .big-ico { background: var(--mfp-danger-bg); color: var(--mfp-danger-text); }
 
-/* #141 (Wren): inset rings get a white inner line (gold is 1.4:1 on green); on photos the ring is an
-   overlay above the img, gold/white/dark (>= 3.8:1 on any photo), keeping select mode's ::before/::after. */
+/* #141 (Wren): inset rings get a light inner line (gold is 1.4:1 on green); on photos the ring is an overlay above
+   the img, gold/light/dark (#148 A: oat/ink, >= 3.16:1 on any photo), keeping select mode's ::before/::after. */
 .mf-phone :is(.bar a, .seg button, .tile .acts button, .lib .vx, .tplay, .trim .bar .back):focus-visible {
-  box-shadow: inset 0 0 0 5px #fff; }
+  box-shadow: inset 0 0 0 5px var(--mfp-ring-light); }
 .mf-phone .grid a:focus-visible::after, .mf-phone:not(.selecting) .tile:focus-visible::after,
 .mf-phone.selecting .tile:not([aria-pressed="true"]):focus-visible::before { content: ""; position: absolute; inset: 0;
   z-index: 2; pointer-events: none; border-radius: inherit;
-  box-shadow: inset 0 0 0 3px var(--mfp-focus), inset 0 0 0 5px #fff, inset 0 0 0 7px var(--mfp-text); }
+  box-shadow: inset 0 0 0 3px var(--mfp-focus), inset 0 0 0 5px var(--mfp-ring-light), inset 0 0 0 7px var(--mfp-ring-band); }
 .mf-phone.selecting .tile[aria-pressed="true"]:focus-visible { outline-color: transparent; }
 /* selected+focused: ::after/::before are circle/tick, so the li draws the ring inside the green edge */
 .mf-phone.selecting .lib li:has(> .tile[aria-pressed="true"]:focus-visible)::after { content: ""; position: absolute;
   inset: 3px; z-index: 2; pointer-events: none;
-  box-shadow: inset 0 0 0 3px var(--mfp-focus), inset 0 0 0 5px #fff, inset 0 0 0 7px var(--mfp-text); }
+  box-shadow: inset 0 0 0 3px var(--mfp-focus), inset 0 0 0 5px var(--mfp-ring-light), inset 0 0 0 7px var(--mfp-ring-band); }
 .mf-phone.selecting .tile[aria-pressed="true"]:focus-visible::after { z-index: 3; }
 .mf-phone.selecting .tile[aria-pressed="true"]:focus-visible::before { z-index: 4; }
+/* #148 A (Wren): forced dark re-tones borders but keeps mid-tone shadows: control outlines as an inset shadow */
+.mf-phone .btn-neutral, .mf-phone button.secondary, .mf-phone .chip, .mf-phone .field, .mf-phone .code, .mf-phone .btn-onbar,
+.mf-phone #frameMessage, .mf-phone .msgKeep, .mf-phone .trim .tcancel, .mf-phone #list .vcancel {
+  border-color: transparent; box-shadow: inset 0 0 0 1.5px var(--mfp-outline); }

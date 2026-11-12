@@ -369,19 +369,20 @@ def test_failed_backup_restore_keeps_the_previous_file_and_logs_it(env, nm_fault
     rq.write_text(f"v1\n{'Second'.encode().hex()}\n{SENT}\n")
     r = run(env, "home-wifi", "--request")
     assert r.returncode != 0
-    assert "could not put the previous developer Wi-Fi file back; backup kept" in r.stderr
+    assert "could not put the previous developer Wi-Fi file back; new file removed, backup kept" in r.stderr
     assert "nothing new saved" not in r.stderr and "previous developer Wi-Fi restored" not in r.stderr
     bak = env["tmp"] / "nm" / ".MemoryFrame-home.bak"
     assert bak.read_bytes() == good and oct(bak.stat().st_mode & 0o777) == "0o600"   # the last copy is kept
-    # NM refused the file (loadfail): the tested file stays too; NM loaded it wrongly (deleted by UUID): only the .bak
-    assert kf.exists() == (nm_fault == "loadfail")
+    # #137 double fault: the untested new file is never left as the final file (loadfail: removed by us;
+    # loadbadid: NM deleted it by UUID); only the .bak is on disk, so the next boot restores the previous Wi-Fi
+    assert not kf.exists()
+    assert not [f for f in keyfiles(env) if "ssid=83;101;99;111;110;100;" in f.read_text()]   # no "Second" anywhere
     sync.write_text("#!/bin/bash\nexit 0\n")   # the SD card works again
     reboot(env)
     r = run(env, "boot")
     assert r.returncode == 0 and active(env) == HCON and kf.stat().st_size > 0, r.stderr
     assert not bak.exists()
-    if nm_fault == "loadbadid":
-        assert "previous developer Wi-Fi file restored and loaded" in r.stderr and kf.read_bytes() == good
+    assert "previous developer Wi-Fi file restored and loaded" in r.stderr and kf.read_bytes() == good   # both faults
 
 
 def test_no_valid_new_uuid_changes_nothing_and_deletes_nothing(env):

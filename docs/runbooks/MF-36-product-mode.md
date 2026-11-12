@@ -55,6 +55,14 @@ connection, but do it by hand first: the guard only runs when install.sh runs.)
   - **Deploying the #135 fix:** after install, re-save the developer Wi-Fi once from the phone (hotspot →
     Developer Wi-Fi). A profile saved by older code exists only in NetworkManager's memory and is lost
     at the next reboot; the new save writes `MemoryFrame-home.nmconnection` and then persists.
+  - #137: after a hotspot name/password change is kept (and at boot, for a frame changed by older code),
+    the hotspot profile is moved to its own file `MemoryFrame-hotspot.nmconnection` (root 0600, fsync-ed),
+    with the same UUID and without restarting the hotspot. NetworkManager must accept the new file first; if
+    it doesn't, the new file is removed and the hotspot stays in its old file (retried at the next boot). The
+    profile `hotspot.sh` creates (`nmcli connection add con-name MemoryFrame-hotspot`) normally already is
+    `MemoryFrame-hotspot.nmconnection`, so nothing moves; only a hotspot that NetworkManager stores in netplan
+    (or outside `/etc/NetworkManager/system-connections`) is left as it is. Check (read-only):
+    `nmcli -g NAME,UUID,FILENAME connection show` (`GENERAL.FILENAME` is not valid on the Pi's nmcli).
 
 ## Files on the boot partition (`/boot/firmware`, the "bootfs" drive on a PC)
 

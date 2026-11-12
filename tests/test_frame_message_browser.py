@@ -9,7 +9,8 @@ from test_wifi_browser import _phone
 
 # PHONE-DARK.md (#77): brick fills, brick-text text; outlined Keep = linen text + oat border
 RED, WHITE = "rgb(168, 53, 42)", "rgb(255, 255, 255)"
-RED_TEXT, LINEN, OAT = "rgb(231, 160, 151)", "rgb(243, 237, 228)", "rgb(201, 187, 168)"
+# #148: Warm paper (the only phone scheme): danger-text, text, outline (were brick-text, linen, oat on the dark scheme)
+RED_TEXT, LINEN, OAT = "rgb(168, 53, 42)", "rgb(31, 42, 36)", "rgb(133, 117, 101)"
 SHOT_DIR = os.environ.get("MF_SHOT_DIR")
 
 

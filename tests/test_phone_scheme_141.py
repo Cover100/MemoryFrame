@@ -93,7 +93,7 @@ def test_light_values_are_wrens_map_and_unconditional():
     for f in PHONE_FILES:                            # phone CSS sets no colour of its own (tokens only)
         css = _FLAT((STATIC / f).read_text())
         assert not re.search(r"rgba?\(|hsla?\(", css), f
-        assert set(re.findall(r"#[0-9a-fA-F]{3,8}\b", css)) <= {"#fff"}, f   # #fff: the Library select ring only
+        assert set(re.findall(r"#[0-9a-fA-F]{3,8}\b", css)) <= {"#fff"}, f   # #fff: homewifi.css icon glyphs only (#148 A: not the select ring)
 
 
 def test_phone_css_uses_no_frame_or_old_remapped_tokens():
@@ -174,7 +174,9 @@ def test_light_inset_focus_rings_get_a_white_inner_line():
                 '.mf-phone.selecting .tile:not([aria-pressed="true"]):focus-visible::before'):
         assert sel in light, sel
     assert "focus-visible img" not in phone                                   # the c8e730c img outline is gone
-    assert "box-shadow" not in phone[:phone.index(".mf-phone :is(.bar a, .seg button")]   # no shadow anywhere else
+    before = phone[:phone.index(".mf-phone :is(.bar a, .seg button")]                    # no shadow anywhere else,
+    assert "box-shadow" not in before.replace("box-shadow: inset 0 0 0 2px var(--mfp-ring-light);", "", 1)   # but the
+    # Library select ring (#148 A: an inset ring-light shadow instead of a #fff border, so forced dark keeps it)
     assert "prefers-color-scheme" not in phone                                  # #148: in every OS setting
     assert (PHONE_DEFS["--mfp-ring-light"], PHONE_DEFS["--mfp-ring-band"]) == ("#C9BBA8", "#0E1311")   # oat / ink
     assert round(ratio("#C9BBA8", "#0E1311"), 2) == 9.96 and ratio(PHONE_DEFS["--mfp-ring-light"], "#000000") > 3
@@ -285,6 +287,10 @@ def test_light_selected_and_focused_tile_gets_the_three_bands_and_keeps_its_tick
     box = [im.getpixel((x0 + i, y0 + j)) for i in range(9, 35) for j in range(9, 35)]   # circle 26 px at 6 px + border
     assert box.count(disc) > 150, (disc, box.count(disc))                           # filled circle, above the ring
     assert sum(1 for c in box if c == tick) > 10                                    # the tick
+    after = "getComputedStyle(document.querySelector('.lib .tile'), '::after')"
+    assert evaluate(page, f"{after}.borderTopColor") == "rgba(0, 0, 0, 0)"            # #148 A: no #fff border
+    assert evaluate(page, f"{after}.boxShadow") == "rgb(201, 187, 168) 0px 0px 0px 2px inset"   # ring-light ring
+    assert box.count(WHITE) > 20, box.count(WHITE)                                  # the oat ring is drawn
     assert evaluate(page, "getComputedStyle(document.querySelector('.lib .tile')).outlineColor") == "rgba(0, 0, 0, 0)"
 
 

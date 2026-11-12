@@ -68,19 +68,24 @@ def test_phone_css_is_lean_and_flat():
     flat = re.sub(r"/\*.*?\*/", "", CSS, flags=re.S)
     # #141: the only shadows allowed are Wren's flat inset focus lines: the light inner line (once), and the
     # gold/light/dark ring overlay (twice: photos/grid links, and the li of a selected+focused tile), all in the #141
-    # focus-ring section; #148 A adds exactly one more: the hardened control outline (Wren 3.2), after that section.
+    # focus-ring section; #148 A adds exactly two more: the hardened control outline (Wren 3.2), after that section,
+    # and the Library select ring (was a #fff border), which sits before it.
     light_focus = {"box-shadow: inset 0 0 0 5px var(--mfp-ring-light);": 1,
                    "box-shadow: inset 0 0 0 3px var(--mfp-focus), inset 0 0 0 5px var(--mfp-ring-light), "
                    "inset 0 0 0 7px var(--mfp-ring-band);": 2,
-                   "border-color: transparent; box-shadow: inset 0 0 0 1.5px var(--mfp-outline);": 1}
-    assert flat.count("box-shadow") == 4 and all(flat.count(f) == n for f, n in light_focus.items())
+                   "border-color: transparent; box-shadow: inset 0 0 0 1.5px var(--mfp-outline);": 1,
+                   "border: 2px solid transparent; box-shadow: inset 0 0 0 2px var(--mfp-ring-light);": 1}
+    assert flat.count("box-shadow") == 5 and all(flat.count(f) == n for f, n in light_focus.items())
     hard = re.search(r"([^{}]*)\{\s*border-color: transparent; box-shadow: inset 0 0 0 1\.5px var\(--mfp-outline\); \}", flat)
     assert [x.strip() for x in hard.group(1).split(",")] == [".mf-phone " + h for h in HARDENED]
     assert "prefers-color-scheme" not in flat and "@media (prefers" not in flat   # #148: one scheme, no switching
     rings = flat[flat.index(".mf-phone :is(.bar a, .seg button"):]                 # the #141 focus-ring section
-    assert "@media" not in rings and "box-shadow" not in flat[:flat.index(".mf-phone :is(.bar a, .seg button")]
-    for f, n in light_focus.items():                               # INSIDE the focus-ring section, all of them
-        assert rings.count(f) == n, f"not in the #141 focus-ring section: {f}"
+    select_ring = "border: 2px solid transparent; box-shadow: inset 0 0 0 2px var(--mfp-ring-light);"
+    before = flat[:flat.index(".mf-phone :is(.bar a, .seg button")]
+    assert before.count(select_ring) == 1                          # #148 A: the Library select ring, before the section
+    assert "@media" not in rings and "box-shadow" not in before.replace(select_ring, "")
+    for f, n in light_focus.items():                               # INSIDE the focus-ring section, all the others
+        assert f == select_ring or rings.count(f) == n, f"not in the #141 focus-ring section: {f}"
     for f in light_focus:
         flat = flat.replace(f, "")
     for bad in ("box-shadow", "gradient", "filter", "backdrop", "@import", "@font-face", "url(", "@keyframes", "animation"):
@@ -800,9 +805,9 @@ def test_dark_tokens_and_outline_rules_in_css():
     for sel in (r"\.mf-phone \.btn-neutral, \.mf-phone button\.secondary", r"\.mf-phone \.msgKeep", r"\.mf-phone \.field",
                 r"\.mf-phone \.code", r"\.mf-phone #frameMessage", r"\.mf-phone \.btn-onbar"):
         assert re.search(sel + r" \{[^}]*border: 1\.5px solid var\(--mfp-outline\)", flat), sel
-    # white only as the Library select ring (must read on any photo, per 09-LIBRARY.md); #148 A: the inset-focus line
-    # is --mfp-ring-light (oat), no longer #fff
-    assert "#fff;" not in re.sub(r"border: 2px solid #fff;", "", flat) and "5px #fff" not in flat
+    # #148 A: no #fff left: the inset-focus line and the Library select ring (must read on any photo, per
+    # 09-LIBRARY.md) are --mfp-ring-light (oat) inset shadows, so forced dark cannot grey them
+    assert "#fff" not in flat
 
 
 def test_no_non_breaking_hyphen_and_every_visible_wi_fi_is_wrapped():

@@ -115,6 +115,15 @@ def test_control_outlines_are_an_inset_shadow():                                
     assert flat.rindex("var(--mfp-outline); }") > flat.rindex("border: 1.5px solid var(--mfp-outline)")   # wins by order
 
 
+def test_library_select_ring_is_an_inset_ring_light_shadow():                        # Wren follow-up (PR150)
+    flat = _FLAT(PHONE)
+    m = re.search(r"\.mf-phone\.selecting \.tile::after \{([^}]*)\}", flat)
+    rule = " ".join(m.group(1).split())
+    assert "#fff" not in rule and "border: 2px solid transparent;" in rule           # same 2px box: no layout change
+    assert "box-shadow: inset 0 0 0 2px var(--mfp-ring-light);" in rule and "width: 26px; height: 26px;" in rule
+    assert "#fff" not in flat                                                       # no white border left anywhere
+
+
 def test_forest_night_pairs_meet_aa():                                               # Wren 3.3 + AA guards
     t = FOREST_A
     text = [("text", "bg"), ("text", "surface"), ("text-2", "bg"), ("text-2", "surface"), ("header-text", "header"),

@@ -88,7 +88,7 @@ def test_n2_last_hard_coded_colours_are_tokens():
     assert len(re.findall(r"--mfp-scrim:", TOKENS)) == 1              # #92/#141/#148: once, in .mf-phone (one scheme)
     assert re.search(r"\.mf-phone \{[^}]*--mfp-scrim:\s*rgba\(0, 0, 0, \.6\);", TOKENS)   # #148 A: Forest night
     others = set(re.findall(r"#[0-9a-fA-F]{3,6}\b", flat))
-    assert others <= {"#fff"}, others                              # white: photo select ring only (#148 A)
+    assert others == set(), others                                 # #148 A: no hex colour left (select ring: ring-light)
 
 
 def test_n4_per_tile_delete_styling_is_gone_with_the_old_library():

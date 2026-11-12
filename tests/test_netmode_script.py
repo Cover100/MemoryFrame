@@ -36,6 +36,9 @@ if [ "$2 $3" = "connection delete" ] || [ "$3 $4" = "connection show" ] || [ "$1
 fi
 case "$1 $2" in
   "-g NAME") ls "$D/p"; exit 0;;
+  "-g UUID,FILENAME")   # #137: the file backing each profile (empty: none); some nmcli builds lack FILENAME
+    [ -f "$D/nofilename" ] && { echo "Error: invalid field 'FILENAME'" >&2; exit 2; }
+    for q in "$D"/p/*/; do q="${q%/}"; echo "$(cat "$q/uuid" 2>/dev/null || echo "uuid-$(basename "$q")"):$(cat "$q/file" 2>/dev/null)"; done; exit 0;;
   "-g GENERAL.CONNECTION") cat "$D/active"; exit 0;;
 esac
 if [ "$1" = -g ] && [ "$3 $4" = "connection show" ]; then
@@ -44,6 +47,7 @@ if [ "$1" = -g ] && [ "$3 $4" = "connection show" ]; then
     connection.type) cat "$f/type";; 802-11-wireless.mode) cat "$f/mode";;
     802-11-wireless.ssid) cat "$f/ssid";; connection.autoconnect) cat "$f/autoconnect";;
     connection.timestamp) cat "$f/ts" 2>/dev/null || echo 0;;
+    connection.autoconnect-priority) cat "$f/prio" 2>/dev/null || echo 0;;
     connection.uuid) cat "$f/uuid" 2>/dev/null || echo "uuid-$5";;
     connection.id) echo "$5";;
     connection.interface-name) cat "$f/ifname" 2>/dev/null;;
@@ -54,23 +58,50 @@ case "$1 $2" in
     if [ "$4" = connection.id ]; then
       mv "$D/p/$3" "$D/p/$5"; [ "$(cat "$D/active")" = "$3" ] && echo "$5" > "$D/active"
       # like NM (keyfile rename=false): the backing file KEEPS its name, only its id= line changes
-      [ -f "$D/p/$5/file" ] && f="$(cat "$D/p/$5/file")" && [ -f "$f" ] && sed -i "s/^id=.*/id=$5/" "$f"
-    else echo "$5" > "$D/p/$3/autoconnect"; [ -n "$7" ] && echo "$7" > "$D/p/$3/prio"; fi;;
+      # NM's writer also stores the uuid= line
+      if [ -f "$D/p/$5/file" ] && f="$(cat "$D/p/$5/file")" && [ -f "$f" ]; then
+        sed -i "s/^id=.*/id=$5/" "$f"; grep -q '^uuid=' "$f" || sed -i "s/^id=$5\$/id=$5\nuuid=$(cat "$D/p/$5/uuid")/" "$f"
+        cp "$f" "$D/p/$5/keyfile"
+      fi
+    elif [ "$4" = connection.autoconnect-priority ]; then echo "$5" > "$D/p/$3/prio"
+    else echo "$5" > "$D/p/$3/autoconnect"; [ -n "$7" ] && echo "$7" > "$D/p/$3/prio"; fi
+    # #137: NM writes a changed profile to its file; a file removed behind its back is written again
+    if [ "$4" != connection.id ] && [ -f "$D/p/$3/file" ] && f="$(cat "$D/p/$3/file")" && [ ! -s "$f" ] \
+        && [ -f "$D/p/$3/keyfile" ] && [ ! -f "$D/nowrite" ]; then sed "s/^id=.*/id=$3/" "$D/p/$3/keyfile" > "$f"; fi;;
   "connection load")
-    if [ -f "$D/loadfail" ] && read -r lf_name lf_n < "$D/loadfail" && [ "$(basename "$3")" = "$lf_name" ] \
-        && [ "$lf_n" -gt 0 ]; then   # #135 QA: NM refuses this file (N more times)
-      echo "$lf_name $((lf_n - 1))" > "$D/loadfail"; echo "Error: failed to load connection" >&2; exit 4
+    rc=0
+    for path in "${@:3}"; do   # like NM: each path on its own; a failing one does not stop the others
+    [ -f "$D/norebind" ] && continue   # #137 test: an NM that ignores the load (profile stays on its old file)
+    if [ ! -e "$path" ]; then   # #137: file gone: that storage is unloaded; the profile falls back to another
+      for q in "$D"/p/*/; do q="${q%/}"   # file with its uuid still on disk (shadow), else it goes
+        [ -f "$q/shadow" ] && grep -vxF "$path" "$q/shadow" > "$q/shadow.n"; [ -f "$q/shadow.n" ] && mv "$q/shadow.n" "$q/shadow"
+        [ "$(cat "$q/file" 2>/dev/null)" = "$path" ] || continue
+        alt=""; while read -r a; do [ -s "$a" ] && alt="$a"; done < <(cat "$q/shadow" 2>/dev/null)
+        if [ -n "$alt" ]; then echo "$alt" > "$q/file"; continue; fi
+        [ "$(cat "$D/active")" = "$(basename "$q")" ] && : > "$D/active"; rm -rf "$q"; done
+      continue
     fi
-    n="$(sed -n 's/^id=//p' "$3")"
+    if [ -f "$D/loadfail" ] && read -r lf_name lf_n < "$D/loadfail" && [ "$(basename "$path")" = "$lf_name" ] \
+        && [ "$lf_n" -gt 0 ]; then   # #135 QA: NM refuses this file (N more times)
+      echo "$lf_name $((lf_n - 1))" > "$D/loadfail"; echo "Error: failed to load connection" >&2; rc=4; continue
+    fi
+    n="$(sed -n 's/^id=//p' "$path")"; u="$(sed -n 's/^uuid=//p' "$path")"
+    if [ -n "$u" ] && [ -d "$D/p/$n" ] && [ "$(cat "$D/p/$n/uuid" 2>/dev/null)" = "$u" ]; then
+      # #137: same uuid from another file = the SAME profile, now backed by this file (stays active)
+      cat "$D/p/$n/file" >> "$D/p/$n/shadow" 2>/dev/null
+      echo "$path" > "$D/p/$n/file"; cp "$path" "$D/p/$n/keyfile"; echo "$path" >> "$D/rebound"; continue
+    fi
     # a same-named profile from ANOTHER file stays a separate profile (as in NM), found by uuid only
-    if [ -d "$D/p/$n" ] && [ "$(cat "$D/p/$n/file" 2>/dev/null)" != "$3" ]; then mv "$D/p/$n" "$D/p/$n~dup"; fi
-    if [ -f "$D/loadbadid" ] && [ "$(basename "$3")" = "$(cat "$D/loadbadid")" ]; then n="$n~bad"; rm -f "$D/loadbadid"; fi   # #137 N4 (once)
+    if [ -d "$D/p/$n" ] && [ "$(cat "$D/p/$n/file" 2>/dev/null)" != "$path" ]; then mv "$D/p/$n" "$D/p/$n~dup"; fi
+    if [ -f "$D/loadbadid" ] && [ "$(basename "$path")" = "$(cat "$D/loadbadid")" ]; then n="$n~bad"; rm -f "$D/loadbadid"; fi   # #137 N4 (once)
     mkdir -p "$D/p/$n"
-    m="$(sed -n 's/^mode=//p' "$3")"
+    m="$(sed -n 's/^mode=//p' "$path")"
     echo 802-11-wireless > "$D/p/$n/type"; echo "${m:-ap}" > "$D/p/$n/mode"; echo no > "$D/p/$n/autoconnect"
-    echo "$3" > "$D/p/$n/file"                        # #135: file-backed (survives reboot() only if it exists)
-    u="$(sed -n 's/^uuid=//p' "$3")"; echo "${u:-uuid-new-$RANDOM$RANDOM}" > "$D/p/$n/uuid"
-    cp "$3" "$D/p/$n/keyfile";;
+    echo "$path" > "$D/p/$n/file"                        # #135: file-backed (survives reboot() only if it exists)
+    u="$(sed -n 's/^uuid=//p' "$path")"; echo "${u:-uuid-new-$RANDOM$RANDOM}" > "$D/p/$n/uuid"
+    cp "$path" "$D/p/$n/keyfile"
+    done
+    [ "$rc" = 0 ] || exit "$rc";;
   "connection delete") [ -f "$D/p/$3/file" ] && rm -f "$(cat "$D/p/$3/file")"; rm -rf "$D/p/$3"; [ "$(cat "$D/active")" = "$3" ] && : > "$D/active";;
   "connection up")
     [ -d "$D/p/$3" ] || exit 10

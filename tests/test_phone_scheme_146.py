@@ -1,5 +1,5 @@
-"""#146 (owner's request via Quinn, 12 Nov 2026) inverted the phone colour-scheme mapping; #148 (owner's request,
-12 Nov 5:40 pm) supersedes it: the phone ALWAYS shows Warm paper light (#141), whatever the phone's OS setting.
+"""#146 (owner's request via Quinn, 12 Nov 2026) inverted the phone colour-scheme mapping; #148 supersedes it
+(user's final choice, option A): the phone ALWAYS shows Forest night (the frame's dark scheme), whatever the OS setting.
 Still mapping only: no colour values, no toggle; the frame screen / slideshow never read a phone token. These tests emulate the raw OS setting (not the
 shown-scheme helper), so they pin the mapping itself, plus the browser chrome (theme-color) and the UA's own
 colour scheme (form controls, scrollbars: the Canvas system colour) to the scheme actually shown."""
@@ -11,9 +11,10 @@ from test_frontend_browser import BROWSER, evaluate, page, server  # noqa: F401 
 from test_restyle_c_phone import PNG, _phone
 
 # raw OS setting -> what must be shown: page bg, bar bg (= theme-color), body text, root color-scheme, UA Canvas dark?
-# #148: Warm paper in both (was #146: OS light -> dark scheme "dark"/Canvas dark, OS dark -> Warm paper)
-WARM_PAPER = ("rgb(246, 241, 233)", "rgb(255, 255, 255)", "rgb(31, 42, 36)", "light only", False)
-SHOWN = {"light": WARM_PAPER, "dark": WARM_PAPER}
+# #148 A: Forest night in both, declared "only dark" (was #146: OS light -> dark, OS dark -> Warm paper; then PR149:
+# Warm paper in both)
+FOREST = ("rgb(14, 19, 17)", "rgb(22, 38, 29)", "rgb(243, 237, 228)", ("dark only", "only dark"), True)
+SHOWN = {"light": FOREST, "dark": FOREST}
 _PROBE = """(()=>{
   const css = s => getComputedStyle(document.querySelector(s));
   const metas = [...document.querySelectorAll('meta[name="theme-color"]')].filter(m => matchMedia(m.media).matches);
@@ -51,6 +52,6 @@ def test_os_setting_shows_the_inverted_scheme_with_matching_chrome_and_controls(
         assert evaluate(page, "matchMedia('(prefers-color-scheme: %s)').matches" % os_pref), (os_pref, path)
         got = json.loads(evaluate(page, _PROBE))
         assert (got["bg"], got["body"], got["bar"], got["text"]) == (bg, bg, bar, text), (os_pref, path, got)
-        assert got["scheme"] == got["inputScheme"] == scheme, (os_pref, path, got)      # UA controls follow the page
+        assert got["scheme"] == got["inputScheme"] and got["scheme"] in scheme, (os_pref, path, got)   # UA follows page
         assert [_rgb(c) for c in got["theme"]] == [bar], (os_pref, path, got)            # one theme-color: the bar
         assert _dark(got["canvas"]) is ua_dark and _dark(got["canvasText"]) is not ua_dark, (os_pref, path, got)

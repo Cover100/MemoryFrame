@@ -1,8 +1,9 @@
-"""#141: Wren's "Warm paper" map (light-tokens.md, 11 Nov 2026). #146 inverted the OS mapping; #148 (owner's request)
-makes Warm paper the ONLY phone scheme: its values are the unconditional .mf-phone values, no colour-scheme media query,
-whatever the phone's OS setting. Media overlays / mini frame note / pair hero stay dark (they sit on photos or draw the
-frame); the frame never reads a phone token. PREVIOUS (the retired dark phone values) is kept as the reference that
-proves no value changed: Warm paper = Wren's column, everything else = PREVIOUS."""
+"""#141: Wren's "Warm paper" map (light-tokens.md, 11 Nov 2026); #146 inverted the OS mapping; PR149 made Warm paper the
+only scheme. #148 (user's final choice, option A "Forest night", Wren's 148-scheme-options): the phone ALWAYS shows the
+frame's forest-on-ink dark scheme, whatever the phone's OS setting, no colour-scheme media query, no toggle.
+PREVIOUS is the PHONE-DARK.md mapping (the pre-#141 dark look); FOREST is PREVIOUS plus Wren's A changes (text-2 /
+strip-text nudged to #C0B29E, ring-light / ring-band added). LIGHT (Warm paper) is kept as the retired reference.
+Media overlays / mini frame note / pair hero are unchanged; the frame never reads a phone token."""
 import json
 import re
 from pathlib import Path
@@ -46,6 +47,10 @@ LIGHT = {
     "--mfp-scrim": "rgba(31, 42, 36, .45)",
     "--mfp-on-gold": "#FFFFFF", "--mfp-panel": "#FFFFFF", "--mfp-tile": "#EDE4D7",
 }
+# #148 A (Wren): text-2 / strip-text out of Samsung's dim zone (luma 0.72-0.85), and the #141 ring's light / dark bands
+FOREST_CHANGES = {"--mfp-text-2": "#C0B29E", "--mfp-strip-text": "#C0B29E",
+                  "--mfp-ring-light": "#C9BBA8", "--mfp-ring-band": "#0E1311"}
+FOREST = {**PREVIOUS, **FOREST_CHANGES}
 SAME_IN_BOTH = {k for k in PREVIOUS if k.startswith(("--mfp-media-", "--mfp-note-", "--mfp-illo-"))} | {"--mfp-tile-ring-fill"}
 
 
@@ -62,9 +67,9 @@ PHONE_DEFS = _defs(_block(_FLAT(TOKENS), ".mf-phone {"))    # #148: the one (unc
 
 
 def test_phone_values_are_warm_paper_and_otherwise_the_previous_colours():
-    """#148 token equivalence: no value changed. Every --mfp-* is Wren's Warm paper value where she has one, else
-    exactly what it was before (#141's dark/same-in-both value); the retired dark values still are the frame's colours."""
-    assert PHONE_DEFS == {**PREVIOUS, **LIGHT}
+    """#148 A token equivalence: every --mfp-* is exactly the PHONE-DARK.md value (PREVIOUS, the frame's own colours),
+    except Wren's A changes (FOREST_CHANGES). (Name kept from the Warm paper era; the Warm paper values are retired.)"""
+    assert PHONE_DEFS == FOREST
     frame = dict(re.findall(r"(--mf-[\w-]+):\s*(#[0-9A-Fa-f]{6})", TOKENS[:TOKENS.index("/* ---- Phone:")]))
     for k, frame_tok in (("bg", "ink"), ("surface", "forest-800"), ("header", "forest-900"), ("header-text", "linen"),
                          ("strip", "walnut-900"), ("strip-text", "oat"), ("line", "forest-700"), ("outline", "oat"),
@@ -76,19 +81,19 @@ def test_phone_values_are_warm_paper_and_otherwise_the_previous_colours():
 
 
 def test_light_values_are_wrens_map_and_unconditional():
-    assert {k: PHONE_DEFS[k] for k in LIGHT} == LIGHT
+    """#148 A: Warm paper (LIGHT) is retired: none of its own values is left; Forest night is unconditional."""
     assert set(LIGHT) | SAME_IN_BOTH == set(PREVIOUS) and not set(LIGHT) & SAME_IN_BOTH   # media etc. never switch
     flat = _FLAT(TOKENS)
     assert "prefers-color-scheme" not in flat and "@media" not in flat[flat.index(".mf-phone {"):]   # #148: no switching
     assert flat.count(".mf-phone {") == 1 and len(re.findall(r"(?m)^:root \{ --mfp-bg:", flat)) == 1
-    assert re.search(r"(?m)^:root \{ --mfp-bg: #F6F1E9; \}", flat)                     # <html> painted paper
-    for k, v in LIGHT.items():                       # no retired dark phone value is left behind for a switched token
-        if PREVIOUS[k] != v:
-            assert not re.search(rf"{k}:\s*{re.escape(PREVIOUS[k])};", flat), (k, PREVIOUS[k])
+    assert re.search(r"(?m)^:root \{ --mfp-bg: #0E1311; \}", flat)                     # <html> painted ink
+    for k, v in LIGHT.items():                       # no retired Warm paper value is left behind
+        if FOREST[k] != v:
+            assert not re.search(rf"{k}:\s*{re.escape(v)};", flat), (k, v)
     for f in PHONE_FILES:                            # phone CSS sets no colour of its own (tokens only)
         css = _FLAT((STATIC / f).read_text())
         assert not re.search(r"rgba?\(|hsla?\(", css), f
-        assert set(re.findall(r"#[0-9a-fA-F]{3,8}\b", css)) <= {"#fff"}, f
+        assert set(re.findall(r"#[0-9a-fA-F]{3,8}\b", css)) <= {"#fff"}, f   # #fff: the Library select ring only
 
 
 def test_phone_css_uses_no_frame_or_old_remapped_tokens():
@@ -98,7 +103,7 @@ def test_phone_css_uses_no_frame_or_old_remapped_tokens():
     phone_rules = TOKENS[TOKENS.index("/* ---- Phone:"):]
     assert not re.findall(old, phone_rules)
     used = set(re.findall(r"var\((--mfp-[\w-]+)\)", phone_rules + "".join((STATIC / f).read_text() for f in PHONE_FILES)))
-    assert used <= set(PREVIOUS), used - set(PREVIOUS)            # every phone token used is defined
+    assert used <= set(FOREST), used - set(FOREST)                # every phone token used is defined
 
 
 def test_frame_never_reads_phone_tokens():
@@ -132,12 +137,15 @@ TEXT_PAIRS = [("text", "bg"), ("text", "surface"), ("text", "warn-bg"), ("text-2
 # (light-tokens.md rounds it to 4.5), so it must not become text colour without Wren re-checking (see test below).
 NON_TEXT_PAIRS = [("focus", "bg"), ("focus", "surface"), ("focus", "success-bg"), ("focus", "header"), ("gold", "bg"),
                   ("gold", "surface"), ("gold", "strip"), ("gold", "header"),
-                  ("warn-line", "warn-bg"), ("outline", "surface"), ("outline", "bg"), ("ok", "strip")]
+                  ("warn-line", "warn-bg"), ("outline", "surface"), ("outline", "bg"), ("ok", "strip"),
+                  ("ok", "bg"), ("ring-light", "ring-band")]          # #148 A (Wren's table)
+TEXT_PAIRS += [("text", "success-bg"), ("text", "panel")]          # #148 A (Wren's table)
 
 
 def test_map_pairs_meet_wcag_aa():
-    """Warm paper AA guard (#148: the only phone scheme): text 4.5:1, focus / outlines / marks 3:1."""
-    defs, scheme = PHONE_DEFS, "warm paper"
+    """Forest night AA guard (#148 A: the only phone scheme): text 4.5:1, focus / outlines / marks 3:1, and the
+    #141 ring's light band vs its dark band 3:1."""
+    defs, scheme = PHONE_DEFS, "forest night"
     c = lambda k: defs["--mfp-" + k]   # noqa: E731
     low = [(f, b, round(ratio(c(f), c(b)), 2)) for f, b in TEXT_PAIRS if ratio(c(f), c(b)) < 4.5]
     low += [(f, b, round(ratio(c(f), c(b)), 2)) for f, b in NON_TEXT_PAIRS if ratio(c(f), c(b)) < 3]
@@ -154,19 +162,22 @@ def test_gold_is_never_text_colour():
 def test_light_inset_focus_rings_get_a_white_inner_line():
     phone = _FLAT((STATIC / "phone.css").read_text())
     light = phone[phone.index(".mf-phone :is(.bar a, .seg button"):]   # #148: the #141 ring section, unconditional
-    rule = re.search(r"\.mf-phone :is\(([^)]*)\):focus-visible \{\s*box-shadow: inset 0 0 0 5px #fff; \}", light)
+    rule = re.search(r"\.mf-phone :is\(([^)]*)\):focus-visible \{\s*box-shadow: inset 0 0 0 5px var\(--mfp-ring-light\); \}", light)
     assert rule, light
     assert [x.strip() for x in rule.group(1).split(",")] == [".bar a", ".seg button", ".tile .acts button", ".lib .vx",
                                                              ".tplay", ".trim .bar .back"]
-    # photos (Wren): an overlay above the img with gold 3px + white 2px + dark 2px, so >= 3.8:1 against any photo
-    assert ("box-shadow: inset 0 0 0 3px var(--mfp-focus), inset 0 0 0 5px #fff, inset 0 0 0 7px var(--mfp-text); }") in light
+    # photos (Wren): an overlay above the img with gold 3px + light 2px + dark 2px (#148 A: oat / ink, >= 3.16:1 on any photo)
+    assert ("box-shadow: inset 0 0 0 3px var(--mfp-focus), inset 0 0 0 5px var(--mfp-ring-light), "
+            "inset 0 0 0 7px var(--mfp-ring-band); }") in light
+    assert "#fff" not in light                                                # #148 A: no white band left (forced dark inverts it)
     for sel in (".mf-phone .grid a:focus-visible::after", ".mf-phone:not(.selecting) .tile:focus-visible::after",
                 '.mf-phone.selecting .tile:not([aria-pressed="true"]):focus-visible::before'):
         assert sel in light, sel
     assert "focus-visible img" not in phone                                   # the c8e730c img outline is gone
     assert "box-shadow" not in phone[:phone.index(".mf-phone :is(.bar a, .seg button")]   # no shadow anywhere else
     assert "prefers-color-scheme" not in phone                                  # #148: in every OS setting
-    assert LIGHT["--mfp-text"] == "#1F2A24"                                    # Wren's dark band
+    assert (PHONE_DEFS["--mfp-ring-light"], PHONE_DEFS["--mfp-ring-band"]) == ("#C9BBA8", "#0E1311")   # oat / ink
+    assert round(ratio("#C9BBA8", "#0E1311"), 2) == 9.96 and ratio(PHONE_DEFS["--mfp-ring-light"], "#000000") > 3
 
 
 def _two_tone_jpeg():
@@ -202,7 +213,8 @@ def _bands(page, sel):
             for side, f in (("light", .25), ("dark", .75))}
 
 
-GOLD, WHITE, DARK = (138, 106, 30), (255, 255, 255), (31, 42, 36)
+# #148 A: brass (--mfp-focus), oat (--mfp-ring-light), ink (--mfp-ring-band). (WHITE kept as the light band's name.)
+GOLD, WHITE, DARK = (214, 179, 106), (201, 187, 168), (14, 19, 17)
 
 
 @pytest.mark.no_media
@@ -210,9 +222,9 @@ GOLD, WHITE, DARK = (138, 106, 30), (255, 255, 255), (31, 42, 36)
 @pytest.mark.parametrize("os_pref", OS_MODES)
 @pytest.mark.parametrize("path,sel", [("admin/library", ".lib .tile"), ("admin/", ".grid a")])
 def test_light_focus_on_a_photo_is_gold_white_dark_over_light_and_dark_areas(page, server, mf_app, lib, path, sel, os_pref):
-    """#141 (Wren): on a focused Library photo tile and a focused home grid link (Warm paper; #148: in both OS
-    settings), the ring sits above the photo: gold 0-3 px, white 3-5 px, dark 5-7 px from the edge, the same over a
-    light and a dark part of the photo."""
+    """#141 (Wren): on a focused Library photo tile and a focused home grid link (#148 A Forest night, in both OS
+    settings), the ring sits above the photo: gold 0-3 px, light band 3-5 px, dark band 5-7 px from the edge (brass /
+    oat / ink), the same over a light and a dark part of the photo."""
     lib.add("split.jpg", _two_tone_jpeg())
     _scheme(page, os_pref)
     _phone(page, server, mf_app, path)
@@ -226,8 +238,8 @@ def test_light_focus_on_a_photo_is_gold_white_dark_over_light_and_dark_areas(pag
 @pytest.mark.skipif(BROWSER is None, reason="no Chromium/Chrome installed")
 @pytest.mark.parametrize("os_pref", OS_MODES)
 def test_dark_focus_on_a_photo_is_unchanged(page, server, mf_app, lib, os_pref):
-    """Was: dark keeps the single brass ring (no overlay). #148: the dark phone scheme is gone, so in BOTH OS settings
-    a focused photo gets the Warm paper overlay ring, never the old brass one."""
+    """Was: dark keeps the single brass ring (no overlay). #148 A: Forest night is the only scheme and keeps the #141
+    overlay, so in BOTH OS settings a focused photo gets brass / oat / ink bands above the photo."""
     lib.add("split.jpg", _two_tone_jpeg())
     _scheme(page, os_pref)
     _phone(page, server, mf_app, "admin/library")
@@ -235,7 +247,6 @@ def test_dark_focus_on_a_photo_is_unchanged(page, server, mf_app, lib, os_pref):
     _tab_to(page, ".lib .tile")
     assert evaluate(page, "getComputedStyle(document.querySelector('.lib .tile'), '::after').content") == '""'
     bands = _bands(page, ".lib .tile")
-    assert (214, 179, 106) not in bands["light"] + bands["dark"]                # no brass ring
     assert bands == {"light": [GOLD, WHITE, DARK], "dark": [GOLD, WHITE, DARK]}, bands
 
 
@@ -295,7 +306,7 @@ def test_browser_dark_and_light_on_every_phone_page(page, server, mf_app, lib, m
     lib.add("c.jpg", PNG)
     media = sorted(SAME_IN_BOTH)
     seen = {}
-    bg, bar, text = "rgb(246, 241, 233)", "rgb(255, 255, 255)", "rgb(31, 42, 36)"   # #148: Warm paper in both
+    bg, bar, text = "rgb(14, 19, 17)", "rgb(22, 38, 29)", "rgb(243, 237, 228)"   # #148 A: Forest night in both
     for scheme in OS_MODES:                              # the emulated OS setting
         _scheme(page, scheme)
         for path in ("admin/", "admin/library", "admin/upload", "admin/settings", "admin/wifi/", "pair"):
@@ -303,7 +314,7 @@ def test_browser_dark_and_light_on_every_phone_page(page, server, mf_app, lib, m
             assert evaluate(page, "matchMedia('(prefers-color-scheme: %s)').matches" % scheme), (scheme, path)
             assert _css(page, "html", "backgroundColor") == bg and _css(page, "body", "backgroundColor") == bg, (scheme, path)
             assert _css(page, ".bar", "backgroundColor") == bar and _css(page, "body", "color") == text, (scheme, path)
-            assert _css(page, "html", "colorScheme") == "light only", (scheme, path)
+            assert _css(page, "html", "colorScheme") in ("dark only", "only dark"), (scheme, path)
         seen[scheme] = _vars(page, media)                 # media overlays, mini frame note, pair hero
         assert all(seen[scheme].values()), seen[scheme]
     assert seen["light"] == seen["dark"]

@@ -85,10 +85,10 @@ def test_n2_last_hard_coded_colours_are_tokens():
     assert "#2a2a2a" not in flat.lower() and "rgba(" not in flat and "rgb(" not in flat
     assert "border: 3px solid var(--mfp-illo-rim)" in flat                # #141: --mf-forest-800 via the phone token
     assert "background: var(--mfp-scrim)" in flat
-    assert len(re.findall(r"--mfp-scrim:", TOKENS)) == 1              # #92/#141/#148: once, in .mf-phone (Warm paper only)
-    assert re.search(r"\.mf-phone \{[^}]*--mfp-scrim:\s*rgba\(31, 42, 36, \.45\);", TOKENS)
+    assert len(re.findall(r"--mfp-scrim:", TOKENS)) == 1              # #92/#141/#148: once, in .mf-phone (one scheme)
+    assert re.search(r"\.mf-phone \{[^}]*--mfp-scrim:\s*rgba\(0, 0, 0, \.6\);", TOKENS)   # #148 A: Forest night
     others = set(re.findall(r"#[0-9a-fA-F]{3,6}\b", flat))
-    assert others <= {"#fff"}, others                              # white: photo select ring, light inset-focus line
+    assert others <= {"#fff"}, others                              # white: photo select ring only (#148 A)
 
 
 def test_n4_per_tile_delete_styling_is_gone_with_the_old_library():

@@ -126,6 +126,23 @@ What it does:
   `chromium --kiosk`, a duplicate `deploy/kiosk.sh`); a file that only contains the home path
   (e.g. `/home/memoryframe/pi-apps/updater`) is not flagged. For `.desktop` files only `Exec=` is checked.
   Lines containing `memoryframe-managed` are always left alone. Crontab backups go to `$HOME`.
+- **Mouse pointer hidden at boot (#155).** labwc draws its pointer from session start, and the page's
+  `cursor: none` only applies after a pointer event, so the arrow used to stay until the first touch.
+  - `install.sh` installs `wtype` and merges one marked block (`memoryframe-managed hide-cursor`: a
+    `<keybind key="A-W-h">` with `WarpCursor` + `HideCursor`) into `~/.config/labwc/rc.xml`
+    (`deploy/labwc-hide-cursor.py`). An existing file keeps every other line byte for byte and a re-run changes
+    nothing; the first edit keeps `rc.xml.mf-bak`. A missing file is created (minimal when labwc runs with `-m`,
+    as on Pi OS; otherwise a copy of `/etc/xdg/labwc/rc.xml` plus the block). labwc is reloaded only when the file
+    changed and a labwc session is running.
+  - `kiosk.sh` presses that key with `wtype` at launcher start and 2 s and 8 s after every Chromium launch
+    (`hide-cursor:` lines in the kiosk log). Without `wtype` or Wayland it skips this; the kiosk is unchanged.
+  - A USB mouse shows the pointer again as soon as it moves (labwc); it stays hidden until then.
+  - `style.css` also sets `cursor: none !important` on every element of the frame page.
+  - **Rollback:** `./deploy/uninstall.sh` removes the block, or by hand: delete the lines from
+    `<!-- memoryframe-managed hide-cursor` to `<!-- /memoryframe-managed hide-cursor -->` in
+    `~/.config/labwc/rc.xml` (or restore `rc.xml.mf-bak`), then run `labwc --reconfigure` in the desktop
+    session (over ssh: `LABWC_PID=$(pgrep -u "$USER" -x labwc) labwc --reconfigure`). `sudo apt-get remove wtype`
+    alone also turns it off.
 
 Check after reboot (expect exactly one of each):
 

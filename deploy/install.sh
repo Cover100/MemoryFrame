@@ -82,6 +82,9 @@ fi
 command -v chromium-browser >/dev/null || command -v chromium >/dev/null || sudo apt-get install -y chromium-browser
 # ffmpeg (#102): videos are converted on the frame. Not fatal: without it uploads say "videos are coming later".
 sudo apt-get install -y ffmpeg || echo "WARNING: ffmpeg could not be installed: videos cannot be added until it is (sudo apt-get install ffmpeg)." >&2
+# wtype (#155): kiosk.sh presses labwc's hide-pointer keybind with it. Not fatal: without it the pointer shows
+# until the first touch, as before.
+sudo apt-get install -y wtype || echo "WARNING: wtype could not be installed: the mouse pointer stays visible until the first touch (sudo apt-get install wtype)." >&2
 # prlimit/taskset/ionice (util-linux) cap and pin each conversion; they ship with Raspberry Pi OS. Without
 # prlimit a conversion still runs, but without its 1.5 GiB address-space cap.
 command -v prlimit >/dev/null 2>&1 || echo "WARNING: prlimit (util-linux) is missing: video conversions run without their memory cap." >&2
@@ -326,6 +329,36 @@ echo "== Kiosk autostart"
 mkdir -p "$HOME/.config/autostart"
 sed -e "s#@APP_DIR@#$APP_DIR#g" "$SRC_DIR/deploy/memoryframe-kiosk.desktop" \
     > "$HOME/.config/autostart/memoryframe-kiosk.desktop"
+
+echo "== Hide the mouse pointer at boot (#155)"
+# labwc draws its pointer from session start and the page's cursor:none only applies after a pointer event, so
+# kiosk.sh presses a labwc keybind (WarpCursor + HideCursor) with wtype. The ONE marked block is merged into
+# the desktop user's rc.xml (labwc-hide-cursor.py: an existing file keeps every other byte, a re-run changes
+# nothing, the first edit keeps rc.xml.mf-bak; a missing file is created). Best effort: a failure only warns.
+# Rollback: deploy/uninstall.sh, or delete the marked block and run `labwc --reconfigure` (README).
+LABWC_RC="${XDG_CONFIG_HOME:-$HOME/.config}/labwc/rc.xml"
+LABWC_SYSTEM_RC="${MEMORYFRAME_LABWC_SYSTEM_RC:-/etc/xdg/labwc/rc.xml}"
+LABWC_PS="$("${PGREP:-pgrep}" -a -u "$(id -u)" -x labwc 2>/dev/null || true)"   # "pid args", this user's session
+LABWC_ADD=(add "$LABWC_RC" --system-rc "$LABWC_SYSTEM_RC")
+# labwc -m / --merge-config (Pi OS starts it so via labwc-pi): a user rc.xml augments the system one.
+MERGE_RE='(^|[[:space:]])(-m|--merge-config)([[:space:]]|$)'
+if grep -qE -- "$MERGE_RE" <<< "$LABWC_PS" \
+   || grep -qE -- "$MERGE_RE" "${MEMORYFRAME_LABWC_PI:-/usr/bin/labwc-pi}" 2>/dev/null; then
+    LABWC_ADD+=(--merge-config)
+fi
+PY3=/usr/bin/python3; [ -x "$PY3" ] || PY3="$(command -v python3 || echo python3)"
+rc_sum() { sha256sum "$LABWC_RC" 2>/dev/null || echo none; }
+rc_before="$(rc_sum)"
+if "$PY3" "$SRC_DIR/deploy/labwc-hide-cursor.py" "${LABWC_ADD[@]}"; then
+    if [ "$(rc_sum)" != "$rc_before" ] && [ -n "$LABWC_PS" ]; then
+        # labwc --reconfigure signals the compositor named by LABWC_PID (not set in an ssh shell).
+        LABWC_PID="${LABWC_PS%% *}" timeout 10 "${LABWC:-labwc}" --reconfigure \
+            && echo "labwc: configuration reloaded" \
+            || echo "WARNING: labwc --reconfigure failed: the pointer keybind applies from the next login." >&2
+    fi
+else
+    echo "WARNING: the labwc pointer keybind was not set up (see above): the pointer shows until the first touch." >&2
+fi
 
 echo "== Session type: ${XDG_SESSION_TYPE:-unknown} (record this in the MF-04 PR)"
 echo "== Kiosk restart (new launcher, profile and JS/CSS)"

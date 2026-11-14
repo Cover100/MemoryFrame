@@ -46,7 +46,13 @@ def run_install(tmp_path, envd, sudo=SUDO, tweak=None, active=True, args=(), upg
     bin_.mkdir(exist_ok=True)
     for name, body in (("sudo", sudo), ("systemctl", SYSTEMCTL), ("python3", PY3), ("chromium", STUB + "exit 0\n"),
                        ("crontab", STUB + "exit 1\n"), ("nmcli", STUB + "exit 0\n"), ("pkaction", STUB + "exit 0\n"),
-                       ("curl", STUB + 'exit "${STUB_CURL:-0}"\n')):
+                       ("curl", STUB + 'exit "${STUB_CURL:-0}"\n'),
+                       # #155: this user's labwc session, if $STUB_LABWC_PS is set ("pid args"), and labwc itself
+                       # (only the `-x labwc` lookup is stubbed; every other pgrep is the real one)
+                       ("pgrep", '#!/bin/bash\n[[ " $* " == *" -x labwc "* ]] || exec /usr/bin/pgrep "$@"\n'
+                                 'echo "pgrep $*" >> "$INSTALL_LOG"\n[ -n "${STUB_LABWC_PS-}" ] || exit 1\n'
+                                 'printf "%s\\n" "$STUB_LABWC_PS"\n'),
+                       ("labwc", STUB + 'echo "LABWC_PID=${LABWC_PID-}" >> "$INSTALL_LOG"\nexit "${STUB_LABWC_RC:-0}"\n')):
         (bin_ / name).write_text(body)
         (bin_ / name).chmod(0o755)
     home = tmp_path / "home"
@@ -59,8 +65,12 @@ def run_install(tmp_path, envd, sudo=SUDO, tweak=None, active=True, args=(), upg
     e = dict(envd["env"], PATH=f"{bin_}:/usr/bin:/bin", HOME=str(home), INSTALL_LOG=str(log),
              AUDIT_HOME=str(home), AUDIT_ROOT=str(tmp_path / "root"), SUDO="", CRONTAB=str(bin_ / "crontab"),
              USER="pi", XDG_SESSION_TYPE="wayland", STUB_ACTIVE="0" if active else "3",
-             MEMORYFRAME_HEALTH_WAIT="2", MFM_UNITS=str(units), **(extra_env or {}))
+             MEMORYFRAME_HEALTH_WAIT="2", MFM_UNITS=str(units),
+             # #155: the labwc system config and Pi wrapper live in the sandbox (absent unless a test makes them)
+             MEMORYFRAME_LABWC_SYSTEM_RC=str(tmp_path / "xdg" / "labwc" / "rc.xml"),
+             MEMORYFRAME_LABWC_PI=str(tmp_path / "labwc-pi"), **(extra_env or {}))
     e.pop("SUDO_USER", None)
+    e.pop("XDG_CONFIG_HOME", None)          # rc.xml goes to $HOME/.config/labwc (the sandbox home)
     popen_kw.setdefault("stderr", subprocess.PIPE)
     r = subprocess.run(["bash", str(app / "deploy" / "install.sh"), *args], env=e, stdout=subprocess.PIPE,
                        text=True, timeout=60, **popen_kw)

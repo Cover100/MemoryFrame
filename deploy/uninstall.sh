@@ -18,6 +18,13 @@ sudo rm -f /etc/memoryframe/hotspot.conf   # holds the hotspot password
 sudo rmdir /etc/memoryframe 2>/dev/null || true
 sudo systemctl daemon-reload
 rm -f "$HOME/.config/autostart/memoryframe-kiosk.desktop"
+# #155: the marked labwc hide-pointer keybind (everything else in rc.xml is kept), then reload labwc.
+LABWC_RC="${XDG_CONFIG_HOME:-$HOME/.config}/labwc/rc.xml"
+if [ -f "$LABWC_RC" ] && grep -qF "memoryframe-managed hide-cursor" "$LABWC_RC"; then
+    python3 "$(dirname "$0")/labwc-hide-cursor.py" remove "$LABWC_RC" || echo "WARNING: remove the hide-cursor block from $LABWC_RC by hand"
+    LABWC_PS="$(pgrep -a -u "$(id -u)" -x labwc 2>/dev/null || true)"
+    [ -n "$LABWC_PS" ] && { LABWC_PID="${LABWC_PS%% *}" timeout 10 labwc --reconfigure || true; }
+fi
 pkill -f deploy/kiosk.sh || true
 echo "Memory Frame service and kiosk autostart removed."
 sudo rm -f /etc/sudoers.d/memoryframe-poweroff

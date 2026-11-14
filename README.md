@@ -130,8 +130,10 @@ What it does:
   `cursor: none` only applies after a pointer event, so the arrow used to stay until the first touch.
   - `install.sh` installs `wtype` and merges one marked block (`memoryframe-managed hide-cursor`: a
     `<keybind key="A-W-h">` with `WarpCursor` + `HideCursor`) into `~/.config/labwc/rc.xml`
-    (`deploy/labwc-hide-cursor.py`). An existing file keeps every other line byte for byte and a re-run changes
-    nothing; the first edit keeps `rc.xml.mf-bak`. A missing file is created (minimal when labwc runs with `-m`,
+    (`deploy/labwc-hide-cursor.py`): inside an existing `<keyboard>`, else in a new `<keyboard>` just before the
+    document root's end tag (`</labwc_config>` or `</openbox_config>`; the Pi's file uses
+    `<openbox_config xmlns="http://openbox.org/3.4/rc">`). An existing file keeps every other byte and a re-run
+    changes nothing; the first edit keeps `rc.xml.mf-bak`. A missing file is created (minimal when labwc runs with `-m`,
     as on Pi OS; otherwise a copy of `/etc/xdg/labwc/rc.xml` plus the block). labwc is reloaded only when the file
     changed and a labwc session is running.
   - `kiosk.sh` presses that key with `wtype` at launcher start and 2 s and 8 s after every Chromium launch

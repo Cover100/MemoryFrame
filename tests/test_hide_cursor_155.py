@@ -6,6 +6,7 @@ DSI-1, plus the theme) keeps every other byte, a re-run changes nothing, a missi
 reloaded, only when the file changed and a labwc session runs. The mode file and netmode are never touched.
 style.css: no pointer image anywhere on the frame page. (kiosk.sh pressing the key: test_kiosk_hide_cursor_155.py.)
 Hermetic: install.sh with stubbed sudo/apt/systemctl/pgrep/labwc (test_install_never_arms_product.run_install)."""
+import hashlib
 import importlib.util
 import os
 import re
@@ -131,12 +132,14 @@ def test_no_labwc_session_no_reconfigure_and_reconfigure_failure_only_warns(env,
     assert "labwc --reconfigure" in log and "WARNING: labwc --reconfigure failed" in r.stderr
 
 
-def test_unusable_rc_xml_is_left_alone_and_install_goes_on(env, tmp_path):
+@pytest.mark.parametrize("junk", ["", "not xml at all\n", '<?xml version="1.0"?>\n<labwc_config/>\n',
+                                  "<labwc_config>\n  <theme/>\n"])          # empty, no root, self-closing, cut off
+def test_unusable_rc_xml_is_left_alone_and_install_goes_on(env, tmp_path, junk):
     rc = rc_path(tmp_path)
     rc.parent.mkdir(parents=True)
-    rc.write_text("<openbox_config></openbox_config>\n")
+    rc.write_text(junk)
     r, log = install(tmp_path, env, extra_env={"STUB_LABWC_PS": "9 labwc -m"})
-    assert rc.read_text() == "<openbox_config></openbox_config>\n" and not (rc.parent / "rc.xml.mf-bak").exists()
+    assert rc.read_text() == junk and not (rc.parent / "rc.xml.mf-bak").exists()
     assert "WARNING" in r.stderr and "labwc --reconfigure" not in log
 
 
@@ -191,7 +194,7 @@ def test_uninstall_removes_the_block():
 def test_readme_documents_the_rollback():
     readme = (ROOT / "README.md").read_text()
     sec = readme[readme.index("#155"):]
-    assert "labwc --reconfigure" in sec[:1500] and MARK in sec[:1500]
+    assert "labwc --reconfigure" in sec[:2500] and MARK in sec[:2500] and "</openbox_config>" in sec[:2500]
 
 
 # ---------- P: the frame page ----------
@@ -202,3 +205,78 @@ def test_frame_css_hides_the_cursor_everywhere():
     assert "cursor: none !important" not in (ROOT / "static" / "phone.css").read_text()   # phone pages keep theirs
     linking = sorted(p.name for p in (ROOT / "templates").glob("*.html") if "style.css" in p.read_text())
     assert linking == ["index.html"]                                                   # the frame page only
+
+
+# ---------- Hale (PR156 review): the frame's real rc.xml root is <openbox_config xmlns=...> ----------
+
+DEVICE_RC = (ROOT / "tests" / "fixture_labwc_rc_device_155.xml").read_bytes()   # byte copy of Hale's transcription
+
+
+def _device_variants():
+    # the transcription as-is, and with the tab Hale reports on the device in front of <touch>
+    tabbed = re.sub(rb"(?m)^ +(<touch )", rb"\t\1", DEVICE_RC)
+    assert tabbed != DEVICE_RC or b"\t<touch" in DEVICE_RC
+    return [DEVICE_RC, tabbed]
+
+
+def test_device_fixture_is_the_transcribed_file():
+    lines = DEVICE_RC.split(b"\n")
+    assert lines[0] == b'<?xml version="1.0"?>' and lines[1] == b'<openbox_config xmlns="http://openbox.org/3.4/rc">'
+    assert lines[2].lstrip().startswith(b"<touch ") and lines[3].startswith(b"<theme>")
+    assert lines[3].endswith(b"</theme></openbox_config>") and lines[4:] == [b""]   # one line, then the final newline
+    assert len(DEVICE_RC) == 457
+
+
+@pytest.mark.parametrize("variant", [0, 1], ids=["as-transcribed", "tab-indented"])
+def test_openbox_config_root_gets_the_block_before_its_end_tag(tmp_path, variant):
+    h = _helper()
+    before = _device_variants()[variant]
+    rc = tmp_path / "rc.xml"
+    rc.write_bytes(before)
+    assert h.main(["x", "add", str(rc)]) == 0
+    once = rc.read_bytes()
+    head, tail = before.split(b"</openbox_config>")
+    assert once == head + h.INLINE.encode() + b"</openbox_config>" + tail        # just before the root end tag
+    assert once.replace(h.INLINE.encode(), b"", 1) == before                         # file minus block == original
+    assert once.count(b"<!-- " + MARK.encode()) == 1
+    root = ET.fromstring(once)                                                       # parses
+    ns = "{http://openbox.org/3.4/rc}"
+    assert root.tag == ns + "openbox_config"
+    assert root.find(ns + "touch").attrib == {"deviceName": "10-0038 generic ft5x06 (00)",
+                                              "mapToOutput": "DSI-1", "mouseEmulation": "yes"}
+    assert root.find(ns + "theme/" + ns + "name").text == "PiXonyx"
+    kb = root.findall(ns + "keyboard/" + ns + "keybind")
+    assert [(k.get("key"), [(a.get("name"), a.get("x"), a.get("y")) for a in k]) for k in kb] == [HIDE]
+    assert (tmp_path / "rc.xml.mf-bak").read_bytes() == before
+    mtime, sha = rc.stat().st_mtime_ns, hashlib.sha256(once).hexdigest()
+    assert h.main(["x", "add", str(rc)]) == 0                                       # second add: no-op
+    assert hashlib.sha256(rc.read_bytes()).hexdigest() == sha and rc.stat().st_mtime_ns == mtime
+    assert h.main(["x", "remove", str(rc)]) == 0
+    assert rc.read_bytes() == before                                                # restored exactly
+
+
+def test_openbox_config_root_with_a_keyboard_inserts_inside_it(tmp_path):
+    h = _helper()
+    before = DEVICE_RC.replace(b"<theme>", b"<keyboard><repeatRate>25</repeatRate></keyboard><theme>", 1)
+    rc = tmp_path / "rc.xml"
+    rc.write_bytes(before)
+    assert h.main(["x", "add", str(rc)]) == 0
+    once = rc.read_bytes()
+    assert once == before.replace(b"<keyboard>", b"<keyboard>\n" + h.BLOCK.encode(), 1)
+    ET.fromstring(once)
+    assert h.main(["x", "remove", str(rc)]) == 0 and rc.read_bytes() == before
+
+
+def test_device_rc_xml_through_install_twice(env, tmp_path):
+    rc = rc_path(tmp_path)
+    rc.parent.mkdir(parents=True)
+    rc.write_bytes(DEVICE_RC)
+    r1, log1 = install(tmp_path, env, extra_env={"STUB_LABWC_PS": "4321 /usr/bin/labwc -m"})
+    once = rc.read_bytes()
+    assert once.replace(_helper().INLINE.encode(), b"", 1) == DEVICE_RC and once.count(b"<!-- " + MARK.encode()) == 1
+    ET.fromstring(once)
+    assert "added the hide-cursor keybind" in r1.stdout and "LABWC_PID=4321" in log1 and "WARNING" not in r1.stderr
+    _r2, log2 = install(tmp_path, env, extra_env={"STUB_LABWC_PS": "4321 /usr/bin/labwc -m"})
+    assert hashlib.sha256(rc.read_bytes()).hexdigest() == hashlib.sha256(once).hexdigest()   # second add: same sha256
+    assert log2.count("labwc --reconfigure") == 1                                   # the stub log is cumulative:
+    #                                                                                  only the first run reloaded

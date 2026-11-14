@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+        <touch deviceName="10-0038 generic ft5x06 (00)" mapToOutput="DSI-1" mouseEmulation="yes"/>
+<theme><font place="ActiveWindow"><name>Nunito Sans</name><size>8</size><weight>Light</weight><slant>Normal</slant></font><font place="InactiveWindow"><name>Nunito Sans</name><size>8</size><weight>Light</weight><slant>Normal</slant></font><name>PiXonyx</name></theme></openbox_config>

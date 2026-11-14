@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# #155: byte-exact copy of the device rc.xml (tests compare bytes)
+tests/fixture_labwc_rc_device_155.xml -text

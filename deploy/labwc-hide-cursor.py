@@ -7,15 +7,18 @@ desktop user's ~/.config/labwc/rc.xml. kiosk.sh presses that key with wtype so l
   labwc-hide-cursor.py remove RC_XML
 
 add:    the marker already in RC_XML -> nothing is written (idempotent). Otherwise the ONE marked block is inserted
-        right after the first <keyboard> open tag (outside comments), or inside a new <keyboard> just before the
-        last </labwc_config>; every other byte is kept. The first edit keeps a copy, RC_XML.mf-bak.
+        right after the first <keyboard> open tag (outside comments); with no <keyboard>, inside a new <keyboard>
+        just before the document root's end tag, whatever the root is called: </labwc_config>, or
+        </openbox_config> (the Pi's file: <openbox_config xmlns="http://openbox.org/3.4/rc">). Every other byte
+        is kept. The first edit keeps a copy, RC_XML.mf-bak.
         A missing RC_XML is created: a minimal file when labwc merges configs (--merge-config, labwc -m: the
         user file augments /etc/xdg/labwc/rc.xml), else a copy of --system-rc plus the block (without -m labwc
         reads only the first rc.xml it finds, so a minimal file would hide the system one).
 remove: takes out exactly what add inserted (byte-identical to before when untouched since), else the lines from
         the marker to the end marker.
 Writes are atomic (temp file + rename, mode kept). Never touches anything but RC_XML (and RC_XML.mf-bak).
-Exit 0 on success or nothing to do; 3 if RC_XML can't be edited safely (no <labwc_config>), left unchanged."""
+Exit 0 on success or nothing to do; 3 if RC_XML can't be edited safely (no root element with an end tag), left
+unchanged."""
 import os
 import re
 import sys
@@ -30,6 +33,7 @@ BLOCK = ("    <!-- memoryframe-managed hide-cursor (#155): kiosk.sh presses Alt+
          "    </keybind>\n"
          "    <!-- /memoryframe-managed hide-cursor -->")   # no "--" inside an XML comment (rc.xml must parse)
 WRAPPED = "  <keyboard>\n" + BLOCK + "\n  </keyboard>\n"
+INLINE = "\n  <keyboard>\n" + BLOCK + "\n  </keyboard>"
 MINIMAL = '<?xml version="1.0"?>\n<labwc_config>\n' + WRAPPED + "</labwc_config>\n"
 
 
@@ -48,20 +52,44 @@ def insert(text):
             tag = m.group(0)[:-2].rstrip() + ">"
             return text[:m.start()] + tag + "\n" + BLOCK + "\n  </keyboard>" + text[m.end():]
         return text[:m.end()] + "\n" + BLOCK + text[m.end():]
-    ends = _outside_comments(text, r"</labwc_config\s*>")
+    name = _root_name(text)
+    if not name:
+        return None
+    ends = _outside_comments(text, rf"</{re.escape(name)}\s*>")
     if not ends:
         return None
     m = ends[-1]
     line_start = text.rfind("\n", 0, m.start()) + 1
     if text[line_start:m.start()].strip() == "":                # the end tag starts its line: new lines before it
         return text[:line_start] + WRAPPED + text[line_start:]
-    return text[:m.start()] + "\n" + WRAPPED + text[m.start():]
+    # the end tag shares its line (the Pi: "...</theme></openbox_config>"): it stays right after the new
+    # </keyboard>, so the two placements never give the same text and remove() can tell them apart
+    return text[:m.start()] + INLINE + text[m.start():]
+
+
+def _root_name(text):
+    """Name of the document's root element (after the XML declaration, comments, PIs and DOCTYPE), or None."""
+    pos = 0
+    while True:
+        m = re.compile(r"\s*(<\?.*?\?>|<!--.*?-->|<!DOCTYPE[^>]*>)", re.S).match(text, pos)
+        if not m or m.end() == pos:
+            break
+        pos = m.end()
+    m = re.compile(r"\s*<([A-Za-z_][\w.:-]*)([^>]*?)(/?)>", re.S).match(text, pos)
+    if not m or m.group(3):                                     # nothing, or a self-closing root
+        return None
+    return m.group(1)
 
 
 def remove(text):
-    for added in (WRAPPED, "\n" + BLOCK):                      # exactly what insert() added
-        if added in text:
-            return text.replace(added, "", 1)
+    # Exactly what insert() added: the first candidate whose removal re-inserts to this very text (so a newline
+    # that was there before is never taken with it).
+    for added in (WRAPPED, INLINE, "\n" + BLOCK):
+        i = text.find(added)
+        if i >= 0:
+            before = text[:i] + text[i + len(added):]
+            if insert(before) == text:
+                return before
     start = text.find("<!-- " + MARK)
     if start < 0:
         return text
@@ -120,7 +148,8 @@ def main(argv):
             return 0
         new = insert(text)
         if new is None:
-            print(f"WARNING: {rc} has no <labwc_config> element: left unchanged, pointer hiding not set up",
+            print(f"WARNING: {rc} has no root element with an end tag (e.g. </labwc_config> or </openbox_config>):"
+                  " left unchanged, pointer hiding not set up",
                   file=sys.stderr)
             return 3
         bak = rc + ".mf-bak"

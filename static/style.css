@@ -58,6 +58,11 @@ body {
 
 }
 
+/* #155 (defence in depth): no pointer image anywhere on the frame page, whatever a button or input asks for.
+   The boot pointer itself is hidden by labwc (deploy/kiosk.sh + the rc.xml keybind): CSS only applies after a
+   pointer event. Only index.html loads this file; the phone pages are unaffected. */
+*, *::before, *::after { cursor: none !important; }
+
 
 
 

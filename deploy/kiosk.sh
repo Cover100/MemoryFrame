@@ -14,6 +14,8 @@
 #                               from run-mfkiosk.mount, 192M, 0700, kiosk user); ~/.cache/memoryframe if it is missing
 #   MEMORYFRAME_KIOSK_LOG       default: see above
 #   MEMORYFRAME_KIOSK_DEBUG=1   adds DevTools on 127.0.0.1:9222 only + verbose Chromium logging
+#   MEMORYFRAME_HIDE_CURSOR_DELAYS  #155: whole seconds after each Chromium launch at which the pointer is hidden
+#                               again (default "2 8": at +2 s and +8 s)
 set -u
 
 URL="${MEMORYFRAME_URL:-http://localhost:5000}"
@@ -127,6 +129,40 @@ if [ "${MEMORYFRAME_KIOSK_DEBUG:-0}" = 1 ]; then
     log "DEBUG mode: DevTools on 127.0.0.1:9222"
 fi
 
+# #155: labwc draws its mouse pointer from session start, and the page's cursor:none only applies after a
+# pointer event (a touch), so the pointer sat on screen until the first tap. install.sh adds a labwc keybind
+# (Alt+Super+H: WarpCursor + HideCursor, a marked block in ~/.config/labwc/rc.xml); we press it with wtype
+# at launcher start (the desktop shows while we wait for /healthz) and again after every Chromium launch.
+# Best effort: in the background with fd 9 closed, capped at 5 s, logged; no wtype or no Wayland -> skipped.
+# A real mouse still shows the pointer again as soon as it moves (labwc).
+HIDE_CURSOR_DELAYS="${MEMORYFRAME_HIDE_CURSOR_DELAYS:-2 8}"
+HIDE_CURSOR=""
+if [ -z "${WAYLAND_DISPLAY:-}" ] && [ "${XDG_SESSION_TYPE:-}" != wayland ]; then
+    log "hide-cursor: skipped (not a Wayland session)"
+elif ! command -v wtype >/dev/null 2>&1; then
+    log "hide-cursor: skipped (wtype not installed; the pointer shows until the first touch)"
+else
+    HIDE_CURSOR=1
+fi
+hide_cursor() {  # $1 = when (for the log), $2.. = delays in seconds
+    [ -n "$HIDE_CURSOR" ] || return 0
+    local when="$1"; shift
+    (
+        rc=0 prev=0
+        for d in "$@"; do                      # whole seconds after the start, e.g. "2 8" = at +2 s and +8 s
+            sleep "$((d - prev))"; prev="$d"
+            if command -v timeout >/dev/null 2>&1; then
+                timeout 5 wtype -M alt -M logo h -m alt -m logo </dev/null >/dev/null 2>&1; rc=$?
+            else
+                wtype -M alt -M logo h -m alt -m logo </dev/null >/dev/null 2>&1; rc=$?
+            fi
+            if [ "$rc" = 0 ]; then log "hide-cursor: pointer hidden ($when, +${d}s)"
+            else log "hide-cursor: wtype failed with status $rc ($when, +${d}s)"; fi
+        done
+    ) 9>&- &
+}
+hide_cursor "launcher start" 0
+
 # Don't let the screen blank (X11 only; harmless elsewhere).
 if [ -n "${DISPLAY:-}" ] && command -v xset >/dev/null 2>&1; then
     xset s off -dpms s noblank 2>/dev/null || true
@@ -239,6 +275,8 @@ while true; do
     bpid=$!
     watch_liveness "$bpid" 9>&- &
     wpid=$!
+    # shellcheck disable=SC2086
+    hide_cursor "after launch" $HIDE_CURSOR_DELAYS
     wait "$bpid"
     rc=$?
     kill "$wpid" 2>/dev/null

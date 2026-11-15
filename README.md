@@ -245,6 +245,7 @@ There is one owner (D6), who may pair several phones.
 - **Pairing:** scan the QR (it opens `http://10.42.0.1/pair?t=…`; tap "Pair this phone"), or open `http://10.42.0.1/pair` and type the code. Either lands on `/admin/`.
 - **Code rules:** codes and QR links are single-use and expire after 120 s. 5 wrong codes rotate the code. More than 10 attempts per minute from one phone get HTTP 429.
 - **Session:** the phone gets an HttpOnly, SameSite=Strict cookie (`mf_session`, valid 1 year). Only its SHA-256 is stored in the database.
+- **Re-pairing the same phone (#153):** if the phone still sends a valid `mf_session` when it pairs again, it keeps its device entry: the old session is revoked and a new cookie issued, so "Phones paired" does not go up. A phone with no valid cookie for this address gets a new entry, as before. This includes the iOS sign-in pop-up vs Safari, and `10.42.0.1` vs `memoryframe.local`, because cookies are per browser and per host. The code or QR is always needed.
 - **Access rules:** every `/admin/*` route redirects to `/pair` and every `/api/v1/*` route returns 401 without a session. The frame's own pairing routes (`/pairing/*`) are localhost only.
 - **Sign out all phones:** available on the site, or in the frame's menu (double tap). It revokes every session; phones then re-pair.
 

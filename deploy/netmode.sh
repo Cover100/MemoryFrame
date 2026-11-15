@@ -540,6 +540,10 @@ wifi_apply() {
     if ! "$NMCLI" connection load "$f" >/dev/null 2>&1; then
         log "wifi change: could not load the new profile"; wifi_rollback || true; exit 4
     fi
+    if ! profile_loaded "$f" "$PENDING_CON"; then
+        log "wifi change: NetworkManager did not load the new profile $(basename "$f") (nmcli load exited 0); hotspot unchanged"
+        unload_keyfile "$f"; wifi_rollback || true; exit 4
+    fi
     "$NMCLI" connection down "$HOTSPOT_CON" >/dev/null 2>&1 || true
     if "$NMCLI" --wait 30 connection up "$PENDING_CON" >/dev/null 2>&1 && [ "$(active)" = "$PENDING_CON" ]; then
         log "wifi change: new hotspot up, waiting for confirmation"
@@ -604,6 +608,23 @@ hotspot_saved() {   # final uuid: on disk (our uuid= and id=), live under that U
         && [ "$(prop "$HOTSPOT_CON" connection.uuid)" = "$2" ] || return 1
     fn="$(hotspot_file "$2")"
     [ "$fn" = "?" ] || [ "$fn" = "$1" ]
+}
+
+# #151: `nmcli connection load` exits 0 even when it prints "Could not load file" (the Pi, 13 Nov 2026), so its
+# exit code alone never proves a new profile is in NM. Like hotspot_saved: the file is on disk with our id=, NM has
+# a profile with that id, and (if this nmcli has a FILENAME column) that profile is backed by this very file.
+profile_loaded() {   # file id
+    local uuid fn
+    [ -s "$1" ] && grep -qxF "id=$2" "$1" && profiles | grep -qxF "$2" || return 1
+    uuid="$(prop "$2" connection.uuid)"
+    [ -n "$uuid" ] || return 1
+    fn="$(hotspot_file "$uuid")"
+    [ "$fn" = "?" ] || [ "$fn" = "$1" ]
+}
+
+unload_keyfile() {   # file: remove it and unload whatever NM took from that path (it holds a password)
+    rm -f "$1"; sync_nm_dir
+    "$NMCLI" connection load "$1" >/dev/null 2>&1 || true
 }
 
 save_hotspot() {   # boot and wifi-commit; never fails the caller (the profile stays where it was)
@@ -849,6 +870,10 @@ home_wifi() {
     trap 'exit 130' INT
     if ! "$NMCLI" connection load "$f" >/dev/null 2>&1; then
         log "home-wifi: could not load the profile"; home_state failed connect_failed "$hex"; exit 4
+    fi
+    if ! profile_loaded "$f" "$HOME_PENDING"; then
+        log "home-wifi: NetworkManager did not load the profile $(basename "$f") (nmcli load exited 0); previous developer Wi-Fi kept"
+        unload_keyfile "$f"; home_state failed connect_failed "$hex"; exit 4
     fi
     "$NMCLI" connection down "$HOTSPOT_CON" >/dev/null 2>&1 || true
     if timeout "$((HOME_TEST_WAIT + 5))" "$NMCLI" --wait "$HOME_TEST_WAIT" connection up "$HOME_PENDING" >/dev/null 2>&1 \

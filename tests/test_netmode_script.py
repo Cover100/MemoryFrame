@@ -85,6 +85,9 @@ case "$1 $2" in
         && [ "$lf_n" -gt 0 ]; then   # #135 QA: NM refuses this file (N more times)
       echo "$lf_name $((lf_n - 1))" > "$D/loadfail"; echo "Error: failed to load connection" >&2; rc=4; continue
     fi
+    if [ -f "$D/loadsilent" ] && [[ "$(basename "$path")" == $(cat "$D/loadsilent") ]]; then   # #151: the Pi's nmcli:
+      echo "Could not load file '$path'" >&2; continue                                       # says so, but exits 0
+    fi
     n="$(sed -n 's/^id=//p' "$path")"; u="$(sed -n 's/^uuid=//p' "$path")"
     if [ -n "$u" ] && [ -d "$D/p/$n" ] && [ "$(cat "$D/p/$n/uuid" 2>/dev/null)" = "$u" ]; then
       # #137: same uuid from another file = the SAME profile, now backed by this file (stays active)
@@ -93,7 +96,7 @@ case "$1 $2" in
     fi
     # a same-named profile from ANOTHER file stays a separate profile (as in NM), found by uuid only
     if [ -d "$D/p/$n" ] && [ "$(cat "$D/p/$n/file" 2>/dev/null)" != "$path" ]; then mv "$D/p/$n" "$D/p/$n~dup"; fi
-    if [ -f "$D/loadbadid" ] && [ "$(basename "$path")" = "$(cat "$D/loadbadid")" ]; then n="$n~bad"; rm -f "$D/loadbadid"; fi   # #137 N4 (once)
+    if [ -f "$D/loadbadid" ] && [[ "$(basename "$path")" == $(cat "$D/loadbadid") ]]; then n="$n~bad"; rm -f "$D/loadbadid"; fi   # #137 N4 (once)
     mkdir -p "$D/p/$n"
     m="$(sed -n 's/^mode=//p' "$path")"
     echo 802-11-wireless > "$D/p/$n/type"; echo "${m:-ap}" > "$D/p/$n/mode"; echo no > "$D/p/$n/autoconnect"

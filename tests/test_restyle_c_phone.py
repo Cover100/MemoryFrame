@@ -470,7 +470,7 @@ def test_wifi_sheet_buttons_keep_wi_fi_whole_at_360(page, server, mf_app, monkey
 # ---------------- #79: no text links, styled upload picker, paper theme everywhere, storage meter ----------------
 
 TEMPLATES = ROOT / "templates"
-FRAME_ONLY = {"index.html"}                         # the frame's own screen (dark slideshow), not a phone page
+FRAME_ONLY = {"index.html", "frame_error.html"}     # the frame's own screens (slideshow, #162 error), not phone pages
 PARTIALS = {"_phone.html", "_storage.html", "_video_tile.html"}
 LINK_CLASSES = {"btn", "row-link", "back", "icon"}  # buttons, row cards, the header chevron and gear
 PHONE_JS = ["admin.js", "library.js", "upload.js", "settings.js", "wifi.js", "phone.js", "vtile.js", "home.js"]

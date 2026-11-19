@@ -150,8 +150,8 @@ def test_failed_post_400_adds_rescan_sentence(client, mf_app):
     r = other.post("/pair", data={"token": t}, environ_base={"REMOTE_ADDR": "10.42.0.24"})
     h = r.get_data(as_text=True)
     assert r.status_code == 400
-    assert ("That code is wrong or has expired. Check the code on the frame. "
-            "Scan the new code on the frame to try again.") in h
+    assert "That code is wrong or has expired. Scan the new code on the frame to try again." in h
+    assert "Check the code on the frame." not in h
     j = other.post("/pair", json={"token": t}, environ_base={"REMOTE_ADDR": "10.42.0.24"})
     assert j.status_code == 400 and j.get_json()["error"] == \
         "That code is wrong or has expired. Check the code on the frame."           # JSON unchanged

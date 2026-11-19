@@ -163,12 +163,11 @@ def pair():
             return jsonify({"error": msg}), 429
         return render_template("pair.html", token="", error=msg), 429
     if not p.redeem(code=data.get("code"), token=data.get("token")):
-        msg = "That code is wrong or has expired. Check the code on the frame."
-        if not wants_json:
-            msg += " Scan the new code on the frame to try again."     # #161 (Wren): after a failed auto-pair
         if wants_json:
-            return jsonify({"error": msg}), 400
-        return render_template("pair.html", token="", error=msg), 400
+            return jsonify({"error": "That code is wrong or has expired. Check the code on the frame."}), 400
+        # #161 (Wren): failed auto-pair HTML; JSON keeps the shorter line above.
+        return render_template("pair.html", token="", error=(
+            "That code is wrong or has expired. Scan the new code on the frame to try again.")), 400
     # #153: a phone that still holds a valid session (e.g. the QR GET hid the SameSite=Strict
     # cookie, this POST sends it) gets its own row back with a rotated secret, not a second row.
     token = auth.create_session(get_db(), auth.hinted_name(request.headers.get("User-Agent", "phone"),

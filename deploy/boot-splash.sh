@@ -4,8 +4,12 @@
 #
 #   sudo deploy/boot-splash.sh on        quiet boot: cmdline.txt + quiet logo.nologo vt.global_cursor_default=0
 #                                        loglevel=3 (only the missing ones), config.txt disable_splash=1 in [all]
-#   sudo deploy/boot-splash.sh off       removes exactly what `on` added (recorded in /etc/memoryframe/boot-splash.state):
-#                                        boot text is back after the next reboot
+#   sudo deploy/boot-splash.sh off       removes exactly what `on` added (recorded in /etc/memoryframe/boot-splash.state),
+#                                        and the Plymouth theme (`plymouth off`): boot text is back after the next reboot
+#   sudo deploy/boot-splash.sh plymouth on|off|status
+#                                        Change 2: the memoryframe Plymouth theme as the default, initramfs rebuilt for
+#                                        the running kernel (hash guard, timestamped backups, verify, roll back on any
+#                                        failure; deploy/boot-splash-plymouth.py). MEMORYFRAME_NO_PLYMOUTH=1 skips `on`.
 #        deploy/boot-splash.sh status
 #   sudo deploy/boot-splash.sh desktop on|off
 #                                        the developer's way out: memoryframe-desktop.txt on the boot partition makes
@@ -18,20 +22,22 @@
 # The backups: cmdline.txt.memoryframe-bak.<ts> and config.txt.memoryframe-bak.<ts> next to the files. From a PC
 # (boot partition is FAT): delete "quiet logo.nologo vt.global_cursor_default=0 loglevel=3" from cmdline.txt to see
 # boot text again. Never reads or writes memoryframe-mode.txt or any network profile.
-# Test hooks: MEMORYFRAME_BOOT_DIR (default /boot/firmware), MEMORYFRAME_BOOT_STATE, HOME / XDG_CONFIG_HOME.
+# Test hooks: MEMORYFRAME_BOOT_DIR (default /boot/firmware), MEMORYFRAME_BOOT_STATE, HOME / XDG_CONFIG_HOME, and the
+# Plymouth ones listed in boot-splash-plymouth.py.
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 BOOT_DIR="${MEMORYFRAME_BOOT_DIR:-/boot/firmware}"
 STATE="${MEMORYFRAME_BOOT_STATE:-/etc/memoryframe/boot-splash.state}"
 PY3=/usr/bin/python3; [ -x "$PY3" ] || PY3="$(command -v python3 || echo python3)"
 EDIT=("$PY3" "$HERE/boot-splash-edit.py")
+PLYM=("$PY3" "$HERE/boot-splash-plymouth.py")
 FLAG="$BOOT_DIR/memoryframe-desktop.txt"
 CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 UPDATER="$CONFIG_HOME/autostart/pi-apps-updater.desktop"
 USER_STATE="$CONFIG_HOME/memoryframe/boot-splash.state"     # the moved Pi-Apps file names (desktop user's)
 STAMP="$(date +%Y%m%d%H%M%S)"
 
-usage() { sed -n '2,24p' "$0" >&2; exit 2; }
+usage() { sed -n '2,26p' "$0" >&2; exit 2; }
 
 need_root() {
     if [ "$(id -u)" != 0 ] && [ -z "${MEMORYFRAME_BOOT_DIR:-}" ]; then
@@ -82,13 +88,23 @@ case "${1:-}" in
         "${EDIT[@]}" config-on "$BOOT_DIR/config.txt" "$STATE" ;;
     off)
         need_root "$@"
-        "${EDIT[@]}" cmdline-off "$BOOT_DIR/cmdline.txt" "$STATE"
-        "${EDIT[@]}" config-off "$BOOT_DIR/config.txt" "$STATE" ;;
+        rc=0
+        "${PLYM[@]}" off || rc=$?
+        "${EDIT[@]}" cmdline-off "$BOOT_DIR/cmdline.txt" "$STATE" || rc=$?
+        "${EDIT[@]}" config-off "$BOOT_DIR/config.txt" "$STATE" || rc=$?
+        exit "$rc" ;;
+    plymouth)
+        case "${2:-}" in
+            on|off) need_root "$@"; exec "${PLYM[@]}" "$2" ;;
+            status) exec "${PLYM[@]}" status ;;
+            *) usage ;;
+        esac ;;
     status)
         echo "cmdline.txt: $(cat "$BOOT_DIR/cmdline.txt" 2>/dev/null || echo missing)"
         echo "state: $(tr '\n' ' ' < "$STATE" 2>/dev/null || echo none)"
         if [ -e "$FLAG" ]; then echo "desktop flag: present (stock desktop, no kiosk)"; else echo "desktop flag: absent"; fi
-        if [ -f "$UPDATER" ]; then echo "Pi-Apps updater: starts at login"; else echo "Pi-Apps updater: off or not installed"; fi ;;
+        if [ -f "$UPDATER" ]; then echo "Pi-Apps updater: starts at login"; else echo "Pi-Apps updater: off or not installed"; fi
+        "${PLYM[@]}" status ;;
     desktop)
         case "${2:-}" in
             on)  need_root "$@"

@@ -1,0 +1,28 @@
+# Memory Frame Plymouth theme (Wren, #162). Static: no refresh function, no animation, no text rendering.
+# Background #0E1311 = (14,19,17)/255. Top and bottom are the same colour, so it is flat (no gradient, no banding).
+Window.SetBackgroundTopColor(0.0549, 0.0745, 0.0667);
+Window.SetBackgroundBottomColor(0.0549, 0.0745, 0.0667);
+
+lockup_image = Image("lockup.png");     # 360x172 RGBA, transparent around the mark and the name
+error_image  = Image("error.png");      # 480x253 RGBA, "!" mark + 2 plain lines + "Error E4"
+
+sprite = Sprite();
+
+fun show(image) {
+  sprite.SetImage(image);
+  # centre on the real mode size (800x480 here), so a different mode still centres
+  sprite.SetX(Window.GetWidth()  / 2 - image.GetWidth()  / 2);
+  sprite.SetY(Window.GetHeight() / 2 - image.GetHeight() / 2);
+  sprite.SetZ(10);
+}
+show(lockup_image);
+
+# Error: `plymouth display-message --text="memoryframe-e4"` swaps in the error image; `--text="memoryframe-ok"` or normal display returns.
+# ASSUMED (not run on the Pi): the callback name and that plymouthd 24.004.60 passes the text through unchanged.
+fun message_callback(text) {
+  if (text == "memoryframe-e4") show(error_image);
+  else if (text == "memoryframe-ok") show(lockup_image);
+}
+Plymouth.SetMessageFunction(message_callback);
+fun normal_callback() { show(lockup_image); }
+Plymouth.SetDisplayNormalFunction(normal_callback);

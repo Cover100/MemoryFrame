@@ -113,4 +113,8 @@
         btn.addEventListener("click", ()=>{ show(true); box.querySelector(".devKeep").focus(); });
         box.querySelector(".devKeep").addEventListener("click", ()=>{ show(false); btn.focus(); });
     });
+    // "Phone removed" is shown once: drop ?removed=1 (keep #phones) so a reload doesn't show it again (as MF-33).
+    if(document.getElementById("devRemoved") && window.history && history.replaceState){
+        history.replaceState(null, "", location.pathname + location.hash);
+    }
 })();

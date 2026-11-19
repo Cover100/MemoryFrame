@@ -97,6 +97,9 @@ sudo apt-get install -y ffmpeg || echo "WARNING: ffmpeg could not be installed: 
 # wtype (#155): kiosk.sh presses labwc's hide-pointer keybind with it. Not fatal: without it the pointer shows
 # until the first touch, as before.
 sudo apt-get install -y wtype || echo "WARNING: wtype could not be installed: the mouse pointer stays visible until the first touch (sudo apt-get install wtype)." >&2
+# swaybg (#162): session-start.sh shows the still splash with it from the first frame of the desktop session. Not fatal:
+# without it the background is plain until Chromium paints the splash page.
+sudo apt-get install -y swaybg || echo "WARNING: swaybg could not be installed: no still splash before Chromium paints (sudo apt-get install swaybg)." >&2
 # prlimit/taskset/ionice (util-linux) cap and pin each conversion; they ship with Raspberry Pi OS. Without
 # prlimit a conversion still runs, but without its 1.5 GiB address-space cap.
 command -v prlimit >/dev/null 2>&1 || echo "WARNING: prlimit (util-linux) is missing: video conversions run without their memory cap." >&2
@@ -245,7 +248,9 @@ render "$SRC_DIR/deploy/memoryframe-netmode.service" /etc/systemd/system/memoryf
 # #62: root oneshot units for the app's privileged actions + a polkit rule that lets only the app
 # user start them (and power off). No sudoers rules: the app service keeps NoNewPrivileges.
 # #69: + the boot-flag rollback unit; #68: home-wifi; #99: factory-reset.
-for u in devtemp wifi-apply wifi-commit wifi-rollback rollback home-wifi factory-reset; do
+# #162: + bootwatch (error E4 when the desktop session never starts; root, background, enabled below).
+put_file "$SRC_DIR/deploy/bootwatch.sh" /usr/local/sbin/memoryframe-bootwatch 0755
+for u in devtemp wifi-apply wifi-commit wifi-rollback rollback home-wifi factory-reset bootwatch; do
     put_file "$SRC_DIR/deploy/units/memoryframe-$u.service" "/etc/systemd/system/memoryframe-$u.service" 0644
 done
 [ -d /etc/polkit-1/rules.d ] || sudo install -d -o root -g root -m 0755 /etc/polkit-1/rules.d   # never re-perm the distro's dir
@@ -265,7 +270,8 @@ sed -e "s#@KIOSK_UID@#$(id -u "$DESKTOP_USER")#g" -e "s#@KIOSK_GID@#$(id -g "$DE
 put_file "$mnt_tmp" /etc/systemd/system/run-mfkiosk.mount 0644
 rm -f "$mnt_tmp"
 # #97: / mounted noatime (idempotent; one-time history copy /etc/fstab.memoryframe-97.bak).
-# ext4 commit= and cmdline.txt are not touched. MEMORYFRAME_NO_FSTAB=1 skips it.
+# ext4 commit= is not touched; cmdline.txt is not touched here (only deploy/boot-splash.sh edits it, #162 quiet boot,
+# below). MEMORYFRAME_NO_FSTAB=1 skips it.
 if [ "${MEMORYFRAME_NO_FSTAB:-}" = 1 ]; then
     echo "fstab: skipped (MEMORYFRAME_NO_FSTAB=1)"
 else
@@ -318,6 +324,8 @@ fi
 sudo systemctl enable memoryframe-netmode.service
 # #99: runs before the app at every boot; does nothing unless a reset was cut short.
 sudo systemctl enable memoryframe-factory-reset.service
+# #162: E4 watch (sleeps to 90 s of uptime in the background; nothing waits for it).
+sudo systemctl enable memoryframe-bootwatch.service
 sudo systemctl enable memoryframe.service memoryframe-rollback.service
 sudo systemctl restart memoryframe.service
 # #69: only "restarted" once it answers. If not, exit into the #90 trap (it rolls back first, restarts once).
@@ -376,6 +384,26 @@ if "$PY3" "$SRC_DIR/deploy/labwc-hide-cursor.py" "${LABWC_ADD[@]}"; then
 else
     echo "WARNING: the labwc pointer keybind was not set up (see above): the pointer shows until the first touch." >&2
 fi
+
+echo "== Boot splash (#162): quiet boot, splash at session start, no desktop or panel"
+# Quiet boot: deploy/boot-splash.sh appends only the missing "quiet logo.nologo vt.global_cursor_default=0 loglevel=3"
+# to cmdline.txt (one line, root= check, backup cmdline.txt.memoryframe-bak.<ts>, temp + sync + rename) and puts
+# disable_splash=1 in config.txt's [all]; what it added is recorded in /etc/memoryframe/boot-splash.state so
+# `sudo deploy/boot-splash.sh off` (and uninstall.sh) removes exactly that. A second run changes nothing. Applies at
+# the next boot; nothing is rebooted. Best effort: a refusal or failure only warns.
+if ! sudo env MEMORYFRAME_BOOT_DIR="${MEMORYFRAME_BOOT_DIR:-}" bash "$SRC_DIR/deploy/boot-splash.sh" on; then
+    echo "WARNING: quiet boot not set up (see above): boot text may show" >&2
+fi
+# The session: ONE marked block at the top of the desktop user's ~/.config/labwc/autostart runs session-start.sh
+# (labwc -m: added to the system autostart, which is never touched). Other lines are kept; first edit keeps
+# autostart.mf-bak. Rollback: deploy/uninstall.sh.
+LABWC_AUTOSTART="${XDG_CONFIG_HOME:-$HOME/.config}/labwc/autostart"
+"$PY3" "$SRC_DIR/deploy/labwc-autostart.py" add "$LABWC_AUTOSTART" "$APP_DIR/deploy/session-start.sh" \
+    || echo "WARNING: the labwc autostart block was not added: the desktop and panel show at boot" >&2
+# Pi-Apps updater (user approved, #162): moved aside so it can't open a window over the frame at login; reversible
+# (deploy/boot-splash.sh pi-apps-updater on, uninstall.sh). MEMORYFRAME_KEEP_PI_APPS_UPDATER=1 keeps it.
+bash "$SRC_DIR/deploy/boot-splash.sh" pi-apps-updater off \
+    || echo "WARNING: the Pi-Apps updater autostart entry was not moved aside" >&2
 
 echo "== Session type: ${XDG_SESSION_TYPE:-unknown} (record this in the MF-04 PR)"
 echo "== Kiosk restart (new launcher, profile and JS/CSS)"

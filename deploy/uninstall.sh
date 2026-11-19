@@ -15,6 +15,12 @@ sudo rm -f /etc/systemd/system/memoryframe-devtemp.service /etc/systemd/system/m
 sudo systemctl disable memoryframe-rollback.service 2>/dev/null || true
 sudo rm -f /usr/local/sbin/memoryframe-migrate /usr/local/sbin/memoryframe-cli
 sudo rm -f /etc/memoryframe/hotspot.conf   # holds the hotspot password
+# #162: the quiet-boot tokens and config.txt line we added (exactly those; recorded in /etc/memoryframe/
+# boot-splash.state), the desktop flag, and the E4 boot watch. Boot text and the stock desktop are back after a reboot.
+sudo bash "$(dirname "$0")/boot-splash.sh" off || echo "WARNING: run 'sudo deploy/boot-splash.sh off' by hand"
+sudo bash "$(dirname "$0")/boot-splash.sh" desktop off || true
+sudo systemctl disable memoryframe-bootwatch.service 2>/dev/null || true
+sudo rm -f /etc/systemd/system/memoryframe-bootwatch.service /usr/local/sbin/memoryframe-bootwatch
 sudo rmdir /etc/memoryframe 2>/dev/null || true
 sudo systemctl daemon-reload
 rm -f "$HOME/.config/autostart/memoryframe-kiosk.desktop"
@@ -25,6 +31,11 @@ if [ -f "$LABWC_RC" ] && grep -qF "memoryframe-managed hide-cursor" "$LABWC_RC";
     LABWC_PS="$(pgrep -a -u "$(id -u)" -x labwc 2>/dev/null || true)"
     [ -n "$LABWC_PS" ] && { LABWC_PID="${LABWC_PS%% *}" timeout 10 labwc --reconfigure || true; }
 fi
+# #162: the marked session-start block in labwc's user autostart (the file goes if it was ours and is otherwise
+# empty), and the Pi-Apps updater entry back where it was (byte-identical; only if the live name is free).
+python3 "$(dirname "$0")/labwc-autostart.py" remove "${XDG_CONFIG_HOME:-$HOME/.config}/labwc/autostart" \
+    || echo "WARNING: remove the memoryframe-managed lines from ~/.config/labwc/autostart by hand"
+bash "$(dirname "$0")/boot-splash.sh" pi-apps-updater on || true
 pkill -f deploy/kiosk.sh || true
 echo "Memory Frame service and kiosk autostart removed."
 sudo rm -f /etc/sudoers.d/memoryframe-poweroff

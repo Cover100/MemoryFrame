@@ -146,6 +146,43 @@ What it does:
     session (over ssh: `LABWC_PID=$(pgrep -u "$USER" -x labwc) labwc --reconfigure`). `sudo apt-get remove wtype`
     alone also turns it off.
 
+- **Boot splash (#162).** From power-on to the first photo the screen shows only ink (#0E1311) and the
+  Memory Frame lockup: no boot text, rainbow, desktop, panel or pointer.
+  - *Quiet boot:* `deploy/boot-splash.sh on` (run by `install.sh` with sudo) appends only the missing
+    `quiet logo.nologo vt.global_cursor_default=0 loglevel=3` to `/boot/firmware/cmdline.txt` (it must be one
+    line with `root=`, else it is left alone with a warning; every existing token is kept; backup
+    `cmdline.txt.memoryframe-bak.<time>`; temp file + sync + rename) and `disable_splash=1` to the `[all]` section
+    of `config.txt` (an `[all]` header is added if the file ends in another section; an existing `disable_splash=0`
+    is commented out). What was added is recorded in `/etc/memoryframe/boot-splash.state`; a second run changes
+    nothing. Applies at the next reboot (nothing is rebooted for you).
+  - *Session:* a marked block (`memoryframe-managed boot-splash`) at the top of `~/.config/labwc/autostart`
+    (`deploy/labwc-autostart.py`; `autostart.mf-bak` on the first edit) runs `deploy/session-start.sh`: it hides
+    the pointer (#155 keybind), shows `static/boot/splash-A.png` with `swaybg` (installed by `install.sh`), and for
+    20 s stops the stock desktop and panel (`lwrespawn` wrappers first, then `pcmanfm-pi` / `wf-panel-pi`, this user
+    only). Log: `/run/mfkiosk/memoryframe-session.log`, with `/proc/uptime` on every line.
+  - *Splash page:* `kiosk.sh` starts Chromium at once on `file:///opt/memoryframe/static/boot/splash.html` (one
+    self-contained file: the same lockup with a slow breath, "Getting your photos ready…" at 20 s), which opens the app
+    as soon as `/healthz` answers. The app page (`/?boot=1`) keeps the same lockup until the first photo, video,
+    pairing or empty screen has painted (at most 10 s) and fades it out over 600 ms. `MEMORYFRAME_SPLASH=0` in the
+    kiosk environment restores the old "wait for /healthz, then launch" flow.
+  - *Error screens (Wren's copy):* E1 the app answers but the page never starts (30 s), E2 the app never answers
+    (150 s, or at once when `memoryframe.service` has failed or keeps restarting), E3 Chromium keeps exiting (3 times
+    in 120 s; a still image from the 6th exit, Chromium is still retried every 60 s), E4 no desktop session by 90 s of
+    uptime (`memoryframe-bootwatch.service`: Plymouth message with the PR B theme, else two lines on tty1). E1-E3
+    retry by themselves and return to the photos; there is no automatic reboot. On E1/E3 a 3 s hold opens Frame tools
+    (Join developer Wi-Fi…, Close).
+  - *Pi-Apps updater:* `~/.config/autostart/pi-apps-updater.desktop` (only if its `Exec=` runs `pi-apps/updater`)
+    is moved aside to `pi-apps-updater.desktop.disabled-by-memoryframe.<time>` so it can't open a window over the
+    frame. `MEMORYFRAME_KEEP_PI_APPS_UPDATER=1 ./deploy/install.sh` keeps it; `deploy/boot-splash.sh pi-apps-updater
+    on` puts it back.
+  - *Stock desktop (developers):* create `memoryframe-desktop.txt` on the boot partition (from a PC, or
+    `sudo deploy/boot-splash.sh desktop on`) and reboot: no splash, no kiosk, the normal Pi desktop. Delete it and
+    reboot to get the frame back.
+  - **Rollback:** `./deploy/uninstall.sh` (removes the autostart block, runs `sudo deploy/boot-splash.sh off`,
+    restores the Pi-Apps entry, removes the boot watch; apt packages stay), then reboot. To see boot text again from a
+    PC: delete `quiet logo.nologo vt.global_cursor_default=0 loglevel=3` from `cmdline.txt` on the boot partition
+    (the backup has the original line), or over ssh `sudo /opt/memoryframe/deploy/boot-splash.sh off` and reboot.
+
 Check after reboot (expect exactly one of each):
 
 ```bash

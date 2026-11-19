@@ -39,7 +39,8 @@ def index():
         return redirect("/admin/", code=302)
     return render_template("index.html", media=get_media(), frame_token=frame_token(),
                            safe_copy=SAFE_SCREEN_COPY,
-                           frame_message=frame_message())
+                           frame_message=frame_message(),
+                           boot=request.args.get("boot") == "1")      # #162: opened by the boot splash
 
 
 def frame_message():
@@ -268,6 +269,30 @@ def shutdown():
     resp = jsonify({"synced": True})
     # schedule only once the response has been sent, so the kiosk can paint the Safe screen first
     resp.call_on_close(lambda: _schedule_poweroff(app, float(app.config.get("POWEROFF_DELAY", POWEROFF_DELAY))))
+    return resp
+
+
+# ---------------- #162: error screens the kiosk shows when the boot goes wrong ----------------
+
+# Wren's copy (design boot-splash-162/wren-error.md, canonical). Only these fixed sentences and the code are shown:
+# never a Wi-Fi name, address, token or log line.
+ERROR_CAUSES = {"E1": "Your photos didn't appear in time.",       # app up, the slideshow page never heartbeated
+                "E3": "The screen keeps restarting."}            # Chromium keeps exiting (and can still show this)
+
+
+@bp.route("/frame/error")
+@localhost_only
+def frame_error():
+    """kiosk.sh opens /frame/error?code=E1|E3 (E2, app down, is the file:// static/boot/error.html). It carries the
+    frame token so its 3 s hold can open Frame tools (Join developer Wi-Fi). It re-checks /healthz and returns to
+    the slideshow by itself (static/errorhold.js)."""
+    code = request.args.get("code", "")
+    if code not in ERROR_CAUSES:
+        abort(404)
+    log.warning("kiosk error screen %s shown", code)
+    resp = current_app.make_response(render_template("frame_error.html", code=code, cause=ERROR_CAUSES[code],
+                                                     frame_token=frame_token()))
+    resp.headers["Cache-Control"] = "no-store"
     return resp
 
 

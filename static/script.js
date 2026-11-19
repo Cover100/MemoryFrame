@@ -378,6 +378,8 @@ function showImage(item){
                     "visible"
                 );
 
+                if(window.mfBootDone){ window.mfBootDone("image"); }   // #162: first photo on screen
+
 
             },100);
 
@@ -479,6 +481,8 @@ function showVideo(item){
             videoElement.classList.add(
                 "visible"
             );
+
+            if(window.mfBootDone){ window.mfBootDone("video"); }   // #162: first video frame on screen
 
 
             let playing = videoElement.play();

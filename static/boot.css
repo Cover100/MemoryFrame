@@ -1,0 +1,18 @@
+/* #162 first-paint hand-off: the app page, opened by the splash with ?boot=1, starts under the same lockup as
+   static/boot/splash.html (same markup, sizes and position, so the cut from the file:// page is invisible) and fades
+   it out over 600 ms once the first photo, video frame, pairing or empty screen has painted (static/boot.js).
+   External file: the CSP (default-src 'self') forbids inline CSS. Fonts come from /frame-fonts.css. */
+#bootSplash{position:fixed;inset:0;z-index:20000;background:var(--mf-ink, #0E1311);color:var(--mf-linen, #F3EDE4);
+  font-family:var(--mf-font-frame, "MF Frame", "Atkinson Hyperlegible", "DejaVu Sans", sans-serif);cursor:none;
+  opacity:1;transition:opacity 600ms var(--mf-ease, cubic-bezier(.2,.7,.2,1))}
+#bootSplash.handoff{opacity:0}
+#bootSplash .bsLockup{position:absolute;left:50%;top:50%;width:360px;transform:translate(-50%,-50%);display:flex;
+  flex-direction:column;align-items:center}
+#bootSplash .bsMark{width:132px;height:100px;box-sizing:border-box;border:5px solid var(--mf-brass, #D6B36A);border-radius:16px;
+  background:var(--mf-forest-900, #16261D);display:flex;align-items:center;justify-content:center}
+#bootSplash .bsDot{width:28px;height:28px;border-radius:50%;background:var(--mf-brass, #D6B36A);
+  animation:mfBootBreathe 3600ms cubic-bezier(.45,0,.55,1) -1800ms infinite}
+#bootSplash.handoff .bsDot{animation-play-state:paused}        /* the breath freezes where it is during the fade */
+#bootSplash .bsWord{margin-top:28px;font-weight:700;font-size:40px;line-height:1.1;letter-spacing:.01em;white-space:nowrap}
+@keyframes mfBootBreathe{0%,100%{opacity:.55;transform:scale(.9)}50%{opacity:1;transform:scale(1.12)}}
+@media (prefers-reduced-motion:reduce){#bootSplash .bsDot{animation:none;opacity:1;transform:none}}

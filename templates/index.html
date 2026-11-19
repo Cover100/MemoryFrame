@@ -24,12 +24,22 @@
     <link rel="stylesheet" href="{{ static('tokens.css') }}">
     <link rel="stylesheet"
           href="{{ static('style.css') }}">
+    {% if boot %}<link rel="stylesheet" href="{{ static('boot.css') }}">{% endif %}
 
 </head>
 
 
 
 <body>
+{% if boot %}
+<!-- #162: opened by the boot splash (?boot=1): the same lockup until the first paint, then a 600 ms fade (boot.js) -->
+<div id="bootSplash" role="status" aria-label="Memory Frame is starting">
+    <div class="bsLockup">
+        <div class="bsMark" aria-hidden="true"><div class="bsDot"></div></div>
+        <div class="bsWord">Memory Frame</div>
+    </div>
+</div>
+{% endif %}
 
 
 <div id="frame">
@@ -320,6 +330,7 @@
 
 
 
+{% if boot %}<script src="{{ static('boot.js') }}"></script>{% endif %}
 <script id="mediaData" type="application/json">{{ media | tojson }}</script>
 
 <script src="{{ static('media-data.js') }}"></script>

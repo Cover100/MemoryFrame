@@ -148,7 +148,9 @@ def test_missing_cmdline_is_skipped(tmp_path):
 def test_only_boot_splash_edits_cmdline_txt():
     """test_mfapp_69 / test_sd_wear_97 forbid cmdline.txt elsewhere; the one writer is boot-splash(-edit)."""
     for f in (ROOT / "deploy").iterdir():
-        if f.is_file() and f.name not in ("boot-splash.sh", "boot-splash-edit.py", "install.sh", "uninstall.sh"):
+        # boot-splash-plymouth.py (#162 Change 2) only reads it (for `splash`): test_plymouth_theme_162 checks that
+        if f.is_file() and f.name not in ("boot-splash.sh", "boot-splash-edit.py", "boot-splash-plymouth.py",
+                                          "install.sh", "uninstall.sh"):
             code = "\n".join(l.split("#", 1)[0] for l in f.read_text(errors="replace").splitlines())
             assert "cmdline.txt" not in code, f.name
     for f in ("install.sh", "uninstall.sh"):

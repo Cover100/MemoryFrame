@@ -287,7 +287,7 @@ DEV_WIFI_FAIL = {
     "busy": ("Developer Wi-Fi can't start now", "Another Wi-Fi change is in progress. Try again in a few minutes."),
     "not-permitted": ("Developer Wi-Fi can't start", "This frame isn't set up for developer Wi-Fi. "
                                                      "Phones can connect as usual."),
-    "no-helper": ("Developer Wi-Fi can't start", "The frame couldn't start the switch. Phones can connect as usual."),
+    "no-helper": ("Developer Wi-Fi can't start", "The frame couldn't change Wi-Fi. Phones can connect as usual."),
 }
 
 

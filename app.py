@@ -3,6 +3,7 @@
 The application lives in the memoryframe package (blueprints, storage, SQLite).
 This module keeps `python app.py` working and exposes `app` for WSGI servers.
 """
+import logging
 import os
 import platform
 import threading
@@ -58,6 +59,10 @@ def main():
             print(f"migrate: ERROR: {e} - slideshow will only show already imported media")
 
     from waitress import serve
+
+    # waitress.serve() sets up logging at WARNING; let the app's own INFO audit lines (memoryframe.*:
+    # pairing/sign-out, Wi-Fi changes) reach the journal. Never secrets in them.
+    logging.getLogger("memoryframe").setLevel(logging.INFO)
 
     listen = " ".join(f"{host}:{p}" for p in ports)
 

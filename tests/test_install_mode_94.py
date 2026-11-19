@@ -15,7 +15,7 @@ import time
 
 import pytest
 
-from test_install_never_arms_product import run_install
+from test_install_never_arms_product import MODE_WRITE, run_install
 from test_netmode_script import HOME, HOT, active, env, mutations, run, state  # noqa: F401  (fixture)
 
 
@@ -64,7 +64,7 @@ def go(tmp_path, env, *args, upgrade=False, wifi="home", ok=True, **kw):
 def test_no_file_fresh_or_upgrade(env, tmp_path, upgrade, wifi, expect):
     r, log = go(tmp_path, env, upgrade=upgrade, wifi=wifi)
     assert written(env) == expect + "\n"
-    assert re.search(r"tee \S*/memoryframe-mode\.txt", log)
+    assert re.search(MODE_WRITE, log)
     assert f"writing '{expect}' (" in r.stdout and ("fresh install" in r.stdout) == (not upgrade), r.stdout
     reboot(env)                                                          # next boot follows the file
     assert state(env)["mode"] == expect
@@ -131,7 +131,7 @@ def test_existing_file_is_never_touched(env, tmp_path, existing, args, upgrade, 
     before = os.stat(f).st_mtime_ns
     r, log = go(tmp_path, env, *args, upgrade=upgrade, wifi=wifi)
     assert f.read_bytes() == existing.encode() and os.stat(f).st_mtime_ns == before
-    assert "memoryframe-mode.txt" not in log                             # no sudo tee at all
+    assert "memoryframe-mode.txt" not in log                             # no mode-file write at all
     assert "left unchanged" in r.stdout and (("ignored" in r.stdout) == bool(args)), r.stdout
 
 
@@ -139,3 +139,30 @@ def test_missing_boot_partition_warns_and_writes_nothing(env, tmp_path):
     shutil.rmtree(env["boot"])
     r, log = go(tmp_path, env)
     assert "boot partition" in r.stderr and "memoryframe-mode.txt" not in log and not env["boot"].exists()
+
+
+# ---------- PR152 nit (Hale): the upgrade's nmcli lookup is bounded ----------
+
+def test_hung_nmcli_on_upgrade_times_out_into_product(env, tmp_path):
+    """A hung `nmcli ... device show wlan0` must not stall install: after MEMORYFRAME_NMCLI_TIMEOUT it counts as
+    "not on home Wi-Fi" (product), like a missing or failing nmcli. Other nmcli calls go to the normal fake."""
+    hang = env["d"] / "nmcli-hang"
+    hang.write_text('#!/bin/bash\nif [ "$1 $2 $3 $4" = "-g GENERAL.CONNECTION device show" ]; then\n'
+                    f'  echo "nmcli-hang $*" >> "$STUB_DIR/log"; exec sleep 30\nfi\nexec "{env["env"]["NMCLI"]}" "$@"\n')
+    hang.chmod(0o755)
+    t0 = time.monotonic()
+    r, log = go(tmp_path, env, upgrade=True, wifi="home",
+                extra_env={"NMCLI": str(hang), "MEMORYFRAME_NMCLI_TIMEOUT": "1"})
+    assert time.monotonic() - t0 < 25                                   # bounded: never waited for the 30 s sleep
+    assert "nmcli-hang -g GENERAL.CONNECTION device show wlan0" in (env["d"] / "log").read_text()
+    assert "WARNING: nmcli did not answer within 1s: treated as not on home Wi-Fi." in r.stderr
+    assert written(env) == "product\n" and re.search(MODE_WRITE, log)
+
+
+def test_mode_file_is_written_atomically_via_a_temp_in_the_boot_dir(env, tmp_path):
+    r, log = go(tmp_path, env, upgrade=False)
+    boot = env["boot"]
+    assert written(env) == "product\n" and not (boot / ".memoryframe-mode.txt.new").exists()
+    seq = [l for l in log.splitlines() if ".memoryframe-mode.txt.new" in l]
+    assert [l.split()[1] for l in seq] == ["cp", "chown", "chmod", "sync", "mv"], seq   # temp, owner/mode, fsync, rename
+    assert f"chown root:root {boot}/.memoryframe-mode.txt.new" in log and f"chmod 0644 {boot}/.memoryframe-mode.txt.new" in log

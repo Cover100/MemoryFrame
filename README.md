@@ -296,7 +296,7 @@ There is one owner (D6), who may pair several phones.
 - **Close:** every overlay has a Close button. It dismisses the onboarding and empty-library screens for the browser session, in every state including no photos, and a reboot or kiosk restart brings them back. While dismissed, only the small corner hint shows, and pairing stays in the menu (double tap).
 - **Photos but no phone paired:** the slideshow runs. Only a small "Double-tap for menu to pair a phone" hint shows in the corner. Double-tap the screen anywhere to open the menu.
 - **Paired but no photos:** a "No photos yet" screen.
-- **Double tap** (two quick taps on the same spot): a menu with IP, Wi-Fi, site address, free storage, phones paired and version, plus **Pair new device** (always available), **Sign out all phones**, **Shut down** (MF-49) and **Close**. Text is at least 24 px at 800x480. Developer Wi-Fi is not in the menu (3 s hold, see Product mode below).
+- **Double tap** (two quick taps on the same spot): a menu with IP, Wi-Fi, site address, free storage, phones paired and version, plus **Pair new device** (always available), **Sign out all phones**, **Shut down** (MF-49) and **Close**. Text is at least 24 px at 800x480. Developer Wi-Fi is not in this menu: it is in **Frame tools** (3 s hold, see Product mode below).
 - **Address shown to users:** `http://10.42.0.1/pair` (hotspot). Developer-only addresses used while on home Wi-Fi are described in the developer notes below.
   - The Host check accepts the frame's own current IP addresses automatically.
   - **Override:** `MEMORYFRAME_SITE_URL=http://frame.home` (no path) replaces the detected address. Set it on the Pi with `deploy/env-file.sh MEMORYFRAME_SITE_URL http://…` and restart the service. The `PAIR_BASE_URL` app config key still wins for tests and development.
@@ -319,16 +319,20 @@ There is one owner (D6), who may pair several phones.
   `memoryframe-mode.txt` on the boot partition says `dev`. Missing, empty or unknown → product.
 - **The hotspot stays on** in product mode whether or not a phone is connected (there is no
   "no phone joined" fallback).
-- **Developer Wi-Fi until reboot:** on the frame, a still **3-second hold anywhere** opens the confirm
-  **"Join developer Wi-Fi?"** (Cancel is the default; **Join** switches). It is not in the menu.
-  Or from the shell: `sudo deploy/netmode.sh dev-temp`. The frame joins home Wi-Fi until the next
-  reboot; nothing is written to disk, so the next boot is product again. If home Wi-Fi fails, the
-  hotspot comes back.
+- **Developer Wi-Fi until the next restart:** on the frame, a still **3-second hold anywhere** opens
+  **Frame tools** (Reset the frame…, **Join developer Wi-Fi…**, Close). Join developer Wi-Fi… asks
+  **"Switch to dev mode?"** (Cancel is the default; **Switch** switches). It is not in the double-tap menu.
+  Or from the shell: `sudo deploy/netmode.sh dev-temp`. The frame joins home Wi-Fi only until the next
+  restart: nothing is written to disk, so after a restart (or power cycle) the frame is back in product
+  mode on its own hotspot. If home Wi-Fi doesn't connect within about 30 s, the hotspot comes back.
 - **Persistent developer mode** (the developer's Pi only): `dev` in `/boot/firmware/memoryframe-mode.txt`
   (or `sudo deploy/netmode.sh dev`). `install.sh` never changes an existing mode file. With no file (#94):
   a fresh install writes `product` (use `./deploy/install.sh --mode dev` for a new dev Pi; `--mode product`
-  also works), and an upgrade pins the live mode (`dev` if wlan0 is on a home connection, else `product`),
-  so a deploy never changes the mode. Install never switches the network itself.
+  also works), and an upgrade writes the mode that is live during the install (`dev` if wlan0 is on a
+  non-hotspot Wi-Fi connection then, else `product`, also when nmcli fails or doesn't answer within 10 s).
+  So a deploy keeps the mode of a Pi that has a mode file, or that is on home Wi-Fi at install time. A
+  developer Pi that is on the hotspot or off Wi-Fi during an upgrade with no mode file is written `product`:
+  write `dev` first (or use `--mode dev`). Install never switches the network itself.
 - `deploy/netmode.sh status` shows `armed for next boot:` and `current mode:`.
 - Dev Wi-Fi credentials stay in the existing NetworkManager profile; boot-partition files never hold
   a password. Full details and recovery: [docs/runbooks/MF-36-product-mode.md](docs/runbooks/MF-36-product-mode.md).

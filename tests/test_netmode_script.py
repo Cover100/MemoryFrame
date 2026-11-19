@@ -35,7 +35,7 @@ if [ "$2 $3" = "connection delete" ] || [ "$3 $4" = "connection show" ] || [ "$1
   done
 fi
 case "$1 $2" in
-  "-g NAME") ls "$D/p"; exit 0;;
+  "-g NAME") ls "$D/p"; cat "$D/dupname" 2>/dev/null; exit 0;;   # dupname: a 2nd profile with that id (#151 nit)
   "-g UUID,FILENAME")   # #137: the file backing each profile (empty: none); some nmcli builds lack FILENAME
     [ -f "$D/nofilename" ] && { echo "Error: invalid field 'FILENAME'" >&2; exit 2; }
     for q in "$D"/p/*/; do q="${q%/}"; echo "$(cat "$q/uuid" 2>/dev/null || echo "uuid-$(basename "$q")"):$(cat "$q/file" 2>/dev/null)"; done; exit 0;;
@@ -48,7 +48,7 @@ if [ "$1" = -g ] && [ "$3 $4" = "connection show" ]; then
     802-11-wireless.ssid) cat "$f/ssid";; connection.autoconnect) cat "$f/autoconnect";;
     connection.timestamp) cat "$f/ts" 2>/dev/null || echo 0;;
     connection.autoconnect-priority) cat "$f/prio" 2>/dev/null || echo 0;;
-    connection.uuid) cat "$f/uuid" 2>/dev/null || echo "uuid-$5";;
+    connection.uuid) cat "$f/uuid" 2>/dev/null || echo "uuid-$5"; grep -qxF "$5" "$D/dupname" 2>/dev/null && echo "uuid-dup-$5";;
     connection.id) echo "$5";;
     connection.interface-name) cat "$f/ifname" 2>/dev/null;;
   esac; exit 0

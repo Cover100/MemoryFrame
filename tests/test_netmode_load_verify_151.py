@@ -107,3 +107,33 @@ def test_script_checks_every_client_load():
     text = open(src).read()
     assert text.count('profile_loaded "$f" "$PENDING_CON"') == 1
     assert text.count('profile_loaded "$f" "$HOME_PENDING"') == 1
+
+
+# ---------- Hale's #151 review nit: two profiles with the same id ----------
+
+@pytest.mark.parametrize("filename_column", [True, False], ids=["filename", "no-filename"])
+def test_wifi_apply_two_profiles_with_the_pending_id_fails_loudly(on_hotspot, filename_column):
+    env = on_hotspot
+    if not filename_column:
+        (env["d"] / "nofilename").write_text("")
+    (env["d"] / "dupname").write_text(PENDING + "\n")          # NM lists a second MemoryFrame-AP-pending
+    r = run(env, "wifi-apply", input=f"New\n{NEWPW}\n")
+    assert r.returncode == 4
+    assert f"2 NetworkManager profiles are named {PENDING} (expected exactly 1)" in r.stderr
+    assert "wifi change: NetworkManager did not load the new profile" in r.stderr and NEWPW not in r.stderr
+    assert ups(env, PENDING) == [] and active(env) == HOT
+    assert keyfiles(env, PENDING) == [] and not (env["state"] / "wifi-change-pending").exists()
+
+
+@pytest.mark.parametrize("filename_column", [True, False], ids=["filename", "no-filename"])
+def test_home_wifi_two_profiles_with_the_pending_id_fails_loudly(env, filename_column):
+    dev_fallback_on_hotspot(env)
+    if not filename_column:
+        (env["d"] / "nofilename").write_text("")
+    (env["d"] / "dupname").write_text(HPEND + "\n")
+    r = _request(env)
+    assert r.returncode == 4
+    assert f"2 NetworkManager profiles are named {HPEND} (expected exactly 1)" in r.stderr
+    assert "home-wifi: NetworkManager did not load the profile" in r.stderr and SENT not in r.stderr
+    assert _home(env)["state"] == "failed" and ups(env, HPEND) == [] and active(env) == HOT
+    assert keyfiles(env, HPEND) == [] and keyfiles(env, HCON) == []

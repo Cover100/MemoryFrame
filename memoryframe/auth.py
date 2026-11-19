@@ -20,6 +20,10 @@ Sessions
   jars (iOS sign-in pop-up vs Safari) and other hosts (10.42.0.1 vs
   memoryframe.local) send no cookie, so they still get a new row.
   "Sign out all phones" revokes every session.
+  #154: Settings -> Paired phones lists the devices with a live session and removes
+  ONE of them: all of that device's sessions are revoked (its cookie gets 401 and it
+  must pair again with a code); other devices are untouched. Removing the phone in
+  use also clears its cookie. Rows are kept, as with sign-out-all.
 """
 import hashlib
 import hmac
@@ -41,6 +45,7 @@ RATE_WINDOW = 60
 MAX_TRACKED = 1024       # addresses the rate limiter remembers
 LAST_SEEN_EVERY = 60     # seconds between last_seen writes
 SESSION_DAYS = 365
+LABEL_MAX = 200          # stored device label (User-Agent), chars
 
 clock = time.time         # patched in tests
 
@@ -128,10 +133,68 @@ def pairing(app=None):
 
 
 def device_label(user_agent):
-    """Printable ASCII only, whitespace collapsed, at most 80 chars."""
+    """Printable ASCII only, whitespace collapsed, at most LABEL_MAX chars (#154: 200, was 80, which cut a
+    phone User-Agent before its browser token; device_display needs it). Display only, never an identity key."""
     text = "".join(ch if ch.isascii() and ch.isprintable() else " " for ch in str(user_agent or ""))
-    text = " ".join(text.split())[:80]
+    text = " ".join(text.split())[:LABEL_MAX]
     return text or "phone"
+
+
+_OS = (("iPhone", "iPhone"), ("iPad", "iPad"), ("Android", "Android"), ("CrOS", "Chromebook"),
+       ("Windows", "Windows"), ("Macintosh", "Mac"), ("Linux", "Linux"))
+_BROWSERS = (("SamsungBrowser/", "Samsung Internet"), ("Edg", "Edge"), ("Firefox/", "Firefox"),
+             ("FxiOS/", "Firefox"), ("CriOS/", "Chrome"), ("Chrome/", "Chrome"), ("Safari/", "Safari"))
+
+
+def device_display(name):
+    """#154: a short "iPhone · Safari" from the stored User-Agent label (display only, never an identity key)."""
+    name = str(name or "")
+    os_ = next((label for key, label in _OS if key in name), None)
+    browser = next((label for key, label in _BROWSERS if key in name), None)
+    if os_ and browser:
+        return f"{os_} · {browser}"
+    return os_ or "Phone"
+
+
+def _date(ts):
+    t = time.localtime(ts)
+    return f"{t.tm_mday} {time.strftime('%b', t)} {t.tm_year}"
+
+
+def seen_ago(ts, now=None):
+    if ts is None:
+        return "never"
+    d = max(0, (db.now() if now is None else now) - ts)
+    if d < 120:
+        return "just now"
+    if d < 3600:
+        return f"{int(d // 60)} min ago"
+    if d < 86400:
+        return f"{int(d // 3600)} h ago"
+    if d < 7 * 86400:
+        n = int(d // 86400)
+        return f"{n} day{'s' if n > 1 else ''} ago"
+    return "on " + _date(ts)
+
+
+def paired_devices(conn, current=None):
+    """#154: devices with a live session (the ones paired_count counts), oldest first."""
+    rows = conn.execute(
+        "SELECT d.id, d.name, d.created_at, d.last_seen FROM devices d WHERE EXISTS (SELECT 1 FROM sessions s "
+        "WHERE s.device_id = d.id AND s.revoked = 0 AND s.expires_at > ?) ORDER BY d.created_at, d.id",
+        (db.now(),)).fetchall()
+    return [{"id": r["id"], "label": device_display(r["name"]), "paired": _date(r["created_at"]),
+             "seen": seen_ago(r["last_seen"]), "current": r["id"] == current} for r in rows]
+
+
+def revoke_device(conn, device_id):
+    """#154: revoke every unrevoked session of ONE device. None if there is no such device, else the number
+    revoked (0: it was already signed out, e.g. a second tap). Other devices are never touched."""
+    if conn.execute("SELECT 1 FROM devices WHERE id = ?", (device_id,)).fetchone() is None:
+        return None
+    n = conn.execute("UPDATE sessions SET revoked = 1 WHERE device_id = ? AND revoked = 0", (device_id,)).rowcount
+    conn.commit()
+    return n
 
 
 def create_session(conn, device_name, device_id=None):
@@ -160,6 +223,12 @@ def set_session_cookie(resp, token):
     # and a Secure cookie would never be sent back.
     resp.set_cookie(COOKIE, token, max_age=SESSION_DAYS * 86400, httponly=True,
                     samesite="Strict", path="/")
+    return resp
+
+
+def clear_session_cookie(resp):
+    """Same attributes as set_session_cookie, so the browser really drops it."""
+    resp.set_cookie(COOKIE, "", max_age=0, expires=0, httponly=True, samesite="Strict", path="/")
     return resp
 
 

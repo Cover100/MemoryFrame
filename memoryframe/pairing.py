@@ -118,7 +118,8 @@ def frame_sign_out_all():
 def pair_page():
     if auth.current_device() is not None:
         return redirect("/admin/", code=302)
-    return render_template("pair.html", token=request.args.get("t", ""), error=None)
+    return render_template("pair.html", token=request.args.get("t", ""), error=None,
+                           removed=request.args.get("removed") == "1")   # #154: this phone was removed
 
 
 @bp.route("/pair", methods=["POST"])

@@ -47,5 +47,20 @@
     <dt>Version</dt><dd id="aboutVersion">{{ about.version }}</dd>
   </dl>
 </details>
+<section class="card" id="phonesSection">
+  <h2 class="hd" id="phones">Paired phones</h2>
+  {% if removed %}<div id="devRemoved" class="ok-box" role="status"><p>Phone removed. It needs a new code from the frame to pair again.</p></div>{% endif %}
+  <ul class="rows devs">
+    {% for d in devices %}<li data-device="{{ d.id }}">
+      <div class="row-link"><span class="t">{{ d.label }}{% if d.current %} <b>(This phone)</b>{% endif %}<small>Paired {{ d.paired }} · Last seen {{ d.seen }}</small></span>
+        <button type="button" class="msgRemove devRemove" aria-controls="devConfirm{{ d.id }}" aria-expanded="false">Remove</button></div>
+      <form method="post" action="/admin/devices/{{ d.id }}/remove" class="msgConfirm devConfirm" id="devConfirm{{ d.id }}" role="alertdialog" aria-labelledby="devConfirmText{{ d.id }}" hidden>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <span id="devConfirmText{{ d.id }}">{% if d.current %}Remove this phone? You'll be signed out on this phone and need a code from the frame to pair it again.{% else %}Remove {{ d.label }}? It will need a code from the frame to pair again.{% endif %}</span>
+        <button type="submit" class="msgRemoveYes">Remove</button>
+        <button type="button" class="msgKeep devKeep btn-default">Keep</button>
+      </form></li>{% endfor %}
+  </ul>
+</section>
 {% endblock %}
 {% block scripts %}<script src="{{ static('settings.js') }}"></script>{% endblock %}

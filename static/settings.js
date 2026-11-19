@@ -106,4 +106,11 @@
         document.getElementById("messageRemoveNo").addEventListener("click", ()=>{ confirmBox.hidden = true; preview(); removeBtn.focus(); });
         document.getElementById("messageRemoveYes").addEventListener("click", ()=> saveMessage(""));
     }
+    // #154: Paired phones -> Remove opens that row's inline confirm (Keep focused, the safe default).
+    document.querySelectorAll(".devRemove").forEach((btn)=>{
+        const box = document.getElementById(btn.getAttribute("aria-controls"));
+        const show = (open)=>{ box.hidden = !open; btn.hidden = open; btn.setAttribute("aria-expanded", String(open)); };
+        btn.addEventListener("click", ()=>{ show(true); box.querySelector(".devKeep").focus(); });
+        box.querySelector(".devKeep").addEventListener("click", ()=>{ show(false); btn.focus(); });
+    });
 })();

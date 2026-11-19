@@ -6,6 +6,7 @@
 {% block content %}
 <div class="hero" aria-hidden="true"><span></span></div>
 <h1>Pair this phone</h1>
+{% if removed %}<div id="removedNote" class="ok-box" role="status"><p>This phone was removed from the frame. To use it again, pair it with the code on the frame.</p></div>{% endif %}
 {% if error %}<p class="err" role="alert">{{ error }}</p>{% endif %}
 {% if token %}
 <form method="post" action="/pair" id="tokenForm" class="tok">

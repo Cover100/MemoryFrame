@@ -232,7 +232,7 @@ def test_rate_limiter_threadsafe(clock):
 
 def test_device_label_sanitised():
     assert auth.device_label("Mozilla/5.0\n\x00(Linux; Android 14)\t é") == "Mozilla/5.0 (Linux; Android 14)"
-    assert len(auth.device_label("x" * 500)) == 80
+    assert len(auth.device_label("x" * 500)) == 200                    # #154: was 80 (cut the browser token)
     assert auth.device_label("\u202e\u200b") == "phone" and auth.device_label(None) == "phone"
 
 

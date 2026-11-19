@@ -33,8 +33,10 @@ install.sh runs, and a Pi that is on the hotspot or off Wi-Fi at that moment is 
     **Close** (default). Join developer Wi-Fi… opens the confirm **"Switch to dev mode?"** / "Phones on
     the frame's Wi-Fi will disconnect until you restart the frame." with **Cancel** (default) and
     **Switch**. After Switch: "Switching to dev mode…" / "This can take up to 30 seconds."; then the
-    bottom-left label `Developer Wi-Fi · <LAN IP> · restart to exit`. On failure: "Couldn't join home
-    Wi-Fi — hotspot kept on" and the reason. Lifting early or moving (swipe, brightness drag) cancels
+    bottom-left label `Developer Wi-Fi · <LAN IP> · restart to exit`. On failure (#167): a plain title
+    and sentence, e.g. **"Developer Wi-Fi not found"** / "The frame is back on its own Wi-Fi. Phones
+    can connect as usual." (all cases: `DEV_WIFI_FAIL` in `memoryframe/display.py`; the raw reason
+    is only in the app log, `dev mode switch failed (exit N): <code>`), then **OK**. Lifting early or moving (swipe, brightness drag) cancels
     the hold silently.
   - The double-tap menu has **no** developer item: only **Pair new device**, **Sign out all phones**,
     **Shut down** and **Close**.

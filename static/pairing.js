@@ -427,12 +427,12 @@
         $("devModeStatus").textContent = "Switching to dev mode\u2026";
         $("devModeDetail").textContent = "This can take up to 30 seconds.";
         $("devModeAfter").hidden = true;
-        let res = {ok: false, reason: "no answer from the frame"};
+        let res = null;
         try{
             const meta = document.querySelector('meta[name="mf-frame-token"]');
             const r = await fetch("/frame/dev-mode", {method: "POST",
                 headers: {"X-Frame-Token": meta ? meta.content : ""}});
-            try{ res = await r.json(); }catch(e){ res = {ok: false, reason: "HTTP " + r.status}; }
+            try{ res = await r.json(); }catch(e){ console.warn("dev mode: HTTP " + r.status); }
         }catch(e){ console.warn(e); }
         if(res && res.ok === true){
             devBusy = false;
@@ -440,8 +440,12 @@
             tick();
             return;
         }
-        $("devModeStatus").textContent = "Couldn't join home Wi-Fi \u2014 hotspot kept on";
-        $("devModeDetail").textContent = (res && typeof res.reason === "string" && res.reason) ? res.reason : "unknown error";
+        // #167: the server's plain title and sentence (memoryframe/display.py DEV_WIFI_FAIL); with no usable
+        // answer, the same text as its "didn't connect" entry. Never a raw reason.
+        const plain = (v)=> typeof v === "string" && /^[A-Z]/.test(v) ? v : "";
+        $("devModeStatus").textContent = plain(res && res.title) || "Developer Wi-Fi didn't connect";
+        $("devModeDetail").textContent = plain(res && res.reason) ||
+            "The frame is back on its own Wi-Fi. Phones can connect as usual.";
         $("devModeAfter").hidden = false;
         devBusy = false;
     });

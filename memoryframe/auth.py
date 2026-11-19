@@ -232,12 +232,16 @@ def revoke_device(conn, device_id, source="Settings remove"):
     return n
 
 
-def create_session(conn, device_name, device_id=None):
+def create_session(conn, device_name, device_id=None, dev_temp=False):
     """New session; returns the raw token for the cookie (only its hash is stored).
 
     device_id None: a new devices row. Otherwise (#153 re-pair, the id from current_device()):
     that row is reused, its unrevoked sessions are revoked, and its label and last_seen refreshed,
-    all in one transaction. Other devices are never touched."""
+    all in one transaction. Other devices are never touched.
+
+    dev_temp: paired in temporary Developer Wi-Fi. The session is tagged so the first-run gate
+    (paired_count with include_dev_temp False) doesn't count it after the restart to product mode.
+    It is a normal session otherwise: listed, usable and revocable as any other; never auto-revoked."""
     now = db.now()
     label = device_label(device_name)
     if device_id is None:
@@ -248,8 +252,8 @@ def create_session(conn, device_name, device_id=None):
         conn.execute("UPDATE devices SET name = ?, last_seen = ? WHERE id = ?", (label, now, device_id))
         log.info("pair (re-pair): device %d reused, %d old session(s) revoked", device_id, n)
     token = secrets.token_urlsafe(32)
-    conn.execute("INSERT INTO sessions (device_id, token_hash, created_at, expires_at) VALUES (?, ?, ?, ?)",
-                 (device_id, hash_token(token), now, now + SESSION_DAYS * 86400))
+    conn.execute("INSERT INTO sessions (device_id, token_hash, created_at, expires_at, dev_temp) VALUES (?, ?, ?, ?, ?)",
+                 (device_id, hash_token(token), now, now + SESSION_DAYS * 86400, 1 if dev_temp else 0))
     conn.commit()
     return token
 
@@ -291,9 +295,13 @@ def current_device():
     return row["device_id"]
 
 
-def paired_count(conn):
+def paired_count(conn, include_dev_temp=True):
+    """Devices with an active session. include_dev_temp False (the frame's first-run gate outside dev-temp:
+    Join Wi-Fi QR, W0 welcome) counts only sessions not created in temporary Developer Wi-Fi, so a phone
+    paired there doesn't hide the onboarding after the restart to product mode."""
+    tag = "" if include_dev_temp else " AND dev_temp = 0"
     return conn.execute("SELECT COUNT(DISTINCT device_id) FROM sessions WHERE revoked = 0 "
-                        "AND expires_at > ?", (db.now(),)).fetchone()[0]
+                        "AND expires_at > ?" + tag, (db.now(),)).fetchone()[0]
 
 
 def sign_out_all(conn, source="unknown"):

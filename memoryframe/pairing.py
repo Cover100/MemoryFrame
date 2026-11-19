@@ -54,7 +54,9 @@ def _state():
     conn = get_db()
     from . import wifi
     name, password = wifi.current_wifi(conn)
-    out = {"paired": auth.paired_count(conn), "ssid": name, "url": base + "/pair", "round": None,
+    # paired feeds the first-run gate (Join Wi-Fi QR here; W0 / first run in pairing.js). Outside dev-temp
+    # it counts only sessions not tagged dev_temp; in dev-temp it counts all (the phone just paired there).
+    out = {"paired": auth.paired_count(conn, include_dev_temp=bool(nm.get("temp"))), "ssid": name, "url": base + "/pair", "round": None,
            "network": urls["mode"], "url_fallback": fallback + "/pair" if fallback else None,
            "site_url": base + "/", "media": conn.execute("SELECT COUNT(*) FROM media WHERE hidden = 0").fetchone()[0],
            "wifi_qr_svg": None, "wifi_join_name": None}
@@ -149,7 +151,8 @@ def pair():
     # cookie, this POST sends it) gets its own row back with a rotated secret, not a second row.
     token = auth.create_session(get_db(), auth.hinted_name(request.headers.get("User-Agent", "phone"),
                                                            data.get("device")),   # display label only
-                                device_id=auth.current_device())
+                                device_id=auth.current_device(),
+                                dev_temp=bool(frameinfo.netmode_state().get("temp")))   # tagged, see paired_count
     # MF-33: one-shot "You're paired!" banner (admin.js removes ?paired=1 so a reload hides it)
     resp = jsonify({"paired": True, "next": "/admin/?paired=1"}) if wants_json else redirect("/admin/?paired=1", code=303)
     return auth.set_session_cookie(make_response(resp), token)
@@ -167,4 +170,4 @@ def frame_status():
                     "storage": frameinfo.free_storage(current_app.config["DATA_DIR"],
                                                       storage.min_free(current_app.config)),
                     "orphans": current_app.config.get("ORPHANS_REPORTED", 0),     # #96: files kept, not deleted
-                    "paired": auth.paired_count(get_db())})
+                    "paired": auth.paired_count(get_db(), include_dev_temp=bool(frameinfo.netmode_state().get("temp")))})

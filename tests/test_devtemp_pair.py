@@ -336,3 +336,85 @@ def test_app_main_lets_info_audit_lines_through():
     from pathlib import Path
     src = (Path(__file__).resolve().parent.parent / "app.py").read_text()
     assert 'logging.getLogger("memoryframe").setLevel(logging.INFO)' in src
+
+
+# ---------- Reed / Sage: sessions paired in dev-temp don't hide the first-run Join Wi-Fi QR ----------
+
+HOTSPOT = "10.42.0.1"
+
+
+def _reboot_to_product(devtemp):
+    """The frame restarts in product mode: dev_temp is false, the hotspot is the network."""
+    devtemp.write(requested="product", mode="product")
+    devtemp.net.update(mode="hotspot", lan_ip=HOTSPOT, ips=[HOTSPOT])
+    devtemp.ips[:] = [HOTSPOT]
+
+
+def _sessions(app):
+    return _q(app, "SELECT device_id, revoked, dev_temp FROM sessions ORDER BY id")
+
+
+def test_devtemp_pairing_not_counted_after_restart_to_product(client, devtemp, mf_app):
+    phone = mf_app.test_client()
+    code = started(client)["round"]["code"]
+    assert phone.post("/pair", data={"code": code}, environ_base=PHONE).status_code == 303
+    assert started(client)["paired"] == 1                        # still counted while in dev-temp
+    _reboot_to_product(devtemp)
+    st = client.get("/pairing/state", environ_base=LOCAL).get_json()
+    assert st["paired"] == 0 and st["wifi_qr_svg"]               # first run again: Join Wi-Fi QR shows
+    assert client.get("/frame/status", environ_base=LOCAL).get_json()["paired"] == 0
+    # tagged; nothing revoked, listing unchanged, the phone still works
+    assert _sessions(mf_app) == [(1, 0, 1)]
+    conn = mfdb.connect(mf_app.config["DB_PATH"])
+    try:
+        assert [d["id"] for d in auth.paired_devices(conn)] == [1] and auth.paired_count(conn) == 1
+    finally:
+        conn.close()
+    assert phone.get("/admin/", environ_base=PHONE).status_code == 200
+
+
+def test_product_pairing_still_counts(client, devtemp, mf_app):
+    _reboot_to_product(devtemp)
+    phone = mf_app.test_client()
+    code = started(client)["round"]["code"]
+    assert phone.post("/pair", data={"code": code}, environ_base=PHONE).status_code == 303
+    st = client.get("/pairing/state", environ_base=LOCAL).get_json()
+    assert st["paired"] == 1 and st["wifi_qr_svg"] is None
+    assert _sessions(mf_app) == [(1, 0, 0)]                      # untagged
+
+
+def test_repair_in_product_of_devtemp_phone_counts(client, devtemp, mf_app):
+    """#153 re-pair after the restart: same row, its new session is untagged, so it counts again."""
+    phone = mf_app.test_client()
+    code = started(client)["round"]["code"]
+    assert phone.post("/pair", data={"code": code}, environ_base=PHONE).status_code == 303
+    _reboot_to_product(devtemp)
+    code = started(client)["round"]["code"]
+    assert phone.post("/pair", data={"code": code}, environ_base=PHONE).status_code == 303
+    assert client.get("/pairing/state", environ_base=LOCAL).get_json()["paired"] == 1
+    assert _sessions(mf_app) == [(1, 1, 1), (1, 0, 0)]
+
+
+def test_sessions_dev_temp_migration_on_old_db(tmp_path):
+    p = str(tmp_path / "old.db")
+    conn = mfdb.connect(p)
+    conn.executescript("""
+        CREATE TABLE schema_version (version INTEGER NOT NULL); INSERT INTO schema_version VALUES (3);
+        CREATE TABLE devices (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, created_at REAL NOT NULL,
+          last_seen REAL);
+        CREATE TABLE sessions (id INTEGER PRIMARY KEY AUTOINCREMENT,
+          device_id INTEGER NOT NULL REFERENCES devices (id) ON DELETE CASCADE, token_hash TEXT NOT NULL UNIQUE,
+          created_at REAL NOT NULL, expires_at REAL NOT NULL, revoked INTEGER NOT NULL DEFAULT 0);
+        INSERT INTO devices (name, created_at) VALUES ('old phone', 0);
+        INSERT INTO sessions (device_id, token_hash, created_at, expires_at) VALUES (1, 'h', 0, 9e12);""")
+    conn.commit()
+    conn.close()
+    mfdb.init_db(p)
+    mfdb.init_db(p)                                              # idempotent
+    conn = mfdb.connect(p)
+    try:
+        assert [tuple(r) for r in conn.execute("SELECT device_id, revoked, dev_temp FROM sessions")] == [(1, 0, 0)]
+        assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == mfdb.SCHEMA_VERSION == 4
+        assert auth.paired_count(conn) == 1 and auth.paired_count(conn, include_dev_temp=False) == 1
+    finally:
+        conn.close()

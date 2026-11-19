@@ -105,7 +105,9 @@ Switches are refused (exit 3) while another switch runs or an MF-18 Wi-Fi change
   the same Wi-Fi as the frame". The phone must be on the same Wi-Fi (not mobile data). If the frame has no Wi-Fi
   address that the site accepts yet, the card says "No Wi-Fi address yet. Restart the frame to pair a phone." The session cookie belongs to that IP address: after the
   restart back to the hotspot the phone pairs again and shows up as a second entry (remove the old one in Settings →
-  Paired phones).
+  Paired phones). A session paired in Developer Wi-Fi is tagged (`sessions.dev_temp`). After the restart it
+  doesn't count for the frame's first-run screen (Join Wi-Fi QR / welcome), so with no other phone the onboarding
+  shows again. It is never revoked automatically and stays listed and usable.
 - The developer labels and dev-temp pairing are the only places a LAN IP appears.
 - Developer Wi-Fi missing / wrong password: within ~60 s the hotspot comes up and the toast
   `Developer Wi-Fi not found, hotspot started` shows for 30 s, once per boot.

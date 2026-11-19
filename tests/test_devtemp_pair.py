@@ -373,6 +373,22 @@ def test_devtemp_pairing_not_counted_after_restart_to_product(client, devtemp, m
     assert phone.get("/admin/", environ_base=PHONE).status_code == 200
 
 
+def test_auto_pair_token_post_in_dev_temp_tags_the_session(client, devtemp, mf_app):
+    """#161: the QR landing POSTs the token form (same handler as the no-JS button). That session is
+    tagged dev_temp, so the first-run gate after a restart to product still shows the Join Wi-Fi QR."""
+    phone = mf_app.test_client()
+    started(client)
+    t = mf_app.extensions["mf_pairing"].token
+    assert phone.get(f"/pair?t={t}", environ_base=PHONE).status_code == 200   # GET never pairs
+    assert phone.post("/pair", data={"token": t}, environ_base=PHONE).status_code == 303
+    assert _sessions(mf_app) == [(1, 0, 1)]                                  # tagged
+    assert started(client)["paired"] == 1                                    # counted while in dev-temp
+    _reboot_to_product(devtemp)
+    st = client.get("/pairing/state", environ_base=LOCAL).get_json()
+    assert st["paired"] == 0 and st["wifi_qr_svg"]
+    assert phone.get("/admin/", environ_base=PHONE).status_code == 200        # the session still works
+
+
 def test_product_pairing_still_counts(client, devtemp, mf_app):
     _reboot_to_product(devtemp)
     phone = mf_app.test_client()

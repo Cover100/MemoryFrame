@@ -123,12 +123,32 @@ def frame_sign_out_all():
     return jsonify({"revoked": auth.sign_out_all(get_db(), source="frame menu")})
 
 
+def _prefetch():
+    """#161: a browser prefetch / prerender of the QR landing (not a page the user is looking at)."""
+    purpose = (request.headers.get("Sec-Purpose", "") + " " + request.headers.get("Purpose", "")).lower()
+    return "prefetch" in purpose or "prerender" in purpose or request.headers.get("X-Moz", "").lower() == "prefetch"
+
+
+def _no_store(resp):
+    resp = make_response(resp)
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
 @bp.route("/pair")
 def pair_page():
+    """GET (and HEAD) never pair and never use up the code (#161): link previews, prefetch and back/forward
+    all issue GETs. A live QR token gets the auto-pair page, whose script POSTs the same form a tap would
+    (static/pair-auto.js; the "Pair this phone" button stays as the no-JS fallback). A dead one (expired,
+    used, unknown) gets the code form with "That QR code has expired." Peeking changes nothing."""
     if auth.current_device() is not None:
         return redirect("/admin/", code=302)
-    return render_template("pair.html", token=request.args.get("t", ""), error=None,
-                           removed=request.args.get("removed") == "1")   # #154: this phone was removed
+    if _prefetch():
+        return _no_store(("", 503))                   # browsers drop a failed prefetch; nothing was read
+    t = request.args.get("t", "")
+    live = bool(t) and auth.pairing().peek(t)
+    return _no_store(render_template("pair.html", token=t if live else "", expired=bool(t) and not live,
+                                     error=None, removed=request.args.get("removed") == "1"))   # #154
 
 
 @bp.route("/pair", methods=["POST"])
@@ -143,10 +163,11 @@ def pair():
             return jsonify({"error": msg}), 429
         return render_template("pair.html", token="", error=msg), 429
     if not p.redeem(code=data.get("code"), token=data.get("token")):
-        msg = "That code is wrong or has expired. Check the code on the frame."
         if wants_json:
-            return jsonify({"error": msg}), 400
-        return render_template("pair.html", token="", error=msg), 400
+            return jsonify({"error": "That code is wrong or has expired. Check the code on the frame."}), 400
+        # #161 (Wren): failed auto-pair HTML; JSON keeps the shorter line above.
+        return render_template("pair.html", token="", error=(
+            "That code is wrong or has expired. Scan the new code on the frame to try again.")), 400
     # #153: a phone that still holds a valid session (e.g. the QR GET hid the SameSite=Strict
     # cookie, this POST sends it) gets its own row back with a rotated secret, not a second row.
     token = auth.create_session(get_db(), auth.hinted_name(request.headers.get("User-Agent", "phone"),

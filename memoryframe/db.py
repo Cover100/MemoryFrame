@@ -19,7 +19,8 @@ import time
 
 from flask import current_app, g
 
-SCHEMA_VERSION = 3      # 2: #102 media.state + media.duration_ms; 3: #103 trim, progress, cancel, resumed
+SCHEMA_VERSION = 4      # 2: #102 media.state + media.duration_ms; 3: #103 trim, progress, cancel, resumed;
+#                         4: sessions.dev_temp (paired in temporary Developer Wi-Fi)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
@@ -59,7 +60,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     token_hash TEXT NOT NULL UNIQUE,
     created_at REAL NOT NULL,
     expires_at REAL NOT NULL,
-    revoked    INTEGER NOT NULL DEFAULT 0
+    revoked    INTEGER NOT NULL DEFAULT 0,
+    dev_temp   INTEGER NOT NULL DEFAULT 0   -- 1: created in temporary Developer Wi-Fi (not counted by the first-run gate)
 );
 
 CREATE TABLE IF NOT EXISTS wifi_change (           -- MF-18: at most one row (id = 1)
@@ -132,6 +134,8 @@ def migrate(conn):
                       ("resumed", "INTEGER NOT NULL DEFAULT 0")):
         if col not in cols:
             conn.execute(f"ALTER TABLE media ADD COLUMN {col} {decl}")
+    if "dev_temp" not in {r[1] for r in conn.execute("PRAGMA table_info(sessions)")}:   # 3 -> 4: existing = untagged
+        conn.execute("ALTER TABLE sessions ADD COLUMN dev_temp INTEGER NOT NULL DEFAULT 0")
     conn.execute("UPDATE schema_version SET version = ? WHERE version < ?", (SCHEMA_VERSION, SCHEMA_VERSION))
 
 

@@ -95,7 +95,10 @@
             <div class="successText">Send photos from your phone.</div></div>
         </div>
         <div id="pairDevTemp" hidden>
-            <div class="successTitle">Restart the frame to pair a phone</div>
+            <!-- dev-temp, no usable Wi-Fi address: same Close (top right) as "Pair your phone" (Wren fit check) -->
+            <div class="pairHead"><span></span> <button id="pairDevTempClose" class="mf-btn mf-btn-secondary" type="button">Close</button></div>
+            <div class="devTempMsg"><div class="successTitle">No Wi-Fi address yet.</div>
+            <div class="successText">Restart the frame to pair a phone.</div></div>
         </div>
         <div id="pairBox">
             <!-- #98 W0 (Wren 16/16b): welcome header and footer, shown only on first run -->

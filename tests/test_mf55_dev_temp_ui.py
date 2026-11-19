@@ -1,9 +1,13 @@
-"""MF-55 G2 (dev-until-reboot label) and G3 (no pairing in temporary Developer Wi-Fi)."""
+"""MF-55 G2 (dev-until-reboot label) and G3 (temporary Developer Wi-Fi without a Wi-Fi address: no pairing).
+
+Since the devtemp-pair fix dev-temp pairs on the frame's Wi-Fi IP (tests/test_devtemp_pair.py); the G3 card
+remains only for "no usable address yet", which these tests force by patching frameinfo.network."""
 import json
 import re
 
 import pytest
 
+from memoryframe import frameinfo
 from test_frontend_browser import evaluate, net, page, server, text, visible  # noqa: F401  (fixtures)
 
 LOCAL = {"REMOTE_ADDR": "127.0.0.1"}
@@ -27,7 +31,13 @@ def no_address(s):
     return IP not in s and ".local" not in s and ".lan" not in s and "10.42.0.1" not in s
 
 
-def test_state_in_dev_temp_has_no_address_qr_or_code(client, devtemp):
+def _no_ip(monkeypatch):
+    # net.update(mode="unknown") would write an invalid MEMORYFRAME_FORCE_NETMODE; patch network directly.
+    monkeypatch.setattr(frameinfo, "network", lambda: {"mode": "unknown", "lan_ip": None, "ips": []})
+
+
+def test_state_in_dev_temp_without_address(client, devtemp, monkeypatch):
+    _no_ip(monkeypatch)
     client.post("/pairing/start", environ_base=LOCAL)
     st = client.get("/pairing/state", environ_base=LOCAL).get_json()
     assert st["dev_temp"] is True and st["round"] is None and st["wifi_qr_svg"] is None
@@ -43,10 +53,12 @@ def test_persistent_dev_still_pairs(client, devtemp):
 
 
 @pytest.mark.no_media
-def test_pairing_screen_in_dev_temp(page, server, devtemp):
+def test_pairing_screen_in_dev_temp(page, server, devtemp, monkeypatch):
+    _no_ip(monkeypatch)
     page.pump(3.0)
     assert visible(page, "pairOverlay")
-    assert "Restart the frame to pair a phone" in text(page, "pairOverlay")
+    assert "No Wi-Fi address yet." in text(page, "pairDevTemp")
+    assert "Restart the frame to pair a phone." in text(page, "pairDevTemp")
     assert no_address(text(page, "pairOverlay"))
     assert evaluate(page, "document.querySelectorAll('#pairOverlay svg:not(.mf-tick)').length") == 0
     assert evaluate(page, "getComputedStyle(document.getElementById('pairBox')).display") == "none"

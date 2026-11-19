@@ -43,10 +43,20 @@ def _state():
     urls = frameinfo.site_urls()
     base = frameinfo._safe(current_app.config.get("PAIR_BASE_URL")) or urls["primary"]
     fallback = None if current_app.config.get("PAIR_BASE_URL") else urls["fallback"]
+    nm = frameinfo.netmode_state()
+    # Temporary Developer Wi-Fi (19 Nov, Sage's devtemp-pair spec; was MF-55 G3 "no pairing"): pair on the frame's
+    # Wi-Fi IP, but only one the Host check accepts (lan_base: own_ips). An explicit PAIR_BASE_URL or
+    # MEMORYFRAME_SITE_URL still wins. No usable address: the "No Wi-Fi address yet" card below.
+    override = bool(current_app.config.get("PAIR_BASE_URL") or frameinfo.site_url_override())
+    ip_base = None if not nm.get("temp") or override else frameinfo.lan_base()
+    if ip_base:
+        base, fallback = ip_base, None
     conn = get_db()
     from . import wifi
     name, password = wifi.current_wifi(conn)
-    out = {"paired": auth.paired_count(conn), "ssid": name, "url": base + "/pair", "round": None,
+    # paired feeds the first-run gate (Join Wi-Fi QR here; W0 / first run in pairing.js). Outside dev-temp
+    # it counts only sessions not tagged dev_temp; in dev-temp it counts all (the phone just paired there).
+    out = {"paired": auth.paired_count(conn, include_dev_temp=bool(nm.get("temp"))), "ssid": name, "url": base + "/pair", "round": None,
            "network": urls["mode"], "url_fallback": fallback + "/pair" if fallback else None,
            "site_url": base + "/", "media": conn.execute("SELECT COUNT(*) FROM media WHERE hidden = 0").fetchone()[0],
            "wifi_qr_svg": None, "wifi_join_name": None}
@@ -59,7 +69,6 @@ def _state():
             and frameinfo.show_wifi_qr(conn)):
         out["wifi_join_name"] = name          # #89: password unknown for the live name: text, no QR
     out["wifi_change"] = wifi.frame_state(conn)
-    nm = frameinfo.netmode_state()
     lan_ip = None
     if nm["mode"] == "dev":                     # the only place a LAN IP is shown (6a, dev only)
         try:
@@ -73,9 +82,9 @@ def _state():
     from . import homewifi
     hw = homewifi.read_status()
     out["home_wifi"] = {"state": hw["state"], "ts": hw["ts"]}
-    # MF-55 G3: in temporary Developer Wi-Fi phones can't reach the frame's site; pairing shows
-    # "Restart the frame to pair a phone" and the state carries no address, QR or code.
-    if nm.get("temp"):
+    # Temporary Developer Wi-Fi without a usable Wi-Fi address (and no override): the frame shows
+    # "No Wi-Fi address yet. Restart the frame to pair a phone." and the state carries no address, QR or code.
+    if nm.get("temp") and not ip_base and not override:
         out.update({"url": None, "url_fallback": None, "site_url": None, "wifi_qr_svg": None, "wifi_join_name": None, "dev_temp": True})
         return out
     if rnd:
@@ -111,7 +120,7 @@ def start():
 @bp.route("/pairing/sign-out-all", methods=["POST"])
 @localhost_only
 def frame_sign_out_all():
-    return jsonify({"revoked": auth.sign_out_all(get_db())})
+    return jsonify({"revoked": auth.sign_out_all(get_db(), source="frame menu")})
 
 
 @bp.route("/pair")
@@ -142,7 +151,8 @@ def pair():
     # cookie, this POST sends it) gets its own row back with a rotated secret, not a second row.
     token = auth.create_session(get_db(), auth.hinted_name(request.headers.get("User-Agent", "phone"),
                                                            data.get("device")),   # display label only
-                                device_id=auth.current_device())
+                                device_id=auth.current_device(),
+                                dev_temp=bool(frameinfo.netmode_state().get("temp")))   # tagged, see paired_count
     # MF-33: one-shot "You're paired!" banner (admin.js removes ?paired=1 so a reload hides it)
     resp = jsonify({"paired": True, "next": "/admin/?paired=1"}) if wants_json else redirect("/admin/?paired=1", code=303)
     return auth.set_session_cookie(make_response(resp), token)
@@ -160,4 +170,4 @@ def frame_status():
                     "storage": frameinfo.free_storage(current_app.config["DATA_DIR"],
                                                       storage.min_free(current_app.config)),
                     "orphans": current_app.config.get("ORPHANS_REPORTED", 0),     # #96: files kept, not deleted
-                    "paired": auth.paired_count(get_db())})
+                    "paired": auth.paired_count(get_db(), include_dev_temp=bool(frameinfo.netmode_state().get("temp")))})

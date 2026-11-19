@@ -56,10 +56,11 @@
     }
 
     let welcome = false;                                 // #98 W0: first-run welcome (no Close)
+    const SAME_WIFI = "Phone on the same Wi-Fi as the frame";
     function bareUrl(u){ return u.replace(/\/$/, ""); }
     function render(st){
         paired = st.paired;
-        const devTemp = st.dev_temp === true;            // MF-55 G3: no QR, code or address
+        const devTemp = st.dev_temp === true;            // temporary Developer Wi-Fi with no usable address
         $("pairDevTemp").hidden = !devTemp;
         $("pairBox").classList.toggle("mf-devtemp", devTemp);
         if(devTemp){
@@ -69,7 +70,9 @@
         }
         const base = fallbackBase(st);
         $("pairUrl").textContent = okUrl(st.url) ? st.url : base + "pair";
-        $("pairUrlAlt").textContent = okUrl(st.url_fallback) ? "or " + st.url_fallback : "";
+        const sameWifi = !!(st.netmode && st.netmode.temp);   // dev-temp: the URL is the frame's Wi-Fi IP
+        $("pairOverlay").classList.toggle("mf-samewifi", sameWifi);
+        $("pairUrlAlt").textContent = sameWifi ? SAME_WIFI : (okUrl(st.url_fallback) ? "or " + st.url_fallback : "");
         $("emptyUrl").textContent = bareUrl(okUrl(st.site_url) ? st.site_url : base);
         $("pairSsid").textContent = st.ssid || "";
         const qr = !!st.wifi_qr_svg;
@@ -92,7 +95,7 @@
             $("codeTitle").textContent = wifi ? "Type the code" : "Type this code";
             $("wifiTitle").textContent = "Join the Wi-Fi";
             $("pairUrl").textContent = bareUrl(okUrl(st.site_url) ? st.site_url : base);
-            $("pairUrlAlt").textContent = "";
+            $("pairUrlAlt").textContent = sameWifi ? SAME_WIFI : "";
         } else {
             $("codeTitle").textContent = "Enter code"; $("wifiTitle").textContent = "Join Wi-Fi";
         }
@@ -225,7 +228,7 @@
             renderHomeWifi(st.home_wifi);
             renderWifi(st.wifi_change);
             // #98 W0: unpaired and empty, not dev_temp, no hotspot error (it wins). Not dismissable.
-            // (dev_temp keeps its "Restart the frame to pair a phone" card, which is not W0.)
+            // (dev_temp keeps its "No Wi-Fi address yet" card, which is not W0 and has its own Close.)
             const firstRun = st.paired === 0 && st.media === 0 && $("hotspotError").hidden
                              && (st.dev_temp !== true || !dismissed);
             const wasPairing = pairOverlay.classList.contains("visible") && Date.now() >= successUntil;
@@ -243,6 +246,9 @@
             }
             welcome = firstRun && !onDemand && st.dev_temp !== true;
             render(st);
+            // No-IP card: Close only on the menu / on-demand path. On first run it would leave a blank
+            // screen (no pairing, no empty-library overlay), so it has none, like W0 (Wren).
+            $("pairDevTempClose").hidden = !onDemand;
             const success = Date.now() < successUntil;
             $("pairSuccess").hidden = !success;
             $("pairBox").hidden = success;
@@ -547,6 +553,7 @@
         }
     }, 1000);
     button("pairClose", dismiss);
+    button("pairDevTempClose", dismiss);         // the no-IP card hides #pairBox (and its Close)
     button("emptyClose", dismiss);
 
     // ---------- MF-34: double tap ----------

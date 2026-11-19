@@ -5,7 +5,8 @@ Pairing
   token for the QR, <base>/pair?t=<token>. <base> is PAIR_BASE_URL if set, else the
   site's primary address (frameinfo.site_urls(), see pairing._state()): MEMORYFRAME_SITE_URL
   if set, else http://10.42.0.1 on the frame's hotspot and http://memoryframe.local
-  otherwise (plus :port when not served on 80). Both are single-use and
+  otherwise (plus :port when not served on 80); in temporary Developer Wi-Fi (dev-temp)
+  http://<LAN IP> (frameinfo.lan_base(), only an address the Host check accepts). Both are single-use and
   expire after PAIR_TTL seconds. They live only in this process's memory
   (one waitress process); a restart simply needs a new round.
   5 wrong codes rotate the code. More than RATE_LIMIT attempts per minute from
@@ -24,9 +25,12 @@ Sessions
   ONE of them: all of that device's sessions are revoked (its cookie gets 401 and it
   must pair again with a code); other devices are untouched. Removing the phone in
   use also clears its cookie. Rows are kept, as with sign-out-all.
+  Audit (journal, INFO): sign-out-all, per-device remove and #153 re-pair reuse log the
+  device ids, how many sessions/devices, and the source. Never a cookie, token, hash or code.
 """
 import hashlib
 import hmac
+import logging
 import secrets
 import threading
 import time
@@ -36,6 +40,8 @@ from functools import wraps
 from flask import current_app, g, jsonify, redirect, request
 
 from . import db
+
+log = logging.getLogger("memoryframe.auth")
 
 COOKIE = "mf_session"
 PAIR_TTL = 120
@@ -209,33 +215,45 @@ def paired_devices(conn, current=None):
              "seen": seen_ago(r["last_seen"]), "current": r["id"] == current} for r in rows]
 
 
-def revoke_device(conn, device_id):
+def _ids(ids):
+    ids = sorted(int(i) for i in ids)
+    return ", ".join(map(str, ids[:20])) + (f" (+{len(ids) - 20} more)" if len(ids) > 20 else "") if ids else "none"
+
+
+def revoke_device(conn, device_id, source="Settings remove"):
     """#154: revoke every unrevoked session of ONE device. None if there is no such device, else the number
     revoked (0: it was already signed out, e.g. a second tap). Other devices are never touched."""
     if conn.execute("SELECT 1 FROM devices WHERE id = ?", (device_id,)).fetchone() is None:
+        log.info("remove device (%s): no device %d; nothing revoked", source, device_id)
         return None
     n = conn.execute("UPDATE sessions SET revoked = 1 WHERE device_id = ? AND revoked = 0", (device_id,)).rowcount
     conn.commit()
+    log.info("remove device (%s): device %d, %d session(s) revoked", source, device_id, n)
     return n
 
 
-def create_session(conn, device_name, device_id=None):
+def create_session(conn, device_name, device_id=None, dev_temp=False):
     """New session; returns the raw token for the cookie (only its hash is stored).
 
     device_id None: a new devices row. Otherwise (#153 re-pair, the id from current_device()):
     that row is reused, its unrevoked sessions are revoked, and its label and last_seen refreshed,
-    all in one transaction. Other devices are never touched."""
+    all in one transaction. Other devices are never touched.
+
+    dev_temp: paired in temporary Developer Wi-Fi. The session is tagged so the first-run gate
+    (paired_count with include_dev_temp False) doesn't count it after the restart to product mode.
+    It is a normal session otherwise: listed, usable and revocable as any other; never auto-revoked."""
     now = db.now()
     label = device_label(device_name)
     if device_id is None:
         device_id = conn.execute("INSERT INTO devices (name, created_at, last_seen) VALUES (?, ?, ?)",
                                  (label, now, now)).lastrowid
     else:
-        conn.execute("UPDATE sessions SET revoked = 1 WHERE device_id = ? AND revoked = 0", (device_id,))
+        n = conn.execute("UPDATE sessions SET revoked = 1 WHERE device_id = ? AND revoked = 0", (device_id,)).rowcount
         conn.execute("UPDATE devices SET name = ?, last_seen = ? WHERE id = ?", (label, now, device_id))
+        log.info("pair (re-pair): device %d reused, %d old session(s) revoked", device_id, n)
     token = secrets.token_urlsafe(32)
-    conn.execute("INSERT INTO sessions (device_id, token_hash, created_at, expires_at) VALUES (?, ?, ?, ?)",
-                 (device_id, hash_token(token), now, now + SESSION_DAYS * 86400))
+    conn.execute("INSERT INTO sessions (device_id, token_hash, created_at, expires_at, dev_temp) VALUES (?, ?, ?, ?, ?)",
+                 (device_id, hash_token(token), now, now + SESSION_DAYS * 86400, 1 if dev_temp else 0))
     conn.commit()
     return token
 
@@ -277,14 +295,20 @@ def current_device():
     return row["device_id"]
 
 
-def paired_count(conn):
+def paired_count(conn, include_dev_temp=True):
+    """Devices with an active session. include_dev_temp False (the frame's first-run gate outside dev-temp:
+    Join Wi-Fi QR, W0 welcome) counts only sessions not created in temporary Developer Wi-Fi, so a phone
+    paired there doesn't hide the onboarding after the restart to product mode."""
+    tag = "" if include_dev_temp else " AND dev_temp = 0"
     return conn.execute("SELECT COUNT(DISTINCT device_id) FROM sessions WHERE revoked = 0 "
-                        "AND expires_at > ?", (db.now(),)).fetchone()[0]
+                        "AND expires_at > ?" + tag, (db.now(),)).fetchone()[0]
 
 
-def sign_out_all(conn):
+def sign_out_all(conn, source="unknown"):
+    ids = [r[0] for r in conn.execute("SELECT DISTINCT device_id FROM sessions WHERE revoked = 0")]
     n = conn.execute("UPDATE sessions SET revoked = 1 WHERE revoked = 0").rowcount
     conn.commit()
+    log.info("sign out all (%s): %d session(s) on %d device(s) revoked; devices %s", source, n, len(ids), _ids(ids))
     return n
 
 

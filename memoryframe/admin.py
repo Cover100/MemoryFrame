@@ -115,7 +115,7 @@ def home():
 
 @bp.route("/sign-out-all", methods=["POST"])
 def sign_out_all():
-    auth.sign_out_all(get_db())
+    auth.sign_out_all(get_db(), source="phone site")
     return redirect("/pair", code=303)
 
 
@@ -124,7 +124,7 @@ def remove_device(device_id):
     """#154: Settings -> Paired phones -> Remove (after the inline confirm). Same auth (the before_request
     session hook) and CSRF (websec double submit) as sign-out-all. Revokes every session of that one device."""
     from flask import abort, make_response
-    if auth.revoke_device(get_db(), device_id) is None:
+    if auth.revoke_device(get_db(), device_id, source="Settings remove") is None:
         abort(404)
     if device_id == g.device_id:          # this phone: signed out cleanly, the pair page says why
         return auth.clear_session_cookie(make_response(redirect("/pair?removed=1", code=303)))

@@ -206,6 +206,16 @@ def network():
     return {"mode": "lan" if ip else "unknown", "lan_ip": ip, "ips": ips}
 
 
+def lan_base():
+    """http://<client-Wi-Fi IP>[:port] when the frame is on a client network and that IP is one the Host
+    check accepts (own_ips); else None. Used for pairing in temporary Developer Wi-Fi."""
+    net = network()
+    ip = net.get("lan_ip")
+    if net.get("mode") != "lan" or not isinstance(ip, str) or ip not in own_ips():
+        return None
+    return f"http://{ip}{port_suffix()}"
+
+
 def served_ports():
     raw = os.environ.get("MEMORYFRAME_PORTS") or os.environ.get("MEMORYFRAME_PORT") or "5000"
     ports = []

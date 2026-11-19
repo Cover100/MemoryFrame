@@ -682,6 +682,9 @@ body.mf-safe-final .media{animation:none!important;transition:none!important}
 #pairOverlay.welcome .stepBadge{background:var(--mf-brass);color:var(--mf-ink)}
 #pairOverlay.welcome .qr svg,#pairOverlay.welcome #wifiStep[hidden]~.step .qr svg{width:240px;height:240px;max-width:none;background:#fff}
 #pairOverlay.welcome .stepText{font-size:20px}
+/* dev-temp pairing: the extra "Phone on the same Wi-Fi" line must not reach the W0 footer at 800x480 */
+#pairOverlay.welcome.mf-samewifi .qr svg,#pairOverlay.welcome.mf-samewifi #wifiStep[hidden]~.step .qr svg{width:212px;height:212px}
+#pairOverlay.welcome.mf-samewifi #pairUrlAlt{font-size:16px}
 /* Wren must-fix: welcome shows only the bold name/URL (the old labels pushed the URL onto the footer) */
 #pairOverlay.welcome .oldLabel{display:none}
 #pairOverlay.welcome #pairCode{font-size:48px;letter-spacing:0}

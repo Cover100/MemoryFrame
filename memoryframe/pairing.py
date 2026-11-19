@@ -43,6 +43,14 @@ def _state():
     urls = frameinfo.site_urls()
     base = frameinfo._safe(current_app.config.get("PAIR_BASE_URL")) or urls["primary"]
     fallback = None if current_app.config.get("PAIR_BASE_URL") else urls["fallback"]
+    nm = frameinfo.netmode_state()
+    # Temporary Developer Wi-Fi (19 Nov, Sage's devtemp-pair spec; was MF-55 G3 "no pairing"): pair on the frame's
+    # Wi-Fi IP, but only one the Host check accepts (lan_base: own_ips). An explicit PAIR_BASE_URL or
+    # MEMORYFRAME_SITE_URL still wins. No usable address: the "No Wi-Fi address yet" card below.
+    override = bool(current_app.config.get("PAIR_BASE_URL") or frameinfo.site_url_override())
+    ip_base = None if not nm.get("temp") or override else frameinfo.lan_base()
+    if ip_base:
+        base, fallback = ip_base, None
     conn = get_db()
     from . import wifi
     name, password = wifi.current_wifi(conn)
@@ -59,7 +67,6 @@ def _state():
             and frameinfo.show_wifi_qr(conn)):
         out["wifi_join_name"] = name          # #89: password unknown for the live name: text, no QR
     out["wifi_change"] = wifi.frame_state(conn)
-    nm = frameinfo.netmode_state()
     lan_ip = None
     if nm["mode"] == "dev":                     # the only place a LAN IP is shown (6a, dev only)
         try:
@@ -73,9 +80,9 @@ def _state():
     from . import homewifi
     hw = homewifi.read_status()
     out["home_wifi"] = {"state": hw["state"], "ts": hw["ts"]}
-    # MF-55 G3: in temporary Developer Wi-Fi phones can't reach the frame's site; pairing shows
-    # "Restart the frame to pair a phone" and the state carries no address, QR or code.
-    if nm.get("temp"):
+    # Temporary Developer Wi-Fi without a usable Wi-Fi address (and no override): the frame shows
+    # "No Wi-Fi address yet. Restart the frame to pair a phone." and the state carries no address, QR or code.
+    if nm.get("temp") and not ip_base and not override:
         out.update({"url": None, "url_fallback": None, "site_url": None, "wifi_qr_svg": None, "wifi_join_name": None, "dev_temp": True})
         return out
     if rnd:
@@ -111,7 +118,7 @@ def start():
 @bp.route("/pairing/sign-out-all", methods=["POST"])
 @localhost_only
 def frame_sign_out_all():
-    return jsonify({"revoked": auth.sign_out_all(get_db())})
+    return jsonify({"revoked": auth.sign_out_all(get_db(), source="frame menu")})
 
 
 @bp.route("/pair")

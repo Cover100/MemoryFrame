@@ -99,8 +99,14 @@ Switches are refused (exit 3) while another switch runs or an MF-18 Wi-Fi change
 ## What the frame shows
 
 - Developer Wi-Fi until the next restart: a small bottom-left label `Developer Wi-Fi · <LAN IP> · restart to exit`.
-  Persistent developer mode (`dev` mode file): `Developer mode · <LAN IP>`. These are the only places a
-  LAN IP appears.
+  Persistent developer mode (`dev` mode file): `Developer mode · <LAN IP>`.
+- Pairing in Developer Wi-Fi until the next restart (19 Nov 2026, replaces MF-55 G3's "Restart the frame to pair
+  a phone"): the pairing QR and address use the frame's Wi-Fi IP, `http://<LAN IP>/pair`, with the line "Phone on
+  the same Wi-Fi as the frame". The phone must be on the same Wi-Fi (not mobile data). If the frame has no Wi-Fi
+  address that the site accepts yet, the card says "No Wi-Fi address yet. Restart the frame to pair a phone." The session cookie belongs to that IP address: after the
+  restart back to the hotspot the phone pairs again and shows up as a second entry (remove the old one in Settings →
+  Paired phones).
+- The developer labels and dev-temp pairing are the only places a LAN IP appears.
 - Developer Wi-Fi missing / wrong password: within ~60 s the hotspot comes up and the toast
   `Developer Wi-Fi not found, hotspot started` shows for 30 s, once per boot.
 - Hotspot fails to start: full-screen error with the PC recovery steps; the slideshow keeps running;

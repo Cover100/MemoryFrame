@@ -119,6 +119,18 @@ def sign_out_all():
     return redirect("/pair", code=303)
 
 
+@bp.route("/devices/<int:device_id>/remove", methods=["POST"])
+def remove_device(device_id):
+    """#154: Settings -> Paired phones -> Remove (after the inline confirm). Same auth (the before_request
+    session hook) and CSRF (websec double submit) as sign-out-all. Revokes every session of that one device."""
+    from flask import abort, make_response
+    if auth.revoke_device(get_db(), device_id) is None:
+        abort(404)
+    if device_id == g.device_id:          # this phone: signed out cleanly, the pair page says why
+        return auth.clear_session_cookie(make_response(redirect("/pair?removed=1", code=303)))
+    return redirect("/admin/settings?removed=1#phones", code=303)
+
+
 @bp.route("/upload")
 def upload_page():
     from flask import current_app
@@ -170,7 +182,8 @@ def settings_page():
              "wifi": wifi.current_wifi(get_db())[0] or "Unknown", "phones": auth.paired_count(get_db())}
     return render_template("settings.html", s=settings.get_all(get_db()), slides=settings.SLIDE_SECONDS,
                            message=message.get(current_app.config["DATA_DIR"]),
-                           message_max=message.MAX_LEN, about=about)
+                           message_max=message.MAX_LEN, about=about,
+                           devices=auth.paired_devices(get_db(), g.device_id), removed=request.args.get("removed") == "1")
 
 
 def _home_wifi_link():

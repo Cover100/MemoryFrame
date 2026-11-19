@@ -270,6 +270,7 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
   background: var(--mfp-danger-bg); border-radius: var(--mf-r-md); color: var(--mfp-danger-text); font-weight: 600; }
 .mf-phone .msgConfirm span { flex: 1 1 100%; }
 .mf-phone .msgRemoveYes { background: var(--mfp-danger); color: var(--mfp-on-accent); min-width: 104px; }
+.mf-phone .devs .msgConfirm { margin: 0 12px 12px; }   /* #154 */
 .mf-phone .msgKeep { background: transparent; color: var(--mfp-text); border: 1.5px solid var(--mfp-outline); min-width: 104px; }
 .mf-phone #messageSave[aria-disabled="true"] { background: var(--mfp-surface); color: var(--mfp-text-2); cursor: default; transform: none; }
 .mf-phone .prev { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--mfp-line); font-size: var(--mf-p-small);

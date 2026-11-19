@@ -21,7 +21,7 @@ LOCAL = {"REMOTE_ADDR": "127.0.0.1"}
 PHONE = {"REMOTE_ADDR": "192.168.50.77"}
 IP = "192.168.50.124"
 SAME_WIFI = "Phone on the same Wi-Fi as the frame"
-NO_IP = "No Wi-Fi address yet. Restart the frame to pair a phone."
+NO_IP = ("No Wi-Fi address yet.", "Restart the frame to pair a phone.")
 
 
 @pytest.fixture
@@ -173,8 +173,63 @@ def test_devtemp_no_lan_ip_card_on_frame(page, server, devtemp):
     devtemp.net.update(mode="unknown", lan_ip=None, ips=[])
     page.pump(3.0)
     assert visible(page, "pairOverlay") and visible(page, "pairDevTemp")
-    assert NO_IP in text(page, "pairOverlay") and IP not in text(page, "pairOverlay")
+    assert all(t in text(page, "pairDevTemp") for t in NO_IP) and IP not in text(page, "pairOverlay")
     assert evaluate(page, "document.querySelectorAll('#pairOverlay svg:not(.mf-tick)').length") == 0
+    _no_ip_card_layout(page)
+
+
+def _no_ip_card_layout(page):
+    """Wren: title, then the second line in the secondary colour, max ~600 px; Close top right like pairing."""
+    g = json.loads(evaluate(page, "JSON.stringify((()=>{const r=id=>{const b=document.getElementById(id)"
+                                  ".getBoundingClientRect();return [b.left,b.top,b.right,b.bottom]};"
+                                  "const t=document.querySelector('#pairDevTemp .successTitle'),"
+                                  "s=document.querySelector('#pairDevTemp .successText'),m=t.parentElement;"
+                                  "return {close:r('pairDevTempClose'),closeVis:getComputedStyle(document.getElementById("
+                                  "'pairDevTempClose')).display!=='none',title:t.textContent,sub:s.textContent,"
+                                  "tb:t.getBoundingClientRect().bottom,st:s.getBoundingClientRect().top,"
+                                  "mw:m.getBoundingClientRect().width,subColor:getComputedStyle(s).color,"
+                                  "oat:getComputedStyle(document.documentElement).getPropertyValue('--mf-oat').trim()};})())"))
+    assert g["title"] == NO_IP[0] and g["sub"] == NO_IP[1] and g["st"] >= g["tb"] - 0.5, g
+    assert g["mw"] <= 600.5 and g["subColor"] == "rgb(201, 187, 168)" and g["oat"].upper() == "#C9BBA8", g
+    l, t, r, b = g["close"]
+    assert g["closeVis"] and r <= 800 and r >= 700 and t >= 0 and b <= 120, g          # top right, on screen
+
+
+@pytest.mark.skipif(BROWSER is None, reason="no headless Chrome")
+def test_devtemp_no_ip_card_from_menu_has_close(page, server, devtemp):
+    """Wren (1): the no-IP card also shows on the menu's Pair new device path (not only first run); there the
+    pairing screen's own Close is hidden with #pairBox, so the card has the same Close, which dismisses it."""
+    devtemp.net.update(mode="unknown", lan_ip=None, ips=[])
+    page.pump(2.0)
+    assert not visible(page, "pairOverlay")                     # photos on the frame: no first-run screen
+    evaluate(page, "memoryFramePairing.openMenu()")
+    page.pump(0.5)
+    evaluate(page, "document.getElementById('menuPair').click()")
+    end = time.monotonic() + 10
+    while not visible(page, "pairOverlay") and time.monotonic() < end:
+        page.pump(0.25)
+    assert visible(page, "pairOverlay") and visible(page, "pairDevTemp")
+    assert not visible(page, "pairClose") or not visible(page, "pairBox")   # the old Close is unreachable here
+    _no_ip_card_layout(page)
+    evaluate(page, "document.getElementById('pairDevTempClose').click()")
+    end = time.monotonic() + 10
+    while visible(page, "pairOverlay") and time.monotonic() < end:
+        page.pump(0.25)
+    assert not visible(page, "pairOverlay")
+    page.pump(3.0)                                              # stays closed across the next polls
+    assert not visible(page, "pairOverlay")
+
+
+@pytest.mark.skipif(BROWSER is None, reason="no headless Chrome")
+@pytest.mark.no_media
+def test_devtemp_no_ip_first_run_card_close(page, server, devtemp):
+    """First run in dev-temp without an address (not W0): the card's Close works the same way."""
+    devtemp.net.update(mode="unknown", lan_ip=None, ips=[])
+    page.pump(3.0)
+    assert visible(page, "pairDevTemp")
+    evaluate(page, "document.getElementById('pairDevTempClose').click()")
+    page.pump(3.0)
+    assert not visible(page, "pairOverlay")
 
 
 @pytest.mark.skipif(BROWSER is None, reason="no headless Chrome")

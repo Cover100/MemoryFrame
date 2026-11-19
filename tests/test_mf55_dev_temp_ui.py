@@ -57,7 +57,8 @@ def test_pairing_screen_in_dev_temp(page, server, devtemp, monkeypatch):
     _no_ip(monkeypatch)
     page.pump(3.0)
     assert visible(page, "pairOverlay")
-    assert "No Wi-Fi address yet. Restart the frame to pair a phone." in text(page, "pairOverlay")
+    assert "No Wi-Fi address yet." in text(page, "pairDevTemp")
+    assert "Restart the frame to pair a phone." in text(page, "pairDevTemp")
     assert no_address(text(page, "pairOverlay"))
     assert evaluate(page, "document.querySelectorAll('#pairOverlay svg:not(.mf-tick)').length") == 0
     assert evaluate(page, "getComputedStyle(document.getElementById('pairBox')).display") == "none"

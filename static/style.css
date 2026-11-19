@@ -605,8 +605,12 @@ body:has(.overlay.visible,#shuttingDown:not([hidden]),#safeScreen:not([hidden]),
 @keyframes mf-spin{to{transform:rotate(360deg)}}
 /* MF-55 G3 */
 #pairBox.mf-devtemp{display:none!important}
-#pairDevTemp{text-align:center}
+#pairDevTemp{position:absolute;inset:0;box-sizing:border-box;padding:22px 28px;display:flex;flex-direction:column}
+#pairDevTemp .devTempMsg{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;
+  text-align:center;max-width:600px;margin:0 auto 56px;gap:10px}
 #pairDevTemp .successTitle{font-size:40px}
+#pairDevTemp .successText{font-size:var(--mf-f-title);color:var(--mf-oat)}
+#pairDevTempClose{margin:0!important}
 #pairDevTemp[hidden]{display:none}
 
 /* #70 mock 14: final screen. Walnut card, brass frame, static plug + stopwatch. Fully static (frozen after halt). */

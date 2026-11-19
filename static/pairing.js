@@ -228,7 +228,7 @@
             renderHomeWifi(st.home_wifi);
             renderWifi(st.wifi_change);
             // #98 W0: unpaired and empty, not dev_temp, no hotspot error (it wins). Not dismissable.
-            // (dev_temp keeps its "Restart the frame to pair a phone" card, which is not W0.)
+            // (dev_temp keeps its "No Wi-Fi address yet" card, which is not W0 and has its own Close.)
             const firstRun = st.paired === 0 && st.media === 0 && $("hotspotError").hidden
                              && (st.dev_temp !== true || !dismissed);
             const wasPairing = pairOverlay.classList.contains("visible") && Date.now() >= successUntil;
@@ -550,6 +550,7 @@
         }
     }, 1000);
     button("pairClose", dismiss);
+    button("pairDevTempClose", dismiss);         // the no-IP card hides #pairBox (and its Close)
     button("emptyClose", dismiss);
 
     // ---------- MF-34: double tap ----------

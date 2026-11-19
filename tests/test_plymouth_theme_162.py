@@ -38,7 +38,12 @@ name = sys.argv[-1]
 if not (pathlib.Path(os.environ["MEMORYFRAME_PLYMOUTH_DIR"]) / name / (name + ".plymouth")).is_file():
     print(name + " not found", file=sys.stderr); sys.exit(1)
 conf.parent.mkdir(parents=True, exist_ok=True)
-conf.write_text("[Daemon]\\nTheme=" + name + "\\n")
+# like the real one: only the Theme= line changes (inserted under [Daemon] if missing)
+lines = conf.read_text().splitlines() if conf.exists() else ["[Daemon]"]
+lines = [l for l in lines if not l.startswith("Theme=")]
+i = lines.index("[Daemon]") + 1 if "[Daemon]" in lines else len(lines)
+lines.insert(i, "Theme=" + name)
+conf.write_text("\\n".join(lines) + "\\n")
 """
 # the listing: header, base files, the active theme's files (with their hash), modules, filler
 FAKE_UI = f"""#!{PY}
@@ -393,33 +398,75 @@ def test_off_keeps_other_state_keys(pl):
 
 
 @pytest.mark.parametrize("mode", ["fail", "nomodules", "noop"])
-def test_off_rebuild_failure_puts_the_backup_back_and_keeps_the_state(pl, mode):
+def test_off_rebuild_failure_puts_ours_back_and_keeps_the_state(pl, mode):
+    # #168 review: `off` is a transaction too: a failed rebuild puts back the initramfs from before the off (ours,
+    # for this kernel) and our theme, keeps the state; a retry works
     orig = pl.initrd.read_bytes()
     assert pl.run("plymouth", "on").returncode == 0
+    built = pl.initrd.read_bytes()
+    conf = pl.conf.read_bytes()
     st = pl.st()
     r = pl.run("plymouth", "off", FAKE_UI=mode)
-    assert r.returncode == 1 and "state kept" in r.stderr
-    assert pl.initrd.read_bytes() == orig and "restored from" in r.stdout
+    assert r.returncode == 1 and "state kept" in r.stderr and "Traceback" not in r.stderr
+    assert pl.initrd.read_bytes() == built and pl.theme() == "memoryframe" and pl.conf.read_bytes() == conf
     assert pl.st() == st and (pl.boot / st["plymouth_initramfs_bak"]).exists()
+    assert sorted(b.name for b in pl.boot.glob("*.memoryframe-bak.*")) == [st["plymouth_initramfs_bak"]]
     assert pl.run("plymouth", "off").returncode == 0 and pl.initrd.read_bytes() == orig     # a retry works
 
 
-def test_off_never_copies_a_backup_from_another_kernel(pl):
+def test_off_never_copies_the_first_backup_after_a_kernel_update(pl, tmp_path):
+    # N1 (Hale B): on with K1, kernel update + theme change rebuilds for K2 (the first backup stays K1's), then a
+    # failed off must not put the K1 initramfs over the K2 one
     assert pl.run("plymouth", "on").returncode == 0
-    built = pl.initrd.read_bytes()
-    pl.state.write_text(pl.state.read_text().replace(f"plymouth_kernel={KERNEL}", "plymouth_kernel=6.12.1+rpt-rpi-v8"))
-    r = pl.run("plymouth", "off", FAKE_UI="fail")
-    assert r.returncode == 1 and "no backup for kernel" in r.stderr
-    assert pl.initrd.read_bytes() == built
+    k1_bak = pl.st()["plymouth_initramfs_bak"]
+    dep = tmp_path / "repo" / "deploy"
+    shutil.copytree(ROOT / "deploy", dep)
+    (dep / "plymouth" / "memoryframe" / "lockup.png").write_bytes(b"v2")
+    k2 = "6.18.40+rpt-rpi-v8"
+    assert pl.run("plymouth", "on", deploy=dep, MEMORYFRAME_KERNEL=k2).returncode == 0
+    st = pl.st()
+    assert st["plymouth_initramfs_bak"] == k1_bak and st["plymouth_bak_kernel"] == KERNEL
+    assert st["plymouth_kernel"] == k2
+    r = pl.run("plymouth", "off", deploy=dep, MEMORYFRAME_KERNEL=k2, FAKE_UI="fail")
+    assert r.returncode == 1
+    assert pl.initrd.read_text().splitlines()[0] == f"FAKEINITRD {k2}"                # never the K1 image
+    assert "status" and f"(kernel {KERNEL})" in pl.run("plymouth", "status").stdout
 
 
-def test_off_with_someone_elses_theme_does_not_rebuild(pl):
+def test_rollback_refuses_a_backup_from_another_kernel(pl):
+    # the pending record carries the backup's kernel: undoing it under another kernel never copies it
+    assert pl.run("plymouth", "on").returncode == 0
+    st = pl.st()
+    pl.initrd.write_text("FAKEINITRD broken\n")
+    st.update(plymouth_pending="on", plymouth_run_initramfs="initramfs8", plymouth_run_kernel="6.12.1+rpt-rpi-v8",
+              plymouth_run_sha=st["plymouth_sha_before"], plymouth_run_bak=st["plymouth_initramfs_bak"],
+              plymouth_run_prev="pix", plymouth_run_old_dir="keep", plymouth_run_first="0")
+    pl.state.write_text("".join(f"{k}={v}\n" for k, v in sorted(st.items())))
+    r = pl.run("plymouth", "on")
+    assert r.returncode == 1 and "is for kernel 6.12.1+rpt-rpi-v8" in r.stderr and "Traceback" not in r.stderr
+    assert pl.initrd.read_text() == "FAKEINITRD broken\n" and "plymouth_pending" in pl.st()
+
+
+def test_off_with_someone_elses_rebuilt_theme_does_not_rebuild(pl):
     assert pl.run("plymouth", "on").returncode == 0
     subprocess.run([pl.env["PLYMOUTH_SET"], "pix"], env=pl.env, check=True)
+    subprocess.run([pl.env["UPDATE_INITRAMFS"], "-u", "-k", KERNEL], env=pl.env, check=True)   # like -R pix
     pl.log.unlink()
     r = pl.run("plymouth", "off")
     assert r.returncode == 0 and pl.rebuilds() == []
     assert not (pl.themes / "memoryframe").exists() and not list(pl.boot.glob("*.memoryframe-bak.*"))
+
+
+def test_off_rebuilds_when_the_initramfs_still_lists_ours(pl):
+    # N2 (Hale E2): the theme is already pix (a failed or half-done off, or someone ran plymouth-set-default-theme
+    # without -R) but initramfs8 still holds ours: `off` rebuilds with that theme before it forgets anything
+    orig = pl.initrd.read_bytes()
+    assert pl.run("plymouth", "on").returncode == 0
+    subprocess.run([pl.env["PLYMOUTH_SET"], "pix"], env=pl.env, check=True)
+    pl.log.unlink()
+    r = pl.run("plymouth", "off")
+    assert r.returncode == 0 and "still lists ours" in r.stdout and len(pl.rebuilds()) == 1
+    assert "themes/memoryframe" not in pl.listing() and pl.initrd.read_bytes() == orig and not pl.state.exists()
 
 
 def test_boot_splash_off_runs_plymouth_off_and_still_undoes_cmdline_on_failure(pl):

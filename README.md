@@ -189,7 +189,16 @@ What it does:
     kernel, a theme someone else chose, or less than 3x the initramfs size free on the boot partition. `cmdline.txt`
     is not changed (Plymouth uses the `splash` already there). `sudo deploy/boot-splash.sh plymouth off` (also part
     of `off` and `uninstall.sh`) sets the previous theme (`pix`) again, rebuilds and checks the initramfs, then
-    removes the theme and the backups. **If the frame no longer boots after this (from a PC, the boot partition is
+    removes the theme and the backups. Both are transactions: a `plymouth_pending` record (backup name, path, sha and
+    kernel, the conf backup, the previous theme) is written to `/etc/memoryframe/boot-splash.state` before the first
+    change (state not writable = nothing is changed); Ctrl-C, SIGTERM or SIGHUP rolls everything back; after a power
+    cut or kill -9 the next `plymouth on` or `off` finds the record and undoes it first; the initramfs is only ever
+    written as `.initramfs8.new` + fsync + rename. A failed `off` puts our initramfs and theme back and keeps the
+    state, so `off` can be run again. A backup is only copied back for the kernel it was taken from. If a rollback
+    step itself fails it says what is left and which backup to copy from a PC, and keeps the backups.
+    `plymouthd.conf` edits made after `on` are kept by `off` (only its `Theme=` line goes back). Not covered: Raspberry
+    Pi OS also keeps `/boot/initrd.img-<kernel>` on the root partition, which `update-initramfs` rewrites and which
+    is not backed up or restored (the Pi does not boot from it). **If the frame no longer boots after this (from a PC, the boot partition is
     FAT):** (1) copy `initramfs8.memoryframe-bak.<time>` over `initramfs8`; or (2) put `#` before `auto_initramfs=1`
     in `config.txt` (assumed: the Pi kernel then mounts the SD root without an initramfs and Plymouth starts late);
     or (3) add `initramfs initramfs8.memoryframe-bak.<time> followkernel` under `[all]` in `config.txt`; or

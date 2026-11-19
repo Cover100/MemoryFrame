@@ -9,7 +9,7 @@
 {% if removed %}<div id="removedNote" class="ok-box" role="status"><p>This phone was removed from the frame. To use it again, pair it with the code on the frame.</p></div>{% endif %}
 {% if error %}<p class="err" role="alert">{{ error }}</p>{% endif %}
 {% if expired %}<p class="err" role="status" id="qrExpired">That QR code has expired.</p>
-<p>Scan the new code on the frame, or enter its 6-digit code below.</p>{% endif %}
+<p>Scan the new code on the frame, or enter its <span class="nw">6-digit</span> code below.</p>{% endif %}
 {% if token %}{# #161: pair-auto.js submits this form once on load; the button is the no-JS fallback #}
 <form method="post" action="/pair" id="tokenForm" class="tok">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

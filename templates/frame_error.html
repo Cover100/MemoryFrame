@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="mf-frame-token" content="{{ frame_token }}">
+    <meta name="viewport" content="width=800,height=480">
+    <meta name="color-scheme" content="only dark">
+    <title>Memory Frame</title>
+    <!-- #162: Wren's error screen (E1, E3). External CSS/JS only (CSP default-src 'self'). -->
+    <link rel="stylesheet" href="{{ url_for('display.frame_fonts') }}">
+    <link rel="stylesheet" href="{{ static('tokens.css') }}">
+    <link rel="stylesheet" href="{{ static('error.css') }}">
+</head>
+<body>
+<main class="err" role="alert">
+    <div class="mark" aria-hidden="true"><i class="bar"></i><i class="pt"></i></div>
+    <h1>The frame couldn't start</h1>
+    <p class="cause" id="cause">{{ cause }}</p>
+    <p class="how">It will keep trying.<br>If that doesn't help, unplug the frame<br>for 10 seconds, then plug it back in.</p>
+    <p class="dev">Hold anywhere for 3 seconds for developer options.</p>
+    <p class="code" id="code">Error {{ code }}</p>
+</main>
+<div id="devRing" hidden></div>
+<div id="toolsOverlay" class="overlay">
+    <div id="toolsBox">
+        <div id="toolsMenu">
+            <div class="confirmTitle">Frame tools</div>
+            <div class="toolsList">
+                <button id="toolsDev" type="button">Join developer Wi-Fi…</button>
+                <button id="toolsClose" class="dflt" type="button">Close</button>
+            </div>
+        </div>
+        <div id="toolsStatus" hidden>
+            <div class="confirmTitle" id="devModeStatus">Switching to dev mode…</div>
+            <div class="confirmBody" id="devModeDetail">This can take up to 30 seconds.</div>
+            <div class="toolsList" id="devModeAfter" hidden>
+                <button id="devModeOk" class="dflt" type="button">OK</button>
+            </div>
+        </div>
+    </div>
+</div>
+<script src="{{ static('errorhold.js') }}"></script>
+</body>
+</html>

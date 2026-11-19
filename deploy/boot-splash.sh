@@ -78,15 +78,16 @@ pi_apps_on() {
 case "${1:-}" in
     on)
         need_root "$@"
-        "${EDIT[@]}" cmdline-on "$BOOT_DIR/cmdline.txt" "$STATE"
-        "${EDIT[@]}" config-on "$BOOT_DIR/config.txt" "$STATE" ;;
+        "${EDIT[@]}" cmdline-on "$BOOT_DIR/cmdline.txt" "$STATE" || exit $?
+        "${EDIT[@]}" config-on "$BOOT_DIR/config.txt" "$STATE" || exit $? ;;
     off)
         need_root "$@"
         "${EDIT[@]}" cmdline-off "$BOOT_DIR/cmdline.txt" "$STATE"
         "${EDIT[@]}" config-off "$BOOT_DIR/config.txt" "$STATE" ;;
     status)
         echo "cmdline.txt: $(cat "$BOOT_DIR/cmdline.txt" 2>/dev/null || echo missing)"
-        echo "state: $(tr '\n' ' ' < "$STATE" 2>/dev/null || echo none)"
+        if [ -s "$STATE" ]; then echo "state: $(tr '\n' ' ' < "$STATE")"
+        else echo "state: not installed"; fi
         if [ -e "$FLAG" ]; then echo "desktop flag: present (stock desktop, no kiosk)"; else echo "desktop flag: absent"; fi
         if [ -f "$UPDATER" ]; then echo "Pi-Apps updater: starts at login"; else echo "Pi-Apps updater: off or not installed"; fi ;;
     desktop)

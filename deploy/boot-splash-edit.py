@@ -10,9 +10,12 @@ cmdline.txt must be exactly ONE line with a root= token, else it is refused (war
 Existing tokens are kept in order; a token whose key is already there (e.g. an existing loglevel=7) is never added
 or changed, and is never removed by -off (only the recorded ones are). Before a change the file is copied to
 <file>.memoryframe-bak.<timestamp>; the new text goes to a temp file in the same directory, is fsynced and renamed
-over the old one (FAT on the Pi), so a power cut leaves the old or the new file. A run with nothing to do writes
-nothing (no backup either). STATE (key=value lines, /etc/memoryframe/boot-splash.state) records what we added.
-Never reads or writes anything else on the boot partition (the #94 boot mode file included)."""
+over the old one (FAT on the Pi), so a power cut leaves the old or the new file. STATE is written, and the backup
+is made, before the boot file is edited: if the state file cannot be written, the boot file is left unchanged and
+the process exits non-zero, so `off` can always undo. A run with nothing to do writes nothing (no backup either).
+STATE (key=value lines, /etc/memoryframe/boot-splash.state) records what we added. config.txt keeps its existing
+line endings (LF or CRLF). Never reads or writes anything else on the boot partition (the #94 boot mode file
+included)."""
 import os
 import re
 import shutil
@@ -54,6 +57,23 @@ def write_state(path, st):
         os.fsync(f.fileno())
     os.chmod(tmp, 0o644)
     os.replace(tmp, path)
+
+
+def save_state(path, st):
+    """Write STATE. True on success. On failure: a warning, False, no exception (boot files must stay unchanged)."""
+    try:
+        write_state(path, st)
+        return True
+    except OSError as e:
+        print(f"boot-splash: WARNING: could not write {path}: {e}: boot files left unchanged")
+        return False
+
+
+def apply_edit(path, new):
+    """Backup, then atomically replace path. Raises OSError if either step fails (STATE is already written)."""
+    b = backup(path)
+    atomic_write(path, new)
+    return b
 
 
 def atomic_write(path, text):
@@ -120,19 +140,30 @@ def cmdline_on(path, state):
     if not any(t.startswith("root=") for t in toks):
         print(f"boot-splash: WARNING: {path} has no root= token: left unchanged (quiet boot not set up)")
         return 0
-    have = {key(t) for t in toks}
+    have = {key(t): t for t in toks}
     add = [t for t in TOKENS if key(t) not in have]
+    for t in TOKENS:
+        existing = have.get(key(t))
+        if existing is not None and existing != t:
+            if existing.startswith("loglevel="):
+                print(f"boot-splash: kept {existing}: boot text may still show")
+            else:
+                print(f"boot-splash: kept {existing} (not replaced)")
     st = read_state(state)
     if not add:
         print("boot-splash: cmdline.txt already has the quiet-boot tokens")
         return 0
     body = line.rstrip()
     new = body + " " + " ".join(add) + line[len(body):] + eol
-    b = backup(path)
-    atomic_write(path, new)
     recorded = [t for t in st.get("cmdline_added", "").split() if t]
     st["cmdline_added"] = " ".join(recorded + [t for t in add if t not in recorded])
-    write_state(state, st)
+    if not save_state(state, st):
+        return 1
+    try:
+        b = apply_edit(path, new)
+    except OSError as e:
+        print(f"boot-splash: WARNING: could not update {path}: {e}: boot files left unchanged")
+        return 1
     print(f"boot-splash: added '{' '.join(add)}' to {path} (backup {os.path.basename(b)}; reboot to apply)")
     return 0
 
@@ -171,9 +202,15 @@ def cmdline_off(path, state):
 SECTION = re.compile(r"^\s*\[([^\]]*)\]\s*$")
 
 
+def split_config(text):
+    """Split config.txt into lines, keeping the file's line ending (CRLF if it uses it, else LF)."""
+    eol = "\r\n" if "\r\n" in text else "\n"
+    return text.split(eol), eol
+
+
 def config_on(path, state):
     text = read_text(path)
-    lines = text.split("\n")
+    lines, eol = split_config(text)
     if any(l.strip() == MARK for l in lines):
         print("boot-splash: config.txt already has disable_splash=1")
         return 0
@@ -191,17 +228,21 @@ def config_on(path, state):
         if re.fullmatch(r"\s*disable_splash\s*=\s*0\s*", l):
             lines[i] = OFF_PREFIX + l
             commented += 1
-    new = "\n".join(lines)
-    added_nl = bool(new) and not new.endswith("\n")
+    new = eol.join(lines)
+    added_nl = bool(new) and not new.endswith(eol)
     if added_nl:
-        new += "\n"
+        new += eol
     header = section != "all"
-    new += ("[all]\n" if header else "") + MARK + "\n" + LINE + "\n"
-    b = backup(path)
-    atomic_write(path, new)
+    new += ("[all]" + eol if header else "") + MARK + eol + LINE + eol
     st.update(config_added="1", config_header="1" if header else "", config_nl="1" if added_nl else "",
               config_commented=str(commented) if commented else "")
-    write_state(state, st)
+    if not save_state(state, st):
+        return 1
+    try:
+        b = apply_edit(path, new)
+    except OSError as e:
+        print(f"boot-splash: WARNING: could not update {path}: {e}: boot files left unchanged")
+        return 1
     print(f"boot-splash: added {LINE} to [all] in {path} (backup {os.path.basename(b)}; reboot to apply)")
     return 0
 
@@ -215,7 +256,7 @@ def config_off(path, state):
         print(f"boot-splash: WARNING: {path} not found")
         return 0
     text = read_text(path)
-    lines = text.split("\n")
+    lines, eol = split_config(text)
     out = []
     i = 0
     while i < len(lines):
@@ -234,9 +275,9 @@ def config_off(path, state):
             l = l[len(OFF_PREFIX):]
         out.append(l)
         i += 1
-    new = "\n".join(out)
-    if st.get("config_nl") == "1" and new.endswith("\n") and not new.endswith("\n\n"):
-        new = new[:-1]
+    new = eol.join(out)
+    if st.get("config_nl") == "1" and new.endswith(eol) and not new.endswith(eol + eol):
+        new = new[:-len(eol)]
     for k in ("config_added", "config_header", "config_nl", "config_commented"):
         st.pop(k, None)
     if new != text:

@@ -246,7 +246,7 @@ def create_session(conn, device_name, device_id=None):
     else:
         n = conn.execute("UPDATE sessions SET revoked = 1 WHERE device_id = ? AND revoked = 0", (device_id,)).rowcount
         conn.execute("UPDATE devices SET name = ?, last_seen = ? WHERE id = ?", (label, now, device_id))
-        log.info("re-pair (re-pair): device %d reused, %d old session(s) revoked", device_id, n)
+        log.info("pair (re-pair): device %d reused, %d old session(s) revoked", device_id, n)
     token = secrets.token_urlsafe(32)
     conn.execute("INSERT INTO sessions (device_id, token_hash, created_at, expires_at) VALUES (?, ?, ?, ?)",
                  (device_id, hash_token(token), now, now + SESSION_DAYS * 86400))

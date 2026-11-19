@@ -299,7 +299,7 @@ def test_audit_log_lines_have_id_count_source_and_no_secret(mf_app, caplog):
     secrets_seen += _pair(a, mf_app, pa)                   # (c) #153 re-pair: a's row reused
     v = a.get_cookie(auth.COOKIE).value
     secrets_seen += [v, hashlib.sha256(v.encode()).hexdigest()]
-    assert f"re-pair (re-pair): device {dev_a} reused, 1 old session(s) revoked" in caplog.text
+    assert f"pair (re-pair): device {dev_a} reused, 1 old session(s) revoked" in caplog.text
 
     caplog.clear()                                         # (b) Settings remove of the other phone
     assert a.post(f"/admin/devices/{dev_b}/remove", environ_base=pa).status_code == 303

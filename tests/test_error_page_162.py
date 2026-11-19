@@ -107,9 +107,11 @@ def test_hold_opens_frame_tools_and_join_posts_once_with_the_plain_reason(page, 
     shot(page, "error-E1-tools.png")
     click_el(page, "toolsDev")
     wait_js(page, "!document.getElementById('devModeAfter').hidden", timeout=15)
-    assert evaluate(page, "document.getElementById('devModeStatus').textContent") == \
-        "Couldn't join home Wi-Fi \u2014 hotspot kept on"
-    assert evaluate(page, "document.getElementById('devModeDetail').textContent") == "no saved home Wi-Fi on this frame"
+    # #167 copy: the server's title once PR169 is in ("not found"), else this page's own fallback; never a raw reason
+    assert evaluate(page, "document.getElementById('devModeStatus').textContent") in \
+        ("Developer Wi-Fi not found", "Developer Wi-Fi didn't connect")
+    assert evaluate(page, "document.getElementById('devModeDetail').textContent") == \
+        "The frame is back on its own Wi-Fi. Phones can connect as usual."
     assert evaluate(page, "window.mfErrorPage.posts()") == 1 and count.read_text() == "x\n"   # posted once
     shot(page, "error-E1-devmode-failed.png")
     click_el(page, "devModeOk")

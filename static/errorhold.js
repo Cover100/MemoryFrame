@@ -1,7 +1,7 @@
 // #162 error screen served by the app (/frame/error?code=E1|E3). A tap does nothing. A 3 s hold anywhere (same
 // constants as pairing.js: nothing for 1 s, then the brass ring fills over 2 s; lifting or moving >= 20 px cancels)
 // opens Wren's Frame tools with only "Join developer Wi-Fi…" and Close (the default). Join posts /frame/dev-mode once
-// with the frame token and shows the app's plain reason if it fails.
+// with the frame token and shows the plain #167 title and sentence if it fails.
 // Auto-retry: /healthz every 5 s; back to the slideshow (/?boot=1) when the app comes back after being down, and a
 // forced retry every 30 s while it answers (not while Frame tools is open or a switch is running). No reboot.
 (function(){
@@ -56,21 +56,25 @@
         $("toolsMenu").hidden = true; $("toolsStatus").hidden = false; $("devModeAfter").hidden = true;
         $("devModeStatus").textContent = "Switching to dev mode\u2026";
         $("devModeDetail").textContent = "This can take up to 30 seconds.";
-        let res = {ok: false, reason: "no answer from the frame"};
+        let res = null;
         try{
             const meta = document.querySelector('meta[name="mf-frame-token"]');
             posts += 1;
             const r = await fetch("/frame/dev-mode", {method: "POST",
                 headers: {"X-Frame-Token": meta ? meta.content : ""}});
-            try{ res = await r.json(); }catch(err){ res = {ok: false, reason: "HTTP " + r.status}; }
-        }catch(err){ /* the reason above */ }
+            try{ res = await r.json(); }catch(err){ console.warn("dev mode: HTTP " + r.status); }
+        }catch(err){ console.warn(err); }
         busy = false;
         if(res && res.ok === true){                  // as in the app: the menu closes; the screen stays until recovery
             tools.classList.remove("visible");
             return;
         }
-        $("devModeStatus").textContent = "Couldn't join home Wi-Fi \u2014 hotspot kept on";
-        $("devModeDetail").textContent = (res && typeof res.reason === "string" && res.reason) ? res.reason : "unknown error";
+        // #167 (Wren): the server's plain title and sentence (memoryframe/display.py DEV_WIFI_FAIL, as in
+        // static/pairing.js); with no usable answer, its "didn't connect" text. Never a raw reason.
+        const plain = (v)=> typeof v === "string" && /^[A-Z]/.test(v) ? v : "";
+        $("devModeStatus").textContent = plain(res && res.title) || "Developer Wi-Fi didn't connect";
+        $("devModeDetail").textContent = plain(res && res.reason) ||
+            "The frame is back on its own Wi-Fi. Phones can connect as usual.";
         $("devModeAfter").hidden = false;
         $("devModeOk").focus();
     });

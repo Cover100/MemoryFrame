@@ -102,7 +102,9 @@ def test_repair_with_the_hint_relabels_the_same_row(mf_app, client):
 
 
 def test_pair_page_carries_the_hint_field_and_script(client):
-    h = client.get("/pair?t=abc", environ_base=PHONE).get_data(as_text=True)
+    client.post("/pairing/start", environ_base=LOCAL)         # #161: only a live QR token gets the QR form
+    t = client.application.extensions["mf_pairing"].token
+    h = client.get(f"/pair?t={t}", environ_base=PHONE).get_data(as_text=True)
     assert h.count('<input type="hidden" name="device" value="" class="devHint">') == 2   # QR form and code form
     assert "/static/pair.js" in h
     js = (ROOT / "static" / "pair.js").read_text()

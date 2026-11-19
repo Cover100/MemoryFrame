@@ -2,7 +2,10 @@
 
 Pairing
   The frame (localhost only) starts a pairing round: a 6-digit code and a random
-  token for the QR (http://10.42.0.1/pair?t=<token>). Both are single-use and
+  token for the QR, <base>/pair?t=<token>. <base> is PAIR_BASE_URL if set, else the
+  site's primary address (frameinfo.site_urls(), see pairing._state()): MEMORYFRAME_SITE_URL
+  if set, else http://10.42.0.1 on the frame's hotspot and http://memoryframe.local
+  otherwise (plus :port when not served on 80). Both are single-use and
   expire after PAIR_TTL seconds. They live only in this process's memory
   (one waitress process); a restart simply needs a new round.
   5 wrong codes rotate the code. More than RATE_LIMIT attempts per minute from

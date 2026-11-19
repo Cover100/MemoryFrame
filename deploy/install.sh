@@ -54,6 +54,18 @@ put_file() {  # src dest mode [group]
     sudo sync -f "$new"
     sudo mv -f "$new" "$2"
 }
+put_boot_file() {  # text dest: one short file on bootfs (the #94 mode file). Atomic like put_file (temp in the
+    # same dir, fsync, rename) with an explicit root:root 0644. bootfs is vfat: owner and mode come from the mount
+    # and it may refuse chown/chmod, which is not an error (the file reads the same either way).
+    local tmp new; new="$(dirname "$2")/.$(basename "$2").new"
+    tmp="$(mktemp)"; printf '%s\n' "$1" > "$tmp"
+    sudo cp "$tmp" "$new" || { rm -f "$tmp"; return 1; }
+    rm -f "$tmp"
+    sudo chown root:root "$new" 2>/dev/null || true
+    sudo chmod 0644 "$new" 2>/dev/null || true
+    sudo sync -f "$new"
+    sudo mv -f "$new" "$2"
+}
 render() {  # template dest mode: replaces @USER@ / @APP_DIR@
     local tmp; tmp="$(mktemp)"
     sed -e "s#@USER@#$APP_USER#g" -e "s#@APP_DIR@#$APP_DIR#g" "$1" > "$tmp"
@@ -287,7 +299,12 @@ else
     elif [ "$IS_UPGRADE" = 0 ]; then
         NEW_MODE=product; WHY="fresh install"
     else
-        CUR_WIFI="$("${NMCLI:-nmcli}" -g GENERAL.CONNECTION device show "${MEMORYFRAME_IFACE:-wlan0}" 2>/dev/null || true)"
+        # bounded: a hung nmcli counts as "not on home Wi-Fi" (product), like a missing or failing one
+        NM_WAIT="${MEMORYFRAME_NMCLI_TIMEOUT:-10}"; NM_RC=0
+        CUR_WIFI="$(timeout "$NM_WAIT" "${NMCLI:-nmcli}" -g GENERAL.CONNECTION device show "${MEMORYFRAME_IFACE:-wlan0}" 2>/dev/null)" || NM_RC=$?
+        if [ "$NM_RC" = 124 ]; then
+            CUR_WIFI=""; echo "WARNING: nmcli did not answer within ${NM_WAIT}s: treated as not on home Wi-Fi." >&2
+        fi
         if [ -n "$CUR_WIFI" ] && [ "$CUR_WIFI" != "MemoryFrame-hotspot" ]; then
             NEW_MODE=dev; WHY="upgrade, on home Wi-Fi ($CUR_WIFI) now: kept"
         else
@@ -295,7 +312,7 @@ else
         fi
     fi
     echo "Boot mode: no $MODE_FILE: writing '$NEW_MODE' ($WHY)"
-    printf '%s\n' "$NEW_MODE" | sudo tee "$MODE_FILE" >/dev/null
+    put_boot_file "$NEW_MODE" "$MODE_FILE"
 fi
 # MF-36: applied at the NEXT boot (enabling does not switch the network now).
 sudo systemctl enable memoryframe-netmode.service

@@ -1,6 +1,6 @@
 # MF-36 / MF-51 runbook: product mode, Developer Wi-Fi, recovery
 
-> **Scope.** Product mode by default and Developer Wi-Fi until reboot, as shipped in **#52 (MF-51)**.
+> **Scope.** Product mode by default and Developer Wi-Fi until the next restart, as shipped in **#52 (MF-51)**.
 
 ## ⚠️ Development Pi: keep home Wi-Fi across reboots
 
@@ -27,19 +27,23 @@ install.sh runs, and a Pi that is on the hotspot or off Wi-Fi at that moment is 
 - **Home Wi-Fi profiles are never modified** (they may be netplan-generated); only `MemoryFrame-*`
   profiles are touched. If the hotspot fails to start, the previous connection is brought back and
   the frame shows an error screen. The boot service never fails the boot and never reboots.
-- **Developer Wi-Fi (until reboot):**
+- **Developer Wi-Fi (until the next restart):**
   - On the frame: a still **3-second hold anywhere** on the screen (moving < 20 px; a faint ring
-    fills after 1 s) opens the confirm **"Join developer Wi-Fi?"** / "Phones on the frame's Wi-Fi
-    will disconnect until you restart the frame." with **Cancel** (default) and **Join**. After Join:
-    "Joining developer Wi-Fi…" / "Restart the frame to go back to its own Wi-Fi."; on failure
-    "Couldn't switch. Try again." Lifting early or moving (swipe, brightness drag) cancels silently.
+    fills after 1 s) opens **Frame tools**: **Reset the frame…**, **Join developer Wi-Fi…** and
+    **Close** (default). Join developer Wi-Fi… opens the confirm **"Switch to dev mode?"** / "Phones on
+    the frame's Wi-Fi will disconnect until you restart the frame." with **Cancel** (default) and
+    **Switch**. After Switch: "Switching to dev mode…" / "This can take up to 30 seconds."; then the
+    bottom-left label `Developer Wi-Fi · <LAN IP> · restart to exit`. On failure: "Couldn't join home
+    Wi-Fi — hotspot kept on" and the reason. Lifting early or moving (swipe, brightness drag) cancels
+    the hold silently.
   - The double-tap menu has **no** developer item: only **Pair new device**, **Sign out all phones**,
-    **Shut down** and **Close**. The 3 s hold no longer opens the menu (double tap only).
+    **Shut down** and **Close**.
   - From the shell: `sudo deploy/netmode.sh dev-temp`.
-  - Either one runs `netmode dev-temp`: hotspot down, home Wi-Fi up **until the next reboot**.
+  - Either one runs `netmode dev-temp`: hotspot down, home Wi-Fi up **only until the next restart**.
     Nothing is written to the boot partition (state only in `/run`, a tmpfs), and the hotspot
-    profile keeps its autoconnect, so **the next boot is product mode again**.
-  - If home Wi-Fi doesn't connect (default wait 45 s, `MEMORYFRAME_DEV_WAIT`), the hotspot comes back.
+    profile keeps its autoconnect, so **after a restart or power cycle the frame is back in product
+    mode** (its own hotspot).
+  - If home Wi-Fi doesn't connect (default wait 30 s, `MEMORYFRAME_DEV_TEMP_WAIT`), the hotspot comes back.
   - The frame route `POST /frame/dev-mode` is localhost-only and needs the kiosk token; the sudoers
     rule allows only `memoryframe-netmode dev-temp` for this.
 - **Persistent developer mode** (developer's Pi only): `dev` in `memoryframe-mode.txt`, written from
@@ -94,7 +98,7 @@ Switches are refused (exit 3) while another switch runs or an MF-18 Wi-Fi change
 
 ## What the frame shows
 
-- Developer Wi-Fi until reboot: a small bottom-left label `Developer Wi-Fi · <LAN IP> · restart to exit`.
+- Developer Wi-Fi until the next restart: a small bottom-left label `Developer Wi-Fi · <LAN IP> · restart to exit`.
   Persistent developer mode (`dev` mode file): `Developer mode · <LAN IP>`. These are the only places a
   LAN IP appears.
 - Developer Wi-Fi missing / wrong password: within ~60 s the hotspot comes up and the toast
@@ -106,7 +110,7 @@ Switches are refused (exit 3) while another switch runs or an MF-18 Wi-Fi change
 
 | Situation | Network-free way back |
 |---|---|
-| Frame in Developer Wi-Fi (until reboot) and unreachable | Power-cycle or menu **Shut down**, then start: boots into product (hotspot) |
+| Frame in Developer Wi-Fi (until the next restart) and unreachable | Power-cycle or menu **Shut down**, then start: boots into product (hotspot) |
 | Persistent `dev` and home Wi-Fi gone | Hotspot starts automatically for that boot; or on a PC write `product` in `memoryframe-mode.txt` (or delete it) and boot |
 | Hotspot broken / wrong name or password | On a PC create an empty `memoryframe-reset` on bootfs and boot: default hotspot from `/etc/memoryframe/hotspot.conf` (the copy `install.sh` makes of `deploy/hotspot.conf`: re-run `install.sh` after editing it), product mode |
 | Need home Wi-Fi permanently (dev Pi) | On a PC write `dev` in `memoryframe-mode.txt` and boot |
@@ -118,8 +122,8 @@ To remove MF-36 completely: `sudo systemctl disable memoryframe-netmode.service`
 ## Hardware test (Sprint 4, MF-57; Tester)
 
 Pre-merge step done (`dev` file) on the dev Pi; product boot with no mode file; `dev` file → home
-Wi-Fi; `product` / deleted file → hotspot; 3 s hold anywhere → "Join developer Wi-Fi?" → Join → home Wi-Fi →
-reboot → hotspot; dev-temp with wrong home password → hotspot back + toast; simulated hotspot failure
+Wi-Fi; `product` / deleted file → hotspot; 3 s hold anywhere → Frame tools → Join developer Wi-Fi… → "Switch to dev mode?" →
+Switch → home Wi-Fi → restart → hotspot (product); dev-temp with wrong home password → hotspot back + toast; simulated hotspot failure
 (e.g. `nmcli connection modify MemoryFrame-hotspot 802-11-wireless.channel 200`) → error screen;
 `memoryframe-reset` → default hotspot; `grep -ri password /boot/firmware/memoryframe-*` is empty.
 

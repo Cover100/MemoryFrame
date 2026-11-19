@@ -613,11 +613,17 @@ hotspot_saved() {   # final uuid: on disk (our uuid= and id=), live under that U
 # #151: `nmcli connection load` exits 0 even when it prints "Could not load file" (the Pi, 13 Nov 2026), so its
 # exit code alone never proves a new profile is in NM. Like hotspot_saved: the file is on disk with our id=, NM has
 # a profile with that id, and (if this nmcli has a FILENAME column) that profile is backed by this very file.
+# Exactly ONE profile may carry the id (Hale, #151 review): with two, `-g connection.uuid connection show <id>`
+# prints one UUID per profile and activating by that name later could pick either, so that is a failure too.
 profile_loaded() {   # file id
-    local uuid fn
+    local uuid fn n
     [ -s "$1" ] && grep -qxF "id=$2" "$1" && profiles | grep -qxF "$2" || return 1
+    n="$(profiles | grep -cxF "$2")" || true
     uuid="$(prop "$2" connection.uuid)"
-    [ -n "$uuid" ] || return 1
+    if [ "$n" != 1 ] || [ "$(printf '%s\n' "$uuid" | grep -c .)" != 1 ]; then
+        log "$n NetworkManager profiles are named $2 (expected exactly 1); not using any of them"; return 1
+    fi
+    [[ $uuid =~ ^[0-9A-Za-z-]{1,64}$ ]] || return 1
     fn="$(hotspot_file "$uuid")"
     [ "$fn" = "?" ] || [ "$fn" = "$1" ]
 }

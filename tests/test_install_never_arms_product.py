@@ -14,10 +14,14 @@ from test_netmode_script import HOME, SCRIPT, ac, active, env, mutations, run, s
 ROOT = Path(__file__).resolve().parents[1]
 
 STUB = '#!/bin/bash\necho "$(basename "$0") $*" >> "$INSTALL_LOG"\n'
-# #94: `sudo tee <file>` really writes when the file is in the sandbox boot dir (so tests can read the mode
-# written); any other tee target is swallowed.
-SUDO = STUB + ('if [ "$1" = tee ] && [ -n "${MEMORYFRAME_BOOT_DIR-}" ] && [[ "$2" == "$MEMORYFRAME_BOOT_DIR"/* ]]; then'
-               ' exec tee "$2"; fi\n[[ " $* " == *" tee "* ]] && cat > /dev/null\nexit 0\n')
+# #94: a privileged write whose target (last argument) is in the sandbox boot dir really happens, so tests can
+# read the mode file written (put_boot_file: cp, chmod, sync -f, mv; chown is only logged: not root here). Any
+# other target is only logged, and any other tee input is swallowed.
+SUDO = STUB + ('if [ -n "${MEMORYFRAME_BOOT_DIR-}" ] && [[ "${!#}" == "$MEMORYFRAME_BOOT_DIR"/* ]]; then\n'
+               '  case "$1" in tee|cp|mv|chmod|sync) exec "$@" ;; chown) exit 0 ;; esac\nfi\n'
+               '[[ " $* " == *" tee "* ]] && cat > /dev/null\nexit 0\n')
+# #94 tidy-up: the mode file is installed atomically by put_boot_file (temp in the same dir, then rename)
+MODE_WRITE = r"mv -f \S*/\.memoryframe-mode\.txt\.new \S*/memoryframe-mode\.txt"
 # `systemctl is-active` (unprivileged, called without sudo) answers from $STUB_ACTIVE; the log line is
 # "systemctl is-active ..." so it is never counted as a privileged "sudo systemctl ..." call.
 SYSTEMCTL = STUB + '[ "$1" = is-active ] && exit "${STUB_ACTIVE:-0}"\nexit 0\n'
@@ -88,10 +92,10 @@ def test_install_text_never_arms_product():
     # #94 (was MF-51's dev-only guard): exactly one mode-file write, in the one boot-mode block, and only when
     # no file exists; the value is "dev" or "product" (validated --mode, or the fresh/upgrade rule)
     assert src.count("MODE_FILE=") == 1 and len(re.findall(r">>?\s*\"?\$MODE_FILE", src)) == 0   # no shell redirect
-    assert re.findall(r"\| sudo tee \"\$MODE_FILE\"", src) == ['| sudo tee "$MODE_FILE"']
-    assert "printf '%s\\n' \"$NEW_MODE\" | sudo tee \"$MODE_FILE\" >/dev/null" in src
+    assert "tee" not in re.sub(r"#.*", "", src)                                   # no `sudo tee` write left
+    assert src.count('put_boot_file "$NEW_MODE" "$MODE_FILE"') == 1
     assert 'if [ -e "$MODE_FILE" ]; then' in src
-    block = src[src.index('if [ -e "$MODE_FILE" ]; then'):src.index("sudo tee \"$MODE_FILE\"")]
+    block = src[src.index('if [ -e "$MODE_FILE" ]; then'):src.index('put_boot_file "$NEW_MODE" "$MODE_FILE"')]
     assert set(re.findall(r"NEW_MODE=(\w+)", block)) == {"product", "dev"} and 'NEW_MODE="$MODE_ARG"' in block
     assert "dev|product) ;;" in src
     assert not re.search(r"netmode(\.sh)?\s+(product|dev|boot)", src)
@@ -108,7 +112,7 @@ def test_install_then_reboot_on_dev_pi_keeps_home_wifi(env, tmp_path):
     assert not re.search(r"memoryframe-netmode (product|dev|boot)", log)
     assert "systemctl enable memoryframe-netmode.service" in log
     assert not re.search(r"systemctl (start|restart) memoryframe-netmode", log)
-    assert re.search(r"tee \S*/memoryframe-mode\.txt", log)   # the #94 upgrade pin
+    assert re.search(MODE_WRITE, log)                         # the #94 upgrade pin
     assert mutations(env) == []
     assert (env["boot"] / "memoryframe-mode.txt").read_text() == "dev\n"   # what the pin wrote
     # simulated reboot: the boot service runs `netmode.sh boot`

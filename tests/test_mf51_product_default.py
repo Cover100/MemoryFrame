@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from test_frontend_browser import evaluate, net, page, server, text  # noqa: F401  (fixtures)
-from test_install_never_arms_product import install
+from test_install_never_arms_product import MODE_WRITE, install
 from test_netmode_script import HOME, HOT, OTHER, ac, active, env, run, state  # noqa: F401
 
 LOCAL = {"REMOTE_ADDR": "127.0.0.1"}
@@ -75,7 +75,7 @@ def test_hotspot_failure_at_boot_keeps_previous(env):
 def test_install_guard_writes_dev_on_home_wifi(env, tmp_path):
     """#94: now the UPGRADE pin (a dev Pi re-installed on home Wi-Fi, no mode file); fresh writes product."""
     log = install(tmp_path, env, upgrade=True)
-    assert re.search(r"tee \S*/boot/memoryframe-mode\.txt", log), log
+    assert re.search(MODE_WRITE, log), log
     assert (env["boot"] / "memoryframe-mode.txt").read_text() == "dev\n"
 
 
@@ -86,7 +86,7 @@ def test_install_guard_skips_when_file_exists_or_on_hotspot(env, tmp_path):
     assert "memoryframe-mode.txt" not in install(tmp_path, env, upgrade=True)
     (env["boot"] / "memoryframe-mode.txt").unlink()
     (env["d"] / "active").write_text(HOT + "\n")
-    assert re.search(r"tee \S*/memoryframe-mode\.txt", install(tmp_path, env, upgrade=True))
+    assert re.search(MODE_WRITE, install(tmp_path, env, upgrade=True))
     assert (env["boot"] / "memoryframe-mode.txt").read_text() == "product\n"
 
 

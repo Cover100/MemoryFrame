@@ -2,9 +2,10 @@
 option A "Forest night" (Wren's 148-scheme-options): ALWAYS the frame's forest-on-ink dark scheme, whatever the phone's OS
 light/dark setting, no toggle. The frame screen and slideshow (style.css, index.html, frame tokens) stay untouched.
 
-Hale's checklist, adapted from Warm paper to Forest night (names kept): (1) no live colour-scheme branch: no
+Hale's checklist, adapted from Warm paper to Forest night (test names renamed to match, PR150 nit): (1) no live colour-scheme branch: no
 prefers-color-scheme block in any phone stylesheet; (2) the phone tokens unconditional on .mf-phone (Forest night);
-(3) :root color-scheme declared dark ("only dark", Wren); (4) meta color-scheme "dark"; (5) exactly one theme-color meta,
+(3) :root color-scheme declared dark ("only dark", Wren); (4) meta color-scheme "dark" (plain on purpose: Wren R1, "only" adds nothing in the meta tag and MDN calls it
+invalid there; the CSS "only dark" wins once loaded); (5) exactly one theme-color meta,
 no media attribute, the Forest night bar #16261D; (6) the frame never reads any of it. Then, in headless Chrome, both
 emulated OS settings render Forest night with matching UA colours and browser chrome.
 Option A's own details (Wren's ring tokens, outline hardening) are pinned in test_phone_scheme_148_forest.py."""
@@ -34,7 +35,7 @@ def test_no_colour_scheme_media_query_anywhere_on_the_phone():                  
     assert "prefers-color-scheme" not in (TEMPLATES / "_phone.html").read_text()
 
 
-def test_warm_paper_tokens_are_unconditional():                                                       # (2) #148 A: Forest night
+def test_forest_night_tokens_are_unconditional():                                                     # (2) #148 A
     flat = _FLAT((STATIC / "tokens.css").read_text())
     start = flat.index(".mf-phone {")
     block = flat[start:flat.index("}", start)]
@@ -47,7 +48,7 @@ def test_warm_paper_tokens_are_unconditional():                                 
     assert twins == {k: 2 if k == "--mfp-bg" else 1 for k in FOREST}, twins      # (--mfp-bg: also :root, for <html>)
 
 
-def test_root_color_scheme_is_light_only():                                                           # (3) #148 A: dark
+def test_root_color_scheme_is_only_dark():                                                            # (3) #148 A
     phone = _FLAT((STATIC / "phone.css").read_text())
     decls = re.findall(r"(?<![-\w])color-scheme:\s*([^;]+);", phone)
     assert decls == ["only dark"], decls                                           # Wren: CSS "only dark"
@@ -58,7 +59,7 @@ def _metas(html):
     return re.findall(r'<meta name="(color-scheme|theme-color)"([^>]*)>', html)
 
 
-def test_every_phone_page_declares_light_only_and_one_warm_paper_theme_colour(client, paired):        # (4) (5) #148 A
+def test_every_phone_page_declares_dark_and_one_forest_night_theme_colour(client, paired):           # (4) (5) #148 A
     lan = {"REMOTE_ADDR": "10.42.0.23"}
     for u in PAGES:                                     # (the pairing page: see the browser test below)
         html = client.get(u, environ_base=lan).get_data(as_text=True)
@@ -91,8 +92,8 @@ _PROBE = """(()=>{
 
 @pytest.mark.skipif(BROWSER is None, reason="no Chromium/Chrome installed")
 @pytest.mark.parametrize("os_pref", OS_MODES)
-def test_both_os_settings_show_warm_paper(page, server, mf_app, lib, monkeypatch, tmp_path, os_pref):
-    """#148 A: both OS settings show Forest night (name kept from the Warm paper version)."""
+def test_both_os_settings_show_forest_night(page, server, mf_app, lib, monkeypatch, tmp_path, os_pref):
+    """#148 A: both OS settings show Forest night."""
     monkeypatch.setenv("MEMORYFRAME_NETMODE_STATE", str(tmp_path / "nm.json"))
     (tmp_path / "nm.json").write_text('{"mode": "product"}')
     lib.add("c.jpg", PNG)

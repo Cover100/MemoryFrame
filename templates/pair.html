@@ -11,6 +11,7 @@
 {% if token %}
 <form method="post" action="/pair" id="tokenForm" class="tok">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="device" value="" class="devHint">
   <input type="hidden" name="token" value="{{ token }}">
   <p>You scanned the code on the frame.</p>
   <button type="submit" class="block big">Pair this phone</button>
@@ -19,6 +20,7 @@
 {% endif %}
 <form method="post" action="/pair">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="device" value="" class="devHint">
   <label for="code" class="muted">Enter the 6-digit code shown on the frame.</label>
   <input class="code" id="code" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="······" required>
   <p class="small muted">The code is on the frame's screen, under "Enter code".</p>
@@ -29,3 +31,4 @@
   <p class="small muted flush">Double-tap the frame's screen and choose <b>Pair new device</b>.</p>
 </div>
 {% endblock %}
+{% block scripts %}<script src="{{ static('pair.js') }}"></script>{% endblock %}

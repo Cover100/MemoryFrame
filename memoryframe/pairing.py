@@ -140,7 +140,8 @@ def pair():
         return render_template("pair.html", token="", error=msg), 400
     # #153: a phone that still holds a valid session (e.g. the QR GET hid the SameSite=Strict
     # cookie, this POST sends it) gets its own row back with a rotated secret, not a second row.
-    token = auth.create_session(get_db(), request.headers.get("User-Agent", "phone"),
+    token = auth.create_session(get_db(), auth.hinted_name(request.headers.get("User-Agent", "phone"),
+                                                           data.get("device")),   # display label only
                                 device_id=auth.current_device())
     # MF-33: one-shot "You're paired!" banner (admin.js removes ?paired=1 so a reload hides it)
     resp = jsonify({"paired": True, "next": "/admin/?paired=1"}) if wants_json else redirect("/admin/?paired=1", code=303)

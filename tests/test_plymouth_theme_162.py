@@ -430,7 +430,7 @@ def test_off_never_copies_the_first_backup_after_a_kernel_update(pl, tmp_path):
     r = pl.run("plymouth", "off", deploy=dep, MEMORYFRAME_KERNEL=k2, FAKE_UI="fail")
     assert r.returncode == 1
     assert pl.initrd.read_text().splitlines()[0] == f"FAKEINITRD {k2}"                # never the K1 image
-    assert "status" and f"(kernel {KERNEL})" in pl.run("plymouth", "status").stdout
+    assert f"(kernel {KERNEL})" in pl.run("plymouth", "status").stdout
 
 
 def test_rollback_refuses_a_backup_from_another_kernel(pl):

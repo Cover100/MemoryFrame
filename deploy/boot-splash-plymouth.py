@@ -500,6 +500,27 @@ def preflight(for_off=False):
 
 # ---------------- on ----------------
 
+def pending_refused(why):
+    """A refusal while a pending record exists (#168 delta: kill -9, then e.g. a kernel or config change): nothing is
+    touched, but say so and exit 1 instead of a quiet skip, with the PC hint. None when there is no pending record."""
+    try:
+        st = read_state(STATE)
+    except OSError:
+        return None
+    if "plymouth_pending" not in st:
+        return None
+    warn(f"an interrupted `plymouth {st['plymouth_pending']}` is pending but cannot be undone now: {why}; nothing "
+         "changed, the state and backups are kept. Fix that, then run `sudo deploy/boot-splash.sh plymouth off`")
+    bak, name = st.get("plymouth_run_bak"), st.get("plymouth_run_initramfs") or "initramfs8"
+    if bak and (BOOT / bak).is_file():
+        warn(f"if the frame does not boot: from a PC, copy {bak} over {name} on the boot partition "
+             f"(kernel {st.get('plymouth_run_kernel', '?')})")
+    else:
+        warn("if the frame does not boot: from a PC, put # before auto_initramfs=1 in config.txt "
+             "(see README, boot splash recovery)")
+    return 1
+
+
 def cmd_on():
     if os.environ.get("MEMORYFRAME_NO_PLYMOUTH") == "1":
         say("skipped (MEMORYFRAME_NO_PLYMOUTH=1)")
@@ -510,6 +531,8 @@ def cmd_on():
             return 1
     why = preflight()
     if why:
+        if pending_refused(why):
+            return 1
         say(f"skipped: {why}; the boot shows the current Plymouth theme")
         return 0
     st = read_state(STATE)
@@ -589,7 +612,8 @@ def cmd_off():
         return 0
     why = preflight(for_off=True)
     if why:
-        warn(f"cannot undo now: {why}; the state is kept")
+        if not pending_refused(why):
+            warn(f"cannot undo now: {why}; the state is kept")
         return 1
     if not recover(st):
         return 1

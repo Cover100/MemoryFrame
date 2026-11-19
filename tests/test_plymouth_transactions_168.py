@@ -292,3 +292,36 @@ def test_a_kill_during_off_is_finished_by_the_next_off(pl):
     clean(pl, r)
     assert pl.initrd.read_bytes() == orig and pl.theme() == "pix" and not (pl.themes / "memoryframe").exists()
     assert not list(pl.boot.glob("*.memoryframe-bak.*"))
+
+
+@pytest.mark.parametrize("cmd", ["on", "off"])
+@pytest.mark.parametrize("kind", ["kernel", "tool", "noinitrd", "noauto"])
+def test_a_refusal_with_a_pending_record_says_so_and_touches_nothing(pl, kind, cmd):
+    """#168 delta (Hale): kill -9, then the next run hits a refusal: no quiet `skipped` (rc 0) but rc 1, the pending
+    run named, the PC hint, nothing touched; a later valid run undoes the pending record."""
+    if cmd == "off" and kind == "noauto":
+        pytest.skip("off does not need auto_initramfs=1")
+    before = everything(pl)
+    _killed_on(pl, extra=': > "{boot}/initramfs8"; ')
+    cfg = (pl.boot / "config.txt").read_text()
+    env = {"kernel": {"MEMORYFRAME_KERNEL": "6.1.21-weird"}, "tool": {"UPDATE_INITRAMFS": "/nonexistent/u-i"},
+           "noinitrd": {"MEMORYFRAME_KERNEL": "6.18.34+rpt-rpi-2712"}, "noauto": {}}[kind]
+    if kind == "noauto":
+        (pl.boot / "config.txt").write_text(cfg.replace("auto_initramfs=1", "#auto_initramfs=1"))
+    snap, state = everything(pl), pl.state.read_bytes()
+    r = pl.run("plymouth", cmd, **env)
+    assert r.returncode == 1 and "Traceback" not in r.stdout + r.stderr
+    assert "an interrupted `plymouth on` is pending but cannot be undone now" in r.stderr
+    bak = pl.st()["plymouth_run_bak"]
+    assert f"copy {bak} over initramfs8" in r.stderr and "skipped" not in r.stdout
+    assert everything(pl) == snap and pl.state.read_bytes() == state
+    (pl.boot / "config.txt").write_text(cfg)
+    r2 = pl.run("plymouth", "off")
+    assert r2.returncode == 0 and "undoing it first" in r2.stdout
+    clean(pl, r2)
+    pristine(pl, before)
+
+
+def test_a_refusal_without_a_pending_record_is_still_a_quiet_skip(pl):
+    r = pl.run("plymouth", "on", MEMORYFRAME_KERNEL="6.1.21-weird")
+    assert r.returncode == 0 and "skipped: unknown kernel flavour" in r.stdout and r.stderr == ""

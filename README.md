@@ -192,7 +192,8 @@ What it does:
     removes the theme and the backups. Both are transactions: a `plymouth_pending` record (backup name, path, sha and
     kernel, the conf backup, the previous theme) is written to `/etc/memoryframe/boot-splash.state` before the first
     change (state not writable = nothing is changed); Ctrl-C, SIGTERM or SIGHUP rolls everything back; after a power
-    cut or kill -9 the next `plymouth on` or `off` finds the record and undoes it first; the initramfs is only ever
+    cut or kill -9 the next `plymouth on` or `off` finds the record and undoes it first (if that run is refused, e.g.
+    another kernel, it changes nothing, says the run is pending and exits 1); the initramfs is only ever
     written as `.initramfs8.new` + fsync + rename. A failed `off` puts our initramfs and theme back and keeps the
     state, so `off` can be run again. A backup is only copied back for the kernel it was taken from. If a rollback
     step itself fails it says what is left and which backup to copy from a PC, and keeps the backups.

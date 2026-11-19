@@ -8,17 +8,19 @@
 <h1>Pair this phone</h1>
 {% if removed %}<div id="removedNote" class="ok-box" role="status"><p>This phone was removed from the frame. To use it again, pair it with the code on the frame.</p></div>{% endif %}
 {% if error %}<p class="err" role="alert">{{ error }}</p>{% endif %}
-{% if token %}
+{% if expired %}<p class="err" role="status" id="qrExpired">That QR code has expired.</p>
+<p>Scan the new code on the frame, or enter its 6-digit code below.</p>{% endif %}
+{% if token %}{# #161: pair-auto.js submits this form once on load; the button is the no-JS fallback #}
 <form method="post" action="/pair" id="tokenForm" class="tok">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="device" value="" class="devHint">
   <input type="hidden" name="token" value="{{ token }}">
-  <p>You scanned the code on the frame.</p>
-  <button type="submit" class="block big">Pair this phone</button>
+  <p id="pairStatus" role="status" aria-live="polite">You scanned the code on the frame.</p>
+  <button type="submit" class="block big" id="tokenButton">Pair this phone</button>
 </form>
-<p class="muted small">Or enter the code instead:</p>
+<p class="muted small" id="orCode">Or enter the code instead:</p>
 {% endif %}
-<form method="post" action="/pair">
+<form method="post" action="/pair" id="codeForm">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="device" value="" class="devHint">
   <label for="code" class="muted">Enter the 6-digit code shown on the frame.</label>
@@ -26,9 +28,10 @@
   <p class="small muted">The code is on the frame's screen, under "Enter code".</p>
   <button type="submit" class="block big mt">Pair</button>
 </form>
-<div class="card gap">
+<div class="card gap" id="helpCard">
   <h2 class="sm">Can't see a code?</h2>
   <p class="small muted flush">Double-tap the frame's screen and choose <b>Pair new device</b>.</p>
 </div>
 {% endblock %}
-{% block scripts %}<script src="{{ static('pair.js') }}"></script>{% endblock %}
+{% block scripts %}<script src="{{ static('pair.js') }}"></script>{% if token %}
+<script src="{{ static('pair-auto.js') }}"></script>{% endif %}{% endblock %}

@@ -99,6 +99,13 @@ class Pairing:
                 q.popleft()                          # never more than RATE_LIMIT+1 timestamps
             return len(q) > RATE_LIMIT
 
+    def peek(self, token):
+        """#161: is `token` the live round's QR token? Read-only: never consumes, rotates or counts a wrong
+        try (the QR landing GET uses it to choose the auto-pair page or the "QR expired" note)."""
+        with self.lock:
+            return (self.current() is not None and _valid_token(token)
+                    and hmac.compare_digest(token.encode(), self.token.encode()))
+
     def redeem(self, code=None, token=None):
         """True if code or token matches the live round (which is then consumed)."""
         with self.lock:

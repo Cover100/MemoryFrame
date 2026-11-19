@@ -301,10 +301,26 @@ def frame_error():
 DEV_MODE_UNIT = "memoryframe-devtemp.service"   # #62: root oneshot started via polkit
 
 
+# #167 (Wren, devwifi-fail-copy/wren.md): the join-failure dialog's title and body, one plain sentence each; the
+# kiosk shows exactly these (static/pairing.js keeps the same text as its no-answer fallback). No raw reasons.
+DEV_WIFI_BACK = "The frame is back on its own Wi-Fi. Phones can connect as usual."
+DEV_WIFI_FAIL = {
+    "no-profile": ("Developer Wi-Fi not found", DEV_WIFI_BACK),
+    "not-connected": ("Developer Wi-Fi didn't connect", DEV_WIFI_BACK),
+    "timeout": ("Developer Wi-Fi didn't connect", "The frame is going back to its own Wi-Fi. "
+                                                   "Phones can connect again in a minute."),
+    "busy": ("Developer Wi-Fi can't start now", "Another Wi-Fi change is in progress. Try again in a few minutes."),
+    "not-permitted": ("Developer Wi-Fi can't start", "This frame isn't set up for developer Wi-Fi. "
+                                                     "Phones can connect as usual."),
+    "no-helper": ("Developer Wi-Fi can't start", "The frame couldn't change Wi-Fi. Phones can connect as usual."),
+}
+
+
 @bp.route("/frame/dev-mode", methods=["POST"])
 @localhost_only
 def dev_mode():
-    """Run the helper now and report the result as JSON: {"ok": bool, "reason": str}.
+    """Run the helper now and report the result as JSON: {"ok": true, "reason": ""} or, on failure (#167),
+    {"ok": false, "code": <short code>, "title": <dialog title>, "reason": <dialog body, a plain sentence>}.
     The kiosk is on localhost, so switching Wi-Fi doesn't cut this request."""
     from . import privileged
     _check_token()
@@ -323,23 +339,24 @@ def dev_mode():
             rc, text = 99, ""
     else:
         rc, text = privileged.run(cfg, "dev-temp", timeout=timeout)
-    if rc == 124:
-        return jsonify({"ok": False, "reason": "timed out"}), 502
-    if rc == 99:
-        return jsonify({"ok": False, "reason": "could not run the helper"}), 502
     if rc == 0:
         return jsonify({"ok": True, "reason": ""})
     text = text.lower()
-    if "access denied" in text or "interactive authentication" in text or "not authorized" in text:
-        reason = "not permitted (polkit rule missing)"
+    if rc == 124:
+        code = "timeout"
+    elif rc == 99:
+        code = "no-helper"
+    elif "access denied" in text or "interactive authentication" in text or "not authorized" in text:
+        code = "not-permitted"
     elif rc == 3 or "busy" in text:
-        reason = "busy (another network change is in progress)"
+        code = "busy"
     elif "no matching networkmanager wi-fi profile" in text:
-        reason = "no saved home Wi-Fi on this frame"
+        code = "no-profile"
     else:
-        reason = "home Wi-Fi did not connect"
-    log.warning("dev mode switch failed (exit %s): %s", rc, reason)
-    return jsonify({"ok": False, "reason": reason}), 502
+        code = "not-connected"
+    log.warning("dev mode switch failed (exit %s): %s", rc, code)      # the developer detail stays in the log
+    title, body = DEV_WIFI_FAIL[code]
+    return jsonify({"ok": False, "code": code, "title": title, "reason": body}), 502
 
 
 # ---------------- #99: Reset the frame (hold menu, kiosk only) ----------------

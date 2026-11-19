@@ -78,17 +78,23 @@ def _token(client):
     return html.split('name="mf-frame-token" content="', 1)[1].split('"', 1)[0]
 
 
-@pytest.mark.parametrize("script,code,ok,reason", [
-    ("echo 'ok: joined X'", 200, True, ""),
-    ("echo 'Failed to start memoryframe-devtemp.service: Access denied' >&2; exit 4", 502, False, "not permitted"),
+@pytest.mark.parametrize("script,code,ok,kind", [
+    ("echo 'ok: joined X'", 200, True, None),
+    ("echo 'Failed to start memoryframe-devtemp.service: Access denied' >&2; exit 4", 502, False, "not-permitted"),
     ("exit 3", 502, False, "busy"),
-    ("echo 'error: home Wi-Fi did not connect; hotspot kept on'; exit 1", 502, False, "did not connect"),
+    ("echo 'error: home Wi-Fi did not connect; hotspot kept on'; exit 1", 502, False, "not-connected"),
 ])
-def test_endpoint_json_status(client, mf_app, script, code, ok, reason):
+def test_endpoint_json_status(client, mf_app, script, code, ok, kind):
+    # #167: a failure carries a short code plus Wren's plain title and sentence (tests/test_devwifi_fail_copy_167.py)
+    from memoryframe.display import DEV_WIFI_FAIL
     mf_app.config["DEV_MODE_CMD"] = ["sh", "-c", script]
     r = client.post("/frame/dev-mode", headers={"X-Frame-Token": _token(client)}, environ_base=LOCAL)
     j = r.get_json()
-    assert r.status_code == code and j["ok"] is ok and reason in j["reason"]
+    assert r.status_code == code and j["ok"] is ok
+    if kind:
+        assert j["code"] == kind and (j["title"], j["reason"]) == DEV_WIFI_FAIL[kind]
+    else:
+        assert j["reason"] == ""
 
 
 # ---------- suspect 5: the kiosk shows the result ----------
@@ -118,4 +124,6 @@ def test_kiosk_shows_failure_with_reason(page, server, mf_app, net):
     _confirm(page)
     page.pump(1.0)
     box = _box(page)
-    assert "Couldn't join home Wi-Fi \u2014 hotspot kept on" in box and "home Wi-Fi did not connect" in box
+    # #167: Wren's plain copy, never the raw reason
+    assert "Developer Wi-Fi didn't connect" in box and "The frame is back on its own Wi-Fi." in box
+    assert "home Wi-Fi" not in box and "hotspot" not in box

@@ -281,7 +281,8 @@ def test_remove_confirm_in_the_browser(page, server, mf_app):
     evaluate(page, f"{js}('devConfirm{other}').querySelector('[type=submit]').click()")
     page.pump(2)
     assert live(mf_app, other) == 0
-    assert evaluate(page, "location.pathname + location.search + location.hash") == "/admin/settings?removed=1#phones"
+    # landed on /admin/settings?removed=1#phones; #154 follow-up: settings.js then drops ?removed=1
+    assert evaluate(page, "location.pathname + location.search + location.hash") == "/admin/settings#phones"
     assert evaluate(page, f"!!{js}('devRemoved')") and evaluate(page, "document.querySelectorAll('[data-device]').length") == 1
     assert evaluate(page, "document.documentElement.scrollWidth") <= 412
     assert page.exceptions() == []

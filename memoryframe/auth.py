@@ -152,14 +152,36 @@ _BROWSERS = (("SamsungBrowser/", "Samsung Internet"), ("Edg", "Edge"), ("Firefox
              ("FxiOS/", "Firefox"), ("CriOS/", "Chrome"), ("Chrome/", "Chrome"), ("Safari/", "Safari"))
 
 
+# Without a browser token (labels stored before #154 were cut at 80 chars): the OS version, where the UA has a
+# reliable one. Android is omitted: Chrome's reduced UA freezes "Android 10; K" on every Android, so a version
+# would be wrong; those rows show plain "Android".
+_OS_VERSION = (("iPhone", r"iPhone OS (\d+)", "iPhone · iOS {}"), ("iPad", r"CPU OS (\d+)", "iPad · iPadOS {}"))
+DEVICE_HINTS = {"ipad": "iPad"}   # the only hint the pair page sends (#154 follow-up)
+
+
 def device_display(name):
     """#154: a short "iPhone · Safari" from the stored User-Agent label (display only, never an identity key)."""
+    import re
     name = str(name or "")
     os_ = next((label for key, label in _OS if key in name), None)
     browser = next((label for key, label in _BROWSERS if key in name), None)
     if os_ and browser:
         return f"{os_} · {browser}"
+    for label, pattern, fmt in _OS_VERSION:
+        m = re.search(pattern, name) if os_ == label else None
+        if m:
+            return fmt.format(m.group(1))
     return os_ or "Phone"
+
+
+def hinted_name(user_agent, hint):
+    """#154 follow-up: iPadOS Safari sends a Mac User-Agent; the pair page adds "ipad" when the browser has a
+    touch screen. Accepted only as that exact string and only with a Macintosh UA, and it only changes the
+    stored display label (device_label caps it). It never picks a device or affects auth."""
+    ua = str(user_agent or "")
+    if isinstance(hint, str) and hint in DEVICE_HINTS and "Macintosh" in ua and "iPad" not in ua:
+        return f"{DEVICE_HINTS[hint]}; {ua}"
+    return ua
 
 
 def _date(ts):

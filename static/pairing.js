@@ -246,6 +246,9 @@
             }
             welcome = firstRun && !onDemand && st.dev_temp !== true;
             render(st);
+            // No-IP card: Close only on the menu / on-demand path. On first run it would leave a blank
+            // screen (no pairing, no empty-library overlay), so it has none, like W0 (Wren).
+            $("pairDevTempClose").hidden = !onDemand;
             const success = Date.now() < successUntil;
             $("pairSuccess").hidden = !success;
             $("pairBox").hidden = success;

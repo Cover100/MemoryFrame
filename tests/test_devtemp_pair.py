@@ -175,10 +175,10 @@ def test_devtemp_no_lan_ip_card_on_frame(page, server, devtemp):
     assert visible(page, "pairOverlay") and visible(page, "pairDevTemp")
     assert all(t in text(page, "pairDevTemp") for t in NO_IP) and IP not in text(page, "pairOverlay")
     assert evaluate(page, "document.querySelectorAll('#pairOverlay svg:not(.mf-tick)').length") == 0
-    _no_ip_card_layout(page)
+    _no_ip_card_layout(page, close=False)
 
 
-def _no_ip_card_layout(page):
+def _no_ip_card_layout(page, close=True):
     """Wren: title, then the second line in the secondary colour, max ~600 px; Close top right like pairing."""
     g = json.loads(evaluate(page, "JSON.stringify((()=>{const r=id=>{const b=document.getElementById(id)"
                                   ".getBoundingClientRect();return [b.left,b.top,b.right,b.bottom]};"
@@ -191,6 +191,9 @@ def _no_ip_card_layout(page):
                                   "oat:getComputedStyle(document.documentElement).getPropertyValue('--mf-oat').trim()};})())"))
     assert g["title"] == NO_IP[0] and g["sub"] == NO_IP[1] and g["st"] >= g["tb"] - 0.5, g
     assert g["mw"] <= 600.5 and g["subColor"] == "rgb(201, 187, 168)" and g["oat"].upper() == "#C9BBA8", g
+    if not close:
+        assert not g["closeVis"], g
+        return
     l, t, r, b = g["close"]
     assert g["closeVis"] and r <= 800 and r >= 700 and t >= 0 and b <= 120, g          # top right, on screen
 
@@ -223,13 +226,14 @@ def test_devtemp_no_ip_card_from_menu_has_close(page, server, devtemp):
 @pytest.mark.skipif(BROWSER is None, reason="no headless Chrome")
 @pytest.mark.no_media
 def test_devtemp_no_ip_first_run_card_close(page, server, devtemp):
-    """First run in dev-temp without an address (not W0): the card's Close works the same way."""
+    """First run in dev-temp without an address: no Close on the card (as W0). Closing would leave a blank
+    screen, since with no phone and no photos neither the pairing nor the empty-library overlay shows."""
     devtemp.net.update(mode="unknown", lan_ip=None, ips=[])
     page.pump(3.0)
-    assert visible(page, "pairDevTemp")
-    evaluate(page, "document.getElementById('pairDevTempClose').click()")
-    page.pump(3.0)
-    assert not visible(page, "pairOverlay")
+    assert visible(page, "pairOverlay") and visible(page, "pairDevTemp")
+    assert not visible(page, "pairDevTempClose")
+    page.pump(2.5)                                              # still so after the next polls
+    assert visible(page, "pairDevTemp") and not visible(page, "pairDevTempClose")
 
 
 @pytest.mark.skipif(BROWSER is None, reason="no headless Chrome")

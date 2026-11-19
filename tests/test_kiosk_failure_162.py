@@ -65,7 +65,8 @@ def test_one_bad_poll_is_not_enough(env):
                  'if [ $((n % 2)) = 0 ]; then echo ActiveState=failed; else echo ActiveState=active; fi\n'
                  'echo NRestarts=0\n')
     with Kiosk(e):
-        wait(lambda: int((tmp_path / "n").read_text() if (tmp_path / "n").exists() else 0) >= 8)
+        # The stub rewrites n on every poll, so a read can land on an empty file: treat that as 0.
+        wait(lambda: int(((tmp_path / "n").read_text().strip() if (tmp_path / "n").exists() else "") or 0) >= 8)
     assert urls(tmp_path) == [SPLASH_URL] and "error E2" not in log_text(tmp_path)
 
 

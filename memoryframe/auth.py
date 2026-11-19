@@ -10,6 +10,12 @@ Pairing
 Sessions
   A successful pair creates a device + session. The browser gets a random token
   in an HttpOnly, SameSite=Strict cookie; only its SHA-256 is stored.
+  #153: if the pairing request still carries a valid session cookie, that phone's
+  device row is reused (its old session revoked, a new secret issued) instead of
+  adding a second row. The code / QR token is still required; the device id only
+  ever comes from the presented cookie, never from the request body. Other cookie
+  jars (iOS sign-in pop-up vs Safari) and other hosts (10.42.0.1 vs
+  memoryframe.local) send no cookie, so they still get a new row.
   "Sign out all phones" revokes every session.
 """
 import hashlib
@@ -125,13 +131,23 @@ def device_label(user_agent):
     return text or "phone"
 
 
-def create_session(conn, device_name):
+def create_session(conn, device_name, device_id=None):
+    """New session; returns the raw token for the cookie (only its hash is stored).
+
+    device_id None: a new devices row. Otherwise (#153 re-pair, the id from current_device()):
+    that row is reused, its unrevoked sessions are revoked, and its label and last_seen refreshed,
+    all in one transaction. Other devices are never touched."""
     now = db.now()
-    cur = conn.execute("INSERT INTO devices (name, created_at, last_seen) VALUES (?, ?, ?)",
-                       (device_label(device_name), now, now))
+    label = device_label(device_name)
+    if device_id is None:
+        device_id = conn.execute("INSERT INTO devices (name, created_at, last_seen) VALUES (?, ?, ?)",
+                                 (label, now, now)).lastrowid
+    else:
+        conn.execute("UPDATE sessions SET revoked = 1 WHERE device_id = ? AND revoked = 0", (device_id,))
+        conn.execute("UPDATE devices SET name = ?, last_seen = ? WHERE id = ?", (label, now, device_id))
     token = secrets.token_urlsafe(32)
     conn.execute("INSERT INTO sessions (device_id, token_hash, created_at, expires_at) VALUES (?, ?, ?, ?)",
-                 (cur.lastrowid, hash_token(token), now, now + SESSION_DAYS * 86400))
+                 (device_id, hash_token(token), now, now + SESSION_DAYS * 86400))
     conn.commit()
     return token
 

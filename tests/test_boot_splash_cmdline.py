@@ -28,12 +28,13 @@ def boot(tmp_path, cmdline=None, config=None):
     return d
 
 
-def run(tmp_path, *args, extra=None):
+def run(tmp_path, *args, extra=None, check=True):
     e = {"PATH": os.environ["PATH"], "HOME": str(tmp_path / "home"),
          "MEMORYFRAME_BOOT_DIR": str(tmp_path / "boot"),
          "MEMORYFRAME_BOOT_STATE": str(tmp_path / "etc" / "boot-splash.state"), **(extra or {})}
     r = subprocess.run(["bash", str(SCRIPT), *args], capture_output=True, text=True, env=e, timeout=30)
-    assert r.returncode == 0, r.stdout + r.stderr
+    if check:
+        assert r.returncode == 0, r.stdout + r.stderr
     return r
 
 
@@ -100,10 +101,12 @@ def test_line_already_holding_the_tokens_is_not_written(tmp_path):
 
 def test_existing_key_with_another_value_is_kept_and_not_duplicated(tmp_path):
     d = boot(tmp_path, "root=/dev/sda2 loglevel=7 vt.global_cursor_default=1\n")
-    run(tmp_path, "on")
+    r = run(tmp_path, "on")
     toks = (d / "cmdline.txt").read_text().split()
     assert "loglevel=7" in toks and "loglevel=3" not in toks
     assert "vt.global_cursor_default=1" in toks and "vt.global_cursor_default=0" not in toks
+    assert "kept loglevel=7: boot text may still show" in r.stdout
+    assert "kept vt.global_cursor_default=1 (not replaced)" in r.stdout
     run(tmp_path, "off")
     assert (d / "cmdline.txt").read_text() == "root=/dev/sda2 loglevel=7 vt.global_cursor_default=1\n"
 
@@ -143,6 +146,39 @@ def test_missing_cmdline_is_skipped(tmp_path):
     d = boot(tmp_path)
     r = run(tmp_path, "on")
     assert "not found" in r.stdout and not (d / "cmdline.txt").exists()
+
+
+def test_unwritable_state_dir_leaves_boot_files_and_exits_nonzero(tmp_path):
+    """If the state file cannot be written, `on` aborts before any cmdline/config edit, so `off` can still undo."""
+    d = boot(tmp_path, "root=/dev/mmcblk0p2 rootwait\n", "arm_boost=1\n")
+    cmd, cfg = (d / "cmdline.txt").read_bytes(), (d / "config.txt").read_bytes()
+    mode = md5(d / "memoryframe-mode.txt")
+    statedir = tmp_path / "etc"
+    statedir.mkdir()
+    statedir.chmod(0o500)
+    try:
+        r = run(tmp_path, "on", check=False)
+    finally:
+        statedir.chmod(0o700)
+    out = r.stdout + r.stderr
+    assert r.returncode != 0 and "Traceback" not in out
+    assert "could not write" in out and "boot files left unchanged" in out
+    assert (d / "cmdline.txt").read_bytes() == cmd
+    assert (d / "config.txt").read_bytes() == cfg
+    assert baks(d) == [] and baks(d, "config.txt") == [] and state(tmp_path) is None
+    assert md5(d / "memoryframe-mode.txt") == mode
+    run(tmp_path, "off")                                                     # nothing of ours: still a no-op
+    assert (d / "cmdline.txt").read_bytes() == cmd and (d / "config.txt").read_bytes() == cfg
+
+
+def test_status_with_no_state_file_is_clean_not_installed(tmp_path):
+    boot(tmp_path, "root=/dev/mmcblk0p2 rootwait\n")
+    r = run(tmp_path, "status")
+    assert r.returncode == 0 and "state: not installed" in r.stdout
+    assert "No such file or directory" not in r.stdout + r.stderr
+    run(tmp_path, "on")
+    r = run(tmp_path, "status")
+    assert r.returncode == 0 and "state: not installed" not in r.stdout and "cmdline_added=" in r.stdout
 
 
 def test_only_boot_splash_edits_cmdline_txt():

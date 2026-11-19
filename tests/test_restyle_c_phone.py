@@ -159,7 +159,10 @@ def test_pair_page_has_no_offline_panel_or_ssid(client):
 def test_pair_error_and_token_landing(client):
     r = client.post("/pair", data={"code": "000000"}, environ_base=PHONE)
     assert r.status_code == 400 and '<p class="err" role="alert">' in r.get_data(as_text=True)
-    h = body(client, "/pair?t=%22%3E%3Cscript%3E")
+    h = body(client, "/pair?t=%22%3E%3Cscript%3E")     # #161: a dead (here hostile) token: expired note, not echoed
+    assert 'id="qrExpired"' in h and 'id="tokenForm"' not in h and "<script>" not in h.split("</header>")[1].split("<script")[0]
+    client.post("/pairing/start", environ_base={"REMOTE_ADDR": "127.0.0.1"})
+    h = body(client, "/pair?t=" + client.application.extensions["mf_pairing"].token)   # a live QR token
     assert 'id="tokenForm"' in h and "<script>" not in h.split("</header>")[1].split("<script")[0]
 
 

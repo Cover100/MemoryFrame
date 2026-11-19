@@ -117,6 +117,20 @@ def test_lines_added_after_ours_are_kept_by_off(tmp_path, later):
     assert LINE not in got and got.endswith(later) and section_of(got, "dtoverlay=gpio-fan,gpiopin=14,temp=60000") == "all"
 
 
+def test_crlf_config_is_kept_and_off_restores_original_bytes(tmp_path):
+    """config.txt with CRLF endings stays CRLF; on then off restores the original bytes."""
+    d = boot(tmp_path, HALE)
+    cfg = b"dtparam=audio=on\r\n[all]\r\narm_boost=1\r\n"
+    (d / "config.txt").write_bytes(cfg)
+    run(tmp_path, "on")
+    got = (d / "config.txt").read_bytes()
+    assert b"disable_splash=1\r\n" in got
+    assert got.count(b"\n") == got.count(b"\r\n")                             # no bare LF mixed in
+    assert got.startswith(cfg)
+    run(tmp_path, "off")
+    assert (d / "config.txt").read_bytes() == cfg
+
+
 def test_missing_config_is_skipped(tmp_path):
     d = boot(tmp_path, HALE)
     r = run(tmp_path, "on")

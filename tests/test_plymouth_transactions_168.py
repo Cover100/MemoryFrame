@@ -253,3 +253,42 @@ def test_the_initramfs_is_only_ever_written_by_rename():
     src = (ROOT / "deploy" / "boot-splash-plymouth.py").read_text()
     assert src.count("copy_synced(") >= 4 and "shutil.copy2" not in src and "shutil.copyfile(SRC" in src
     assert "signal.SIGHUP" in src and "signal.SIGTERM" in src and "signal.SIGINT" in src
+
+
+def test_the_restore_writes_initramfs8_via_new_fsync_rename(pl, tmp_path, monkeypatch):
+    """M1: the rollback's copy of the backup over initramfs8 goes .initramfs8.new -> fsync -> rename -> dir fsync."""
+    monkeypatch.setenv("MEMORYFRAME_BOOT_DIR", str(pl.boot))
+    spec = importlib.util.spec_from_file_location("bsp2", ROOT / "deploy" / "boot-splash-plymouth.py")
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    log, real_fsync, real_replace = [], os.fsync, os.replace
+    monkeypatch.setattr(m.os, "fsync", lambda fd: (log.append(("fsync", os.readlink(f"/proc/self/fd/{fd}")
+                                                                if os.path.exists(f"/proc/self/fd/{fd}") else fd)),
+                                                  real_fsync(fd))[1])
+    monkeypatch.setattr(m.os, "replace", lambda a, b: (log.append(("replace", str(a), str(b))), real_replace(a, b))[1])
+    bak = pl.boot / "initramfs8.memoryframe-bak.x"
+    bak.write_bytes(pl.initrd.read_bytes())
+    pl.initrd.write_bytes(b"")
+    m.copy_synced(bak, pl.initrd)
+    tmpname = str(pl.boot / ".initramfs8.new")
+    assert pl.initrd.read_bytes() == bak.read_bytes()
+    i_sync = next(i for i, e in enumerate(log) if e[0] == "fsync" and str(e[1]).endswith(".initramfs8.new"))
+    i_rep = log.index(("replace", tmpname, str(pl.initrd)))
+    i_dir = next(i for i, e in enumerate(log) if e[0] == "fsync" and str(e[1]) == str(pl.boot))
+    assert i_sync < i_rep < i_dir
+    src = (ROOT / "deploy" / "boot-splash-plymouth.py").read_text()
+    assert "copy_synced(bak, initrd)" in src                     # the rollback restore uses it
+
+
+def test_a_kill_during_off_is_finished_by_the_next_off(pl):
+    orig = pl.initrd.read_bytes()
+    assert pl.run("plymouth", "on").returncode == 0
+    env = wrap(pl, "UPDATE_INITRAMFS", ': > "{boot}/initramfs8"; kill -KILL $PPID; sleep 5')
+    assert pl.run("plymouth", "off", **env).returncode != 0
+    assert pl.st()["plymouth_pending"] == "off" and pl.initrd.stat().st_size == 0
+    assert "an interrupted `off` is pending" in pl.run("plymouth", "status").stdout
+    r = pl.run("plymouth", "off")
+    assert r.returncode == 0 and "undoing it first" in r.stdout
+    clean(pl, r)
+    assert pl.initrd.read_bytes() == orig and pl.theme() == "pix" and not (pl.themes / "memoryframe").exists()
+    assert not list(pl.boot.glob("*.memoryframe-bak.*"))

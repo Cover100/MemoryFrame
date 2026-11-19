@@ -1,0 +1,15 @@
+[Unit]
+Description=Memory Frame boot watch: show error E4 if the desktop session never starts (#162)
+# Runs in the background (Type=simple): nothing waits for it, it never delays the boot.
+After=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/memoryframe-bootwatch
+RemainAfterExit=no
+# Exits by itself after about 90 s of uptime; the cap only guards against a stuck tty write.
+TimeoutStopSec=5
+RuntimeMaxSec=600
+
+[Install]
+WantedBy=multi-user.target

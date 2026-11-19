@@ -146,9 +146,10 @@ _BROWSERS = (("SamsungBrowser/", "Samsung Internet"), ("Edg", "Edge"), ("Firefox
              ("FxiOS/", "Firefox"), ("CriOS/", "Chrome"), ("Chrome/", "Chrome"), ("Safari/", "Safari"))
 
 
-# Without a browser token (labels stored before #154 were cut at 80 chars): the OS version, where the UA has one.
-_OS_VERSION = (("iPhone", r"iPhone OS (\d+)", "iPhone · iOS {}"), ("iPad", r"CPU OS (\d+)", "iPad · iPadOS {}"),
-               ("Android", r"Android (\d+)", "Android {}"))
+# Without a browser token (labels stored before #154 were cut at 80 chars): the OS version, where the UA has a
+# reliable one. Android is omitted: Chrome's reduced UA freezes "Android 10; K" on every Android, so a version
+# would be wrong; those rows show plain "Android".
+_OS_VERSION = (("iPhone", r"iPhone OS (\d+)", "iPhone · iOS {}"), ("iPad", r"CPU OS (\d+)", "iPad · iPadOS {}"))
 DEVICE_HINTS = {"ipad": "iPad"}   # the only hint the pair page sends (#154 follow-up)
 
 

@@ -3,7 +3,8 @@
 (1) Device names: iPadOS Safari reports a Mac User-Agent, so the pair page adds a display-only hint ("ipad")
     when the browser has a touch screen (navigator.maxTouchPoints > 1) and a Macintosh UA. The server accepts
     only that exact value, only with a Macintosh UA, and only for the stored label; auth never reads it.
-    Old rows (labels cut at 80 chars) show the OS version when the browser token is missing.
+    Old rows (labels cut at 80 chars) show the OS version for iPhone/iPad when the browser token is missing.
+    Android shows plain "Android": Chrome's reduced UA freezes "Android 10; K" on every Android.
 (2) ?removed=1 is dropped from the address bar after the banner shows (as MF-33 does for ?paired=1).
 Cookie values are never printed."""
 import re
@@ -111,10 +112,17 @@ def test_pair_page_carries_the_hint_field_and_script(client):
 
 # ---------- (1) old rows: an 80-char label without the browser token ----------
 
+# Chrome's reduced UA, as stored for devices 19/20/21 (cut at 80 chars before #154).
+ANDROID_REDUCED = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/"
+ANDROID_REDUCED_FULL = ("Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/192.168.1.1 Mobile Safari/537.36")
+
+
 @pytest.mark.parametrize("ua,label", [
-    (IPHONE, "iPhone · iOS 18"), (IPAD, "iPad · iPadOS 17"), (ANDROID, "Android 14"),
+    (IPHONE, "iPhone · iOS 18"), (IPAD, "iPad · iPadOS 17"), (ANDROID, "Android"),
     ("Mozilla/5.0 (Linux; Android 9; SM-G960F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Mobile",
-     "Android 9"),
+     "Android"),
+    (ANDROID_REDUCED, "Android"),
     (IPAD_AS_MAC, "Mac"), ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)", "Windows"),
 ])
 def test_old_80_char_labels_show_the_os_version(ua, label):
@@ -126,6 +134,7 @@ def test_old_80_char_labels_show_the_os_version(ua, label):
 def test_full_labels_are_unchanged():
     assert auth.device_display(auth.device_label(IPHONE)) == "iPhone · Safari"
     assert auth.device_display(auth.device_label(ANDROID)) == "Android · Chrome"
+    assert auth.device_display(auth.device_label(ANDROID_REDUCED_FULL)) == "Android · Chrome"
     assert auth.device_display("phone") == "Phone"
 
 

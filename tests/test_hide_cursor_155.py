@@ -80,7 +80,8 @@ def test_existing_pi_rc_xml_survives_two_installs_with_one_block(env, tmp_path):
     assert rc.read_bytes() == once and rc.stat().st_mtime_ns == mtime                # byte-identical, not rewritten
     assert (rc.parent / "rc.xml.mf-bak").read_text() == PI_RC
     assert "already in" in r2.stdout and "--reconfigure" not in log2
-    assert sorted(p.name for p in rc.parent.iterdir()) == ["rc.xml", "rc.xml.mf-bak"]   # no temp files left
+    # no temp files left (#162: labwc's autostart, created by install.sh's boot-splash step, lives here too)
+    assert sorted(p.name for p in rc.parent.iterdir()) == ["autostart", "rc.xml", "rc.xml.mf-bak"]
 
 
 def test_block_goes_inside_an_existing_keyboard_element(env, tmp_path):
@@ -161,7 +162,7 @@ def test_cursor_fix_never_touches_the_mode_file_or_netmode(env, tmp_path, existi
     if existing is not None:
         assert f.read_text() == existing                                           # #94 rules unchanged
     src = (ROOT / "deploy" / "install.sh").read_text()
-    section = src[src.index('echo "== Hide the mouse pointer'):src.index('echo "== Session type')]
+    section = src[src.index('echo "== Hide the mouse pointer'):src.index('echo "== Boot splash')]   # #162 follows
     assert "MODE_FILE" not in section and "netmode" not in section and "sudo" not in section
 
 

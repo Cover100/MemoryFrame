@@ -12,7 +12,7 @@ or changed, and is never removed by -off (only the recorded ones are). Before a 
 <file>.memoryframe-bak.<timestamp>; the new text goes to a temp file in the same directory, is fsynced and renamed
 over the old one (FAT on the Pi), so a power cut leaves the old or the new file. A run with nothing to do writes
 nothing (no backup either). STATE (key=value lines, /etc/memoryframe/boot-splash.state) records what we added.
-Never reads or writes anything else on the boot partition (memoryframe-mode.txt included)."""
+Never reads or writes anything else on the boot partition (the #94 boot mode file included)."""
 import os
 import re
 import shutil

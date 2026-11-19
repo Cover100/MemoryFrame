@@ -46,7 +46,10 @@ def env(tmp_path):
     e.update(PATH=f"{bin_}:{tools}", HOME=str(tmp_path),
              MEMORYFRAME_STATE_DIR=str(state), XDG_RUNTIME_DIR=str(tmp_path),
              MEMORYFRAME_BROWSER=str(bin_ / "chromium"),
-             MEMORYFRAME_CHROMIUM_FLAGS="--disable-gpu")
+             MEMORYFRAME_CHROMIUM_FLAGS="--disable-gpu",
+             # #162: these tests pin the launcher's pre-splash flow (MEMORYFRAME_SPLASH=0, still supported);
+             # the splash flow and the error screens are in test_kiosk_splash_162.py / test_kiosk_failure_162.py
+             MEMORYFRAME_SPLASH="0", MEMORYFRAME_BOOT_DIR=str(tmp_path / "boot"))
     e.pop("DISPLAY", None)
     e.pop("WAYLAND_DISPLAY", None)
     e.pop("XDG_SESSION_TYPE", None)

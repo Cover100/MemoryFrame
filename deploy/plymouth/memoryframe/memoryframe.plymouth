@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Memory Frame
+Description=Memory Frame lockup on ink, with a still error image (Wren, #162)
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/memoryframe
+ScriptFile=/usr/share/plymouth/themes/memoryframe/memoryframe.script

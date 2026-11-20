@@ -394,6 +394,15 @@ echo "== Boot splash (#162): quiet boot, splash at session start, no desktop or 
 if ! sudo env MEMORYFRAME_BOOT_DIR="${MEMORYFRAME_BOOT_DIR:-}" bash "$SRC_DIR/deploy/boot-splash.sh" on; then
     echo "WARNING: quiet boot not set up (see above): boot text may show" >&2
 fi
+# Change 2 (#162): the memoryframe Plymouth theme (Wren's lockup on ink; `plymouth display-message
+# --text=memoryframe-e4` swaps in the E4 image for bootwatch) as the default theme, initramfs rebuilt for the running
+# kernel. Hash guard: a second run with the same theme files does not rebuild (SD wear, #97). Timestamped backups of
+# the initramfs and plymouthd.conf; any failed check puts both back. cmdline.txt is not touched here (Plymouth needs
+# its existing `splash`). MEMORYFRAME_NO_PLYMOUTH=1 skips it. Undo: sudo deploy/boot-splash.sh plymouth off.
+if ! sudo env MEMORYFRAME_BOOT_DIR="${MEMORYFRAME_BOOT_DIR:-}" MEMORYFRAME_NO_PLYMOUTH="${MEMORYFRAME_NO_PLYMOUTH:-}" \
+        bash "$SRC_DIR/deploy/boot-splash.sh" plymouth on; then
+    echo "WARNING: the Memory Frame boot theme was not set up (see above): the previous boot theme stays" >&2
+fi
 # The session: ONE marked block at the top of the desktop user's ~/.config/labwc/autostart runs session-start.sh
 # (labwc -m: added to the system autostart, which is never touched). Other lines are kept; first edit keeps
 # autostart.mf-bak. Rollback: deploy/uninstall.sh.

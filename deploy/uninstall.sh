@@ -16,7 +16,7 @@ sudo systemctl disable memoryframe-rollback.service 2>/dev/null || true
 sudo rm -f /usr/local/sbin/memoryframe-migrate /usr/local/sbin/memoryframe-cli
 sudo rm -f /etc/memoryframe/hotspot.conf   # holds the hotspot password
 # #162: the quiet-boot tokens and config.txt line we added (exactly those; recorded in /etc/memoryframe/
-# boot-splash.state), the desktop flag, and the E4 boot watch. Boot text and the stock desktop are back after a reboot.
+# boot-splash.state), the Plymouth theme (previous theme back, initramfs rebuilt), the desktop flag, and the E4 boot watch. Boot text and the stock desktop are back after a reboot.
 sudo bash "$(dirname "$0")/boot-splash.sh" off || echo "WARNING: run 'sudo deploy/boot-splash.sh off' by hand"
 sudo bash "$(dirname "$0")/boot-splash.sh" desktop off || true
 sudo systemctl disable memoryframe-bootwatch.service 2>/dev/null || true

@@ -40,7 +40,22 @@ def index():
     return render_template("index.html", media=get_media(), frame_token=frame_token(),
                            safe_copy=SAFE_SCREEN_COPY,
                            frame_message=frame_message(),
-                           boot=request.args.get("boot") == "1")      # #162: opened by the boot splash
+                           boot=request.args.get("boot") == "1",      # #162: opened by the boot splash
+                           boot_wordmark=boot_wordmark_uri() if request.args.get("boot") == "1" else "")
+
+
+_WORDMARK = {}
+
+
+def boot_wordmark_uri():
+    """#162: static/boot/wordmark.png (Wren's 282x35 wordmark) as a data: URI for the boot overlay, so the name needs no font and no
+    request. Read once. The CSP's img-src allows data:."""
+    if "uri" not in _WORDMARK:
+        import base64
+        path = os.path.join(current_app.static_folder, "boot", "wordmark.png")
+        with open(path, "rb") as f:
+            _WORDMARK["uri"] = "data:image/png;base64," + base64.b64encode(f.read()).decode()
+    return _WORDMARK["uri"]
 
 
 def frame_message():

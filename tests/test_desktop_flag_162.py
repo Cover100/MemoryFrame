@@ -49,7 +49,7 @@ def test_session_start_does_nothing_with_the_flag_and_works_without(tmp_path):
     lines, log, _ = session_start(tmp_path / "a", flag=True)
     assert lines == [] and "desktop-mode flag present" in log
     lines, _, _ = session_start(tmp_path / "b", flag=False)
-    assert lines and lines[0].startswith("wtype")
+    assert lines and lines[0].startswith("swaybg") and lines[1].startswith("wtype")
 
 
 def test_flag_lives_on_the_boot_partition_in_every_script():

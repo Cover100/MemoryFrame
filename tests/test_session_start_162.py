@@ -53,10 +53,11 @@ def go(tmp_path, **kw):
     return lines, log, tmpfs
 
 
-def test_order_hide_first_then_swaybg_then_wrappers_before_processes(tmp_path):
+def test_order_swaybg_first_then_hide_then_wrappers_before_processes(tmp_path):
     lines, log, tmpfs = go(tmp_path)
-    assert lines[0] == "wtype -M alt -M logo h -m alt -m logo"                   # #155 pointer first
-    assert lines[1].startswith("swaybg -c #0E1311 -i ") and lines[1].endswith("static/boot/splash-A.png -m center")
+    # swaybg FIRST (the ink + lockup bridge after Plymouth quits retaining its splash), then the #155 pointer hide
+    assert lines[0].startswith("swaybg -c #0E1311 -i ") and lines[0].endswith("static/boot/splash-A.png -m center")
+    assert lines[1] == "wtype -M alt -M logo h -m alt -m logo"
     kills = [l for l in lines if l.startswith("pkill")]
     me = str(os.getuid())
     first = kills[:4]

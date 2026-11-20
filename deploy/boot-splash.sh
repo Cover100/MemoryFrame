@@ -10,6 +10,10 @@
 #                                        Change 2: the memoryframe Plymouth theme as the default, initramfs rebuilt for
 #                                        the running kernel (hash guard, timestamped backups, verify, roll back on any
 #                                        failure; deploy/boot-splash-plymouth.py). MEMORYFRAME_NO_PLYMOUTH=1 skips `on`.
+#   sudo deploy/boot-splash.sh handover on|off|status
+#                                        the Plymouth-to-session handover and the anti-flash Chromium policy (deploy/boot-handover.sh):
+#                                        lightdm drop-in (settle the dot, `plymouth quit --retain-splash`) + managed policy file.
+#                                        `off` (below) also runs `handover off`.
 #        deploy/boot-splash.sh status
 #   sudo deploy/boot-splash.sh desktop on|off
 #                                        the developer's way out: memoryframe-desktop.txt on the boot partition makes
@@ -31,13 +35,14 @@ STATE="${MEMORYFRAME_BOOT_STATE:-/etc/memoryframe/boot-splash.state}"
 PY3=/usr/bin/python3; [ -x "$PY3" ] || PY3="$(command -v python3 || echo python3)"
 EDIT=("$PY3" "$HERE/boot-splash-edit.py")
 PLYM=("$PY3" "$HERE/boot-splash-plymouth.py")
+HANDOVER=(bash "$HERE/boot-handover.sh")
 FLAG="$BOOT_DIR/memoryframe-desktop.txt"
 CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 UPDATER="$CONFIG_HOME/autostart/pi-apps-updater.desktop"
 USER_STATE="$CONFIG_HOME/memoryframe/boot-splash.state"     # the moved Pi-Apps file names (desktop user's)
 STAMP="$(date +%Y%m%d%H%M%S)"
 
-usage() { sed -n '2,26p' "$0" >&2; exit 2; }
+usage() { sed -n '2,31p' "$0" >&2; exit 2; }
 
 need_root() {
     if [ "$(id -u)" != 0 ] && [ -z "${MEMORYFRAME_BOOT_DIR:-}" ]; then
@@ -90,6 +95,7 @@ case "${1:-}" in
         need_root "$@"
         rc=0
         "${PLYM[@]}" off || rc=$?
+        "${HANDOVER[@]}" off || rc=$?
         "${EDIT[@]}" cmdline-off "$BOOT_DIR/cmdline.txt" "$STATE" || rc=$?
         "${EDIT[@]}" config-off "$BOOT_DIR/config.txt" "$STATE" || rc=$?
         exit "$rc" ;;
@@ -99,13 +105,20 @@ case "${1:-}" in
             status) exec "${PLYM[@]}" status ;;
             *) usage ;;
         esac ;;
+    handover)
+        case "${2:-}" in
+            on|off) need_root "$@"; exec "${HANDOVER[@]}" "$2" ;;
+            status) exec "${HANDOVER[@]}" status ;;
+            *) usage ;;
+        esac ;;
     status)
         echo "cmdline.txt: $(cat "$BOOT_DIR/cmdline.txt" 2>/dev/null || echo missing)"
         if [ -s "$STATE" ]; then echo "state: $(tr '\n' ' ' < "$STATE")"
         else echo "state: not installed"; fi
         if [ -e "$FLAG" ]; then echo "desktop flag: present (stock desktop, no kiosk)"; else echo "desktop flag: absent"; fi
         if [ -f "$UPDATER" ]; then echo "Pi-Apps updater: starts at login"; else echo "Pi-Apps updater: off or not installed"; fi
-        "${PLYM[@]}" status ;;
+        "${PLYM[@]}" status
+        "${HANDOVER[@]}" status ;;
     desktop)
         case "${2:-}" in
             on)  need_root "$@"

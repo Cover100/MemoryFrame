@@ -469,6 +469,7 @@ while true; do
     set -- --kiosk --user-data-dir="$PROFILE_DIR" --disk-cache-dir="$CACHE_DIR" \
         --disk-cache-size=33554432 --media-cache-size=33554432 --password-store=basic --no-first-run \
         --no-default-browser-check --noerrdialogs --disable-infobars \
+        --force-dark-mode \
         --disable-session-crashed-bubble --hide-crash-restore-bubble \
         --disable-background-networking --disable-component-update --disable-breakpad \
         --disable-features="$DISABLE_FEATURES" --autoplay-policy=no-user-gesture-required \

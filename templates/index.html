@@ -9,9 +9,6 @@
 
     <meta name="viewport"
           content="width=device-width, initial-scale=1.0">
-    <!-- #162: the frame page is dark only; the theme colour is the ink every boot layer uses (#0E1311) -->
-    <meta name="color-scheme" content="only dark">
-    <meta name="theme-color" content="#0E1311">
     {% if boot %}<!-- #162: FIRST stylesheet, so the page is ink before any other CSS has loaded -->
     <link rel="stylesheet" href="{{ static('boot.css') }}">{% endif %}
 

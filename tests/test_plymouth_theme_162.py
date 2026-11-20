@@ -5,6 +5,7 @@ per theme hash; backups (timestamped, hash checked) before the rebuild; every fa
 no change, lost module, no script.so, size, theme missing, lsinitramfs error) puts the initramfs, theme and
 plymouthd.conf back; refusals write nothing; `off` restores; df guard; cmdline.txt never changes."""
 import hashlib
+import importlib.util
 import os
 import re
 import shutil
@@ -21,7 +22,8 @@ HALE_CMDLINE = ("console=serial0,115200 console=tty1 root=PARTUUID=00000000-02 r
                 "rootwait quiet splash plymouth.ignore-serial-consoles cfg80211.ieee80211_regdom=AU\n")
 CONFIG = "# Automatically load initramfs files, if found\nauto_initramfs=1\n\ndtoverlay=vc4-kms-v3d\n[all]\n"
 CONF_ORIG = "# Hale's plymouthd.conf\n[Daemon]\nTheme=pix\nShowDelay=0\n"
-WREN_SHA = {"lockup.png": "47eeb9b6c88ec533c9f36af2ee64079e08c2ae5aaab261cc8d0ce9600f739508",
+WREN_SHA = {"lockup-nodot.png": "7c11740e06876176a61ee49bdd24606abeb40668b568fa50a4b585c337b80de9",   # pulse revision, 20 Nov
+            "dot.png": "f8d2d9fc54e09f0c96086a68bb9804506a0e8d24ca0d5ab1e23887d023f5ce8f",
             "error.png": "2ef02ebbb9778244d055189ce37275dd803d196084666c99d25a287978df7331"}
 
 # ---------------- the fakes ----------------
@@ -152,7 +154,7 @@ def snapshot(*roots):
 
 def test_theme_files_keys_and_hashes():
     names = sorted(p.name for p in THEME.iterdir())
-    assert names == ["error.png", "lockup.png", "memoryframe.plymouth", "memoryframe.script"]
+    assert names == ["dot.png", "error.png", "lockup-nodot.png", "memoryframe.plymouth", "memoryframe.script"]
     for name, sha in WREN_SHA.items():
         assert sh_sha(THEME / name) == sha, name                                       # Wren's PNGs byte for byte
     assert sum(p.stat().st_size for p in THEME.iterdir()) < 200 * 1024
@@ -164,31 +166,120 @@ def test_theme_files_keys_and_hashes():
 
 def test_png_sizes_and_alpha():
     from PIL import Image
-    for name, size in (("lockup.png", (360, 172)), ("error.png", (480, 253))):
+    for name, size in (("lockup-nodot.png", (360, 172)), ("dot.png", (28, 28)), ("error.png", (480, 253))):
         im = Image.open(THEME / name)
         assert im.size == size and im.mode == "RGBA", name
 
 
-def test_script_is_static_centred_ink_with_the_e4_hook():
+def script_code():
     src = (THEME / "memoryframe.script").read_text()
-    code = "\n".join(l.split("#", 1)[0] for l in src.splitlines())
+    return "\n".join(l.split("#", 1)[0] for l in src.splitlines())
+
+
+def test_installer_ships_exactly_the_theme_files():
+    """boot-splash-plymouth.py FILES must list every file the script loads (a missing PNG = a blank splash at boot)."""
+    spec = importlib.util.spec_from_file_location("bsp", ROOT / "deploy" / "boot-splash-plymouth.py")
+    bsp = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bsp)
+    assert sorted(bsp.FILES) == sorted(p.name for p in THEME.iterdir())
+    for img in re.findall(r'Image\("([^"]+)"\)', script_code()):
+        assert img in bsp.FILES, img
+
+
+def test_script_is_centred_ink_with_a_pulsing_dot_and_the_message_hooks():
+    code = script_code()
     assert code.count("{") == code.count("}") and code.count("(") == code.count(")")
     assert code.count("Window.SetBackgroundTopColor(0.0549, 0.0745, 0.0667)") == 1           # #0E1311, flat
     assert code.count("Window.SetBackgroundBottomColor(0.0549, 0.0745, 0.0667)") == 1
-    assert 'Image("lockup.png")' in code and 'Image("error.png")' in code
+    for img in ("lockup-nodot.png", "dot.png", "error.png"):
+        assert f'Image("{img}")' in code
     assert "Window.GetWidth()" in code and "Window.GetHeight()" in code
-    assert "Plymouth.SetMessageFunction(message_callback)" in code
-    assert re.search(r'text == "memoryframe-e4"\) show\(error_image\)', code)
-    assert "SetRefreshFunction" not in code and "Image.Text" not in code                    # static A, no text
+    # the hook main shipped and Hale proved on the frame (E3/E4 pass on device): keep it, do not rename it
+    assert "Plymouth.SetMessageFunction(message_callback)" in code and "SetDisplayMessageFunction" not in code
+    assert "Plymouth.SetRefreshFunction(refresh_callback)" in code and "Plymouth.SetRefreshRate(FPS)" in code
+    assert re.search(r'text == "memoryframe-e4"\) show_error\(\)', code)
+    assert re.search(r'text == "memoryframe-ok"\) show_lockup\(\)', code)
+    assert '"memoryframe-settle"' in code
+    assert "Image.Text" not in code                                                         # no text rendering
     calls = set(re.findall(r"\b([A-Z][A-Za-z]*\.[A-Z][A-Za-z]*)\(", code))
-    assert calls <= {"Window.SetBackgroundTopColor", "Window.SetBackgroundBottomColor", "Window.GetWidth",
-                     "Window.GetHeight", "Plymouth.SetMessageFunction", "Plymouth.SetDisplayNormalFunction"}, calls
+    # everything used exists in plymouth 24.004.60's script libraries (checked against its source, and run in plymouthd's x11 renderer)
+    assert calls <= {"Window.SetBackgroundTopColor", "Window.SetBackgroundBottomColor", "Window.GetWidth", "Window.GetHeight",
+                     "Plymouth.SetMessageFunction", "Plymouth.SetDisplayNormalFunction", "Plymouth.SetRefreshFunction",
+                     "Plymouth.SetRefreshRate", "Math.Int", "Math.Cos"}, calls
+    assert "Math.Pi" in code                                                                  # defined by script-lib-math.script
+
+
+def test_message_callback_handles_e4_ok_and_settle():
+    """E4 must keep working (proved on the frame): e4 shows the error image and stops the pulse, ok returns to the lockup and
+    restarts the pulse, settle (only while pulsing) eases the dot to rest; the refresh callback does nothing in error mode."""
+    code = script_code()
+    m = re.search(r"fun message_callback\(text\) \{(.*?)\n\}", code, re.S)
+    assert m
+    body = m.group(1)
+    assert re.search(r'text == "memoryframe-e4"\) show_error\(\);', body)
+    assert re.search(r'text == "memoryframe-ok"\) show_lockup\(\);', body)
+    assert re.search(r'text == "memoryframe-settle" && mode == "pulse"\)', body)
+    err = re.search(r"fun show_error\(\) \{(.*?)\n\}", code, re.S).group(1)
+    assert 'mode = "error"' in err and "dot.SetOpacity(0)" in err and "lockup.SetImage(error_image)" in err
+    lk = re.search(r"fun show_lockup\(\) \{(.*?)\n\}", code, re.S).group(1)
+    assert 'mode = "pulse"' in lk and "lockup.SetImage(lockup_image)" in lk and "place_dot(1, 1)" in lk
+    assert re.search(r'fun refresh_callback\(\) \{\s*if \(mode == "error"', code)           # the pulse never touches the E4 screen
+    assert "SetDisplayNormalFunction(normal_callback)" in code
+
+
+def const(name):
+    m = re.search(rf"^{name}\s*=\s*([0-9.]+);", script_code(), re.M)
+    assert m, name
+    return float(m.group(1))
+
+
+def pulse(frames):
+    """The script's pulse_dip/place_dot maths in Python: (opacity, size in px) after `frames` refreshes."""
+    import math
+    phase = frames / (const("FPS") * const("PERIOD"))
+    frac = phase - int(phase)
+    d = (1 - math.cos(2 * math.pi * frac)) / 2
+    scale = 1 - (1 - const("S_MIN")) * d
+    return 1 - (1 - const("O_MIN")) * d, int(const("DOT_PX") * scale + 0.5)
+
+
+def test_pulse_numbers_are_wrens_spec():
+    """wren-notes.md section 4: starts and ends at rest (opacity 1, 28 px), bottom opacity .3 at 21 px, every 2.8 s, only the dot."""
+    assert (const("PERIOD"), const("O_MIN"), const("S_MIN"), const("DOT_PX"), const("FPS")) == (2.8, 0.3, 0.75, 28, 50)
+    period = int(const("FPS") * const("PERIOD"))
+    assert pulse(0) == (1.0, 28) and pulse(period) == (1.0, 28)                          # rest at both ends
+    op, px = pulse(period // 2)
+    assert abs(op - 0.3) < 1e-9 and px == 21                                              # the bottom
+    sizes = {pulse(f)[1] for f in range(period)}
+    assert sizes == set(range(21, 29))                                                    # every pre-scaled size is used, none else
+    code = script_code()
+    assert "dots[DOT_PX] = dot_image;" in code and "dot_image.Scale(s, s)" in code           # pre-scaled once; 28 is the PNG itself
+    assert code.count(".Scale(") == 1 and "min_px" in code
+
+
+def test_opacity_only_fallback_is_one_constant():
+    """S_MIN = 1 makes min_px = 28, so no scaled image is ever made or used (only SetOpacity changes)."""
+    src = (THEME / "memoryframe.script").read_text()
+    assert re.search(r"^S_MIN\s*=\s*0\.75;.*OPACITY-ONLY", src, re.M)
+    assert "for (s = min_px; s < DOT_PX; s++)" in script_code()
+    assert int(28 * 1 + 0.5) == 28
+
+
+def test_fast_settle_is_about_half_a_second():
+    assert const("SETTLE_S") == 0.5
+    code = script_code()
+    assert "settle_frames = Math.Int(SETTLE_S * FPS + 0.5);" in code
+    assert re.search(r'text == "memoryframe-settle" && mode == "pulse"\) \{ settle_from = cur_d;', code)
 
 
 def test_bootwatch_sends_the_message_the_theme_listens_for():
     bw = (ROOT / "deploy" / "bootwatch.sh").read_text()
     assert "plymouth display-message --text=memoryframe-e4" in bw and '"$theme" = memoryframe' in bw
     assert '"memoryframe-e4"' in (THEME / "memoryframe.script").read_text()
+    # the handoff sends settle, then quits keeping the splash (deploy/plymouth-handoff.sh)
+    h = (ROOT / "deploy" / "plymouth-handoff.sh").read_text()
+    assert "display-message --text=memoryframe-settle" in h and "quit --retain-splash" in h
+    assert '"memoryframe-settle"' in (THEME / "memoryframe.script").read_text()
 
 
 # ---------------- on ----------------
@@ -421,7 +512,7 @@ def test_off_never_copies_the_first_backup_after_a_kernel_update(pl, tmp_path):
     k1_bak = pl.st()["plymouth_initramfs_bak"]
     dep = tmp_path / "repo" / "deploy"
     shutil.copytree(ROOT / "deploy", dep)
-    (dep / "plymouth" / "memoryframe" / "lockup.png").write_bytes(b"v2")
+    (dep / "plymouth" / "memoryframe" / "dot.png").write_bytes(b"v2")
     k2 = "6.18.40+rpt-rpi-v8"
     assert pl.run("plymouth", "on", deploy=dep, MEMORYFRAME_KERNEL=k2).returncode == 0
     st = pl.st()

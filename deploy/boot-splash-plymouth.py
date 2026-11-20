@@ -51,7 +51,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 THEME = "memoryframe"
 SRC = HERE / "plymouth" / THEME
-FILES = ("memoryframe.plymouth", "memoryframe.script", "lockup.png", "error.png")
+FILES = ("memoryframe.plymouth", "memoryframe.script", "lockup-nodot.png", "dot.png", "error.png")
 FLAVOURS = (("-v8", "initramfs8"), ("-2712", "initramfs_2712"), ("-v7l", "initramfs7l"), ("-v7", "initramfs7"))
 SIZE_SLACK = 0.30
 FREE_FACTOR = 3

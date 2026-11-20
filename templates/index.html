@@ -9,6 +9,8 @@
 
     <meta name="viewport"
           content="width=device-width, initial-scale=1.0">
+    {% if boot %}<!-- #162: FIRST stylesheet, so the page is ink before any other CSS has loaded -->
+    <link rel="stylesheet" href="{{ static('boot.css') }}">{% endif %}
 
 
     <title>
@@ -24,7 +26,6 @@
     <link rel="stylesheet" href="{{ static('tokens.css') }}">
     <link rel="stylesheet"
           href="{{ static('style.css') }}">
-    {% if boot %}<link rel="stylesheet" href="{{ static('boot.css') }}">{% endif %}
 
 </head>
 
@@ -36,7 +37,7 @@
 <div id="bootSplash" role="status" aria-label="Memory Frame is starting">
     <div class="bsLockup">
         <div class="bsMark" aria-hidden="true"><div class="bsDot"></div></div>
-        <div class="bsWord">Memory Frame</div>
+        <img class="bsWord" alt="" width="282" height="35" src="{{ boot_wordmark }}">   {# Wren's wordmark PNG as a data URI (CSP img-src allows data:): no font to wait for #}
     </div>
 </div>
 {% endif %}

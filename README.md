@@ -204,6 +204,20 @@ What it does:
     in `config.txt` (assumed: the Pi kernel then mounts the SD root without an initramfs and Plymouth starts late);
     or (3) add `initramfs initramfs8.memoryframe-bak.<time> followkernel` under `[all]` in `config.txt`; or
     (4) delete `splash` from `cmdline.txt` (Plymouth off).
+  - *Handover and pulse (refs #162):* the Plymouth lockup's dot now pulses (opacity 1 to .3, size 28 to 21 px, 2.8 s; only the
+    dot moves) and `splash.html` / the app overlay use the same numbers, so the dot keeps breathing from power-on to the first
+    photo. `sudo deploy/boot-splash.sh handover on` (run by `install.sh`) installs three files, each idempotent and removed by
+    `handover off`, `boot-splash.sh off` and `uninstall.sh`: `/etc/systemd/system/lightdm.service.d/memoryframe-handoff.conf`
+    (`ExecStartPre=-` the root copy `/usr/local/sbin/memoryframe-plymouth-handoff`, which eases the dot to rest in about 0.5 s
+    with `plymouth display-message --text=memoryframe-settle` and then runs `plymouth quit --retain-splash`, so lightdm's own
+    plain `plymouth quit` no longer blanks the screen) and `/etc/chromium/policies/managed/memoryframe-boot.json` (Chromium
+    `BrowserThemeColor` `#0E1311`, `BrowserColorScheme` dark, so its first frame is ink; `kiosk.sh` also passes
+    `--force-dark-mode`). `session-start.sh` now starts `swaybg` first. `swaybg` is a prerequisite (`install.sh` installs it;
+    `uninstall.sh` leaves it, `sudo apt-get remove swaybg` removes it); without it nothing shows between Plymouth and Chromium.
+    Takes effect at the next boot. The boot wordmark is `static/boot/wordmark.png` (282x35), drawn 1:1 from a data: URI in
+    `splash.html` and the overlay, so no font has to load. `MIN_DWELL_S` at the top of the script in `splash.html` (0 = off,
+    the default) is the least time the splash page stays up once the app answers; `?dwell=<ms>` overrides it for a test.
+    Not covered: Chromium's own ~8 s cold start before its first paint (see the PR).
   - **Rollback:** `./deploy/uninstall.sh` (removes the autostart block, runs `sudo deploy/boot-splash.sh off`,
     restores the Pi-Apps entry, removes the boot watch; apt packages stay), then reboot. To see boot text again from a
     PC: delete `quiet logo.nologo vt.global_cursor_default=0 loglevel=3` from `cmdline.txt` on the boot partition

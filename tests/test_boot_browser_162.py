@@ -144,7 +144,7 @@ def test_splash_late_line_and_breath(bare):
     assert evaluate(bare, "document.querySelector('.late').textContent") == "Getting your photos ready…"
     a = json.loads(evaluate(bare, """JSON.stringify(document.getAnimations().filter(a=>a.animationName==='breathe')
         .map(a=>({d:a.effect.getTiming().duration, delay:a.effect.getTiming().delay, it:a.effect.getTiming().iterations})))"""))
-    assert a == [{"d": 3600, "delay": -1800, "it": None}] or a == [{"d": 3600, "delay": -1800, "it": "Infinity"}]
+    assert a == [{"d": 2800, "delay": 0, "it": None}] or a == [{"d": 2800, "delay": 0, "it": "Infinity"}]   # Wren: 2.8 s, no delay
     assert evaluate(bare, "getComputedStyle(document.body).cursor") == "none"
     assert evaluate(bare, "document.querySelectorAll('button,a,input').length") == 0
 
@@ -223,6 +223,36 @@ def test_overlay_fade_is_600_ms_and_matches_the_splash_lockup(page, server):
     want = Image.open(WREN_A).convert("RGB")
     gb, wb = lockup_box(got), lockup_box(want)
     assert all(abs(g - w) <= 3 for g, w in zip(gb, wb)), (gb, wb)
+
+
+def wordmark_diff(got):
+    """Max per-channel difference between the 282x35 crop of a 800x480 screenshot at (259,289) and wordmark.png on ink."""
+    from PIL import Image
+    wm = Image.open(ROOT / "static" / "boot" / "wordmark.png").convert("RGBA")
+    want = Image.new("RGBA", wm.size, INK + (255,))
+    want.alpha_composite(wm)
+    crop = got.crop((259, 289, 259 + 282, 289 + 35)).convert("RGBA")
+    return max(abs(a - b) for a, b in zip(crop.tobytes(), want.tobytes()))
+
+
+def test_splash_wordmark_is_wrens_png_1_to_1_at_259_289(bare):
+    bare.call("Emulation.setEmulatedMedia", {"features": [{"name": "prefers-reduced-motion", "value": "reduce"}]})
+    nav(bare, splash_url(dead_url()))
+    wait_js(bare, "document.querySelector('img.word').complete && document.querySelector('img.word').naturalWidth === 282")
+    bare.pump(0.3)
+    assert json.loads(evaluate(bare, "JSON.stringify(((r)=>[r.x,r.y,r.width,r.height])(document.querySelector('img.word').getBoundingClientRect()))")) == [259, 289, 282, 35]
+    assert wordmark_diff(shot(bare)) <= 4
+
+
+def test_overlay_wordmark_is_wrens_png_1_to_1_at_259_289(page, server):
+    page.call("Network.enable")
+    page.call("Network.setBlockedURLs", {"urls": ["*/uploads/*"]})
+    page.call("Emulation.setEmulatedMedia", {"features": [{"name": "prefers-reduced-motion", "value": "reduce"}]})
+    nav(page, server + "?boot=1&bootfs=10000")
+    wait_js(page, "!!document.querySelector('#bootSplash img.bsWord') && document.querySelector('#bootSplash img.bsWord').naturalWidth === 282")
+    page.pump(0.5)
+    assert json.loads(evaluate(page, "JSON.stringify(((r)=>[r.x,r.y,r.width,r.height])(document.querySelector('#bootSplash img.bsWord').getBoundingClientRect()))")) == [259, 289, 282, 35]
+    assert wordmark_diff(shot(page)) <= 4
 
 
 def test_csp_header_unchanged_with_boot_1(server):

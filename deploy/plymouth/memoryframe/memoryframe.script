@@ -1,28 +1,95 @@
-# Memory Frame Plymouth theme (Wren, #162). Static: no refresh function, no animation, no text rendering.
-# Background #0E1311 = (14,19,17)/255. Top and bottom are the same colour, so it is flat (no gradient, no banding).
+# Memory Frame Plymouth theme (Wren, #162, pulse revision 20 Nov; Kit's review fixes). Only the brass dot moves; the frame
+# outline and the name never do. Spec: MemoryFrame-compare/boot-splash-20261120/wren-notes.md section 4.
+# Background #0E1311 = (14,19,17)/255, flat.
 Window.SetBackgroundTopColor(0.0549, 0.0745, 0.0667);
 Window.SetBackgroundBottomColor(0.0549, 0.0745, 0.0667);
 
-lockup_image = Image("lockup.png");     # 360x172 RGBA, transparent around the mark and the name
-error_image  = Image("error.png");      # 480x253 RGBA, "!" mark + 2 plain lines + "Error E4"
+# ---- the pulse (all tunables here) ----
+PI       = Math.Pi;   # defined by plymouth's script library (script-lib-math.script)
+PERIOD   = 2.8;       # seconds per pulse
+FPS      = 50;        # plymouth's script plugin default refresh rate; set explicitly below so the maths and the timer agree
+O_MIN    = 0.3;       # dot opacity at the bottom of the pulse (rest = 1)
+S_MIN    = 0.75;      # dot scale at the bottom of the pulse (rest = 1 = 28 px). 1 = OPACITY-ONLY fallback: no scaling at all
+SETTLE_S = 0.5;       # `memoryframe-settle`: ease the dot back to rest in this long (fast settle), then hold it still
+DOT_PX   = 28;        # dot.png is 28x28; at rest it sits at (166,36) in the 360x172 lockup, centre (180,50)
+Plymouth.SetRefreshRate(FPS);
 
-sprite = Sprite();
+lockup_image = Image("lockup-nodot.png");   # 360x172: the frame outline and the name; the dot hole is filled forest-900
+dot_image    = Image("dot.png");            # 28x28 brass dot
+error_image  = Image("error.png");          # 480x253 RGBA, "!" mark + 2 plain lines + "Error E4"
 
-fun show(image) {
-  sprite.SetImage(image);
-  # centre on the real mode size (800x480 here), so a different mode still centres
-  sprite.SetX(Window.GetWidth()  / 2 - image.GetWidth()  / 2);
-  sprite.SetY(Window.GetHeight() / 2 - image.GetHeight() / 2);
-  sprite.SetZ(10);
+# One image per whole pixel size, made once now (no allocation while it runs). Size 28 is the PNG itself, not a resampled copy,
+# so the dot at rest is byte-identical to the static PNGs and to swaybg's.
+min_px = Math.Int(DOT_PX * S_MIN + 0.5);
+dots[DOT_PX] = dot_image;
+for (s = min_px; s < DOT_PX; s++) dots[s] = dot_image.Scale(s, s);
+
+lock_x = Window.GetWidth()  / 2 - lockup_image.GetWidth()  / 2;
+lock_y = Window.GetHeight() / 2 - lockup_image.GetHeight() / 2;
+lockup = Sprite(lockup_image); lockup.SetX(lock_x); lockup.SetY(lock_y); lockup.SetZ(10);
+dot    = Sprite(dots[DOT_PX]);  dot.SetZ(11);
+
+mode = "pulse";            # pulse | settle | rest | error
+frame = 0;                 # frames since the pulse started (plymouth has no clock; 1/FPS s each)
+settle_frames = Math.Int(SETTLE_S * FPS + 0.5);
+settle_frame = 0;
+settle_from = 0;           # how far into the dip (0 = rest, 1 = bottom) the dot was when settle began
+cur_d = 0;                 # the dip now, 0..1
+last_size = 0;
+
+fun place_dot(opacity, scale) {
+  size = Math.Int(DOT_PX * scale + 0.5);
+  if (size < min_px) size = min_px;
+  if (size > DOT_PX) size = DOT_PX;
+  if (size != last_size) { dot.SetImage(dots[size]); last_size = size; }
+  dot.SetX(lock_x + 180 - Math.Int(size / 2));    # keep the centre at (180,50) of the lockup
+  dot.SetY(lock_y + 50  - Math.Int(size / 2));
+  dot.SetOpacity(opacity);
 }
-show(lockup_image);
 
-# Error: `plymouth display-message --text="memoryframe-e4"` swaps in the error image; `--text="memoryframe-ok"` or normal display returns.
-# ASSUMED (not run on the Pi): the callback name and that plymouthd 24.004.60 passes the text through unchanged.
+fun pulse_dip(frames) {                            # 0 at rest, 1 at the bottom; cosine, so it starts and ends at rest
+  phase = frames / (FPS * PERIOD);
+  frac  = phase - Math.Int(phase);
+  return (1 - Math.Cos(2 * PI * frac)) / 2;
+}
+
+fun refresh_callback() {
+  if (mode == "error" || mode == "rest") return;
+  if (mode == "pulse") {
+    frame++;
+    cur_d = pulse_dip(frame);
+  } else {                                         # settle: cosine ease from where the dot is to rest, then stop
+    settle_frame++;
+    if (settle_frame >= settle_frames) { mode = "rest"; cur_d = 0; }
+    else cur_d = settle_from * (1 + Math.Cos(PI * settle_frame / settle_frames)) / 2;
+  }
+  place_dot(1 - (1 - O_MIN) * cur_d, 1 - (1 - S_MIN) * cur_d);
+}
+Plymouth.SetRefreshFunction(refresh_callback);
+place_dot(1, 1);
+
+fun show_lockup() {
+  lockup.SetImage(lockup_image); lockup.SetX(lock_x); lockup.SetY(lock_y);
+  mode = "pulse"; frame = 0; cur_d = 0; last_size = 0; place_dot(1, 1);
+}
+fun show_error() {                                 # still: no pulse, no dot
+  mode = "error"; dot.SetOpacity(0);
+  lockup.SetImage(error_image);
+  lockup.SetX(Window.GetWidth()  / 2 - error_image.GetWidth()  / 2);
+  lockup.SetY(Window.GetHeight() / 2 - error_image.GetHeight() / 2);
+}
+
+# `plymouth display-message --text=<one of these>`. Plymouth.SetMessageFunction is the hook main already shipped and Hale proved on the
+# frame (E3/E4 pass); script-lib-plymouth.script defines it as an alias of Plymouth.SetDisplayMessageFunction. Kept as is.
+#   memoryframe-e4      the error image (bootwatch.sh)
+#   memoryframe-ok      back to the lockup and the pulse
+#   memoryframe-settle  ease the dot to rest in SETTLE_S and hold it there: send it just before `plymouth quit --retain-splash`
+#                       (deploy/plymouth-handoff.sh) so the last frame is the rest state, which is what swaybg shows next
 fun message_callback(text) {
-  if (text == "memoryframe-e4") show(error_image);
-  else if (text == "memoryframe-ok") show(lockup_image);
+  if (text == "memoryframe-e4") show_error();
+  else if (text == "memoryframe-ok") show_lockup();
+  else if (text == "memoryframe-settle" && mode == "pulse") { settle_from = cur_d; settle_frame = 0; mode = "settle"; }
 }
 Plymouth.SetMessageFunction(message_callback);
-fun normal_callback() { show(lockup_image); }
+fun normal_callback() { if (mode == "error") show_lockup(); }
 Plymouth.SetDisplayNormalFunction(normal_callback);

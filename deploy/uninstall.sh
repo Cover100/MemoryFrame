@@ -18,6 +18,7 @@ sudo rm -f /etc/memoryframe/hotspot.conf   # holds the hotspot password
 # #162: the quiet-boot tokens and config.txt line we added (exactly those; recorded in /etc/memoryframe/
 # boot-splash.state), the Plymouth theme (previous theme back, initramfs rebuilt), the desktop flag, and the E4 boot watch. Boot text and the stock desktop are back after a reboot.
 sudo bash "$(dirname "$0")/boot-splash.sh" off || echo "WARNING: run 'sudo deploy/boot-splash.sh off' by hand"
+# (`off` also removes the boot handover: the lightdm drop-in, the root copy of the handoff script and the Chromium policy file.)
 sudo bash "$(dirname "$0")/boot-splash.sh" desktop off || true
 sudo systemctl disable memoryframe-bootwatch.service 2>/dev/null || true
 sudo rm -f /etc/systemd/system/memoryframe-bootwatch.service /usr/local/sbin/memoryframe-bootwatch
@@ -37,7 +38,7 @@ python3 "$(dirname "$0")/labwc-autostart.py" remove "${XDG_CONFIG_HOME:-$HOME/.c
     || echo "WARNING: remove the memoryframe-managed lines from ~/.config/labwc/autostart by hand"
 bash "$(dirname "$0")/boot-splash.sh" pi-apps-updater on || true
 pkill -f deploy/kiosk.sh || true
-echo "Memory Frame service and kiosk autostart removed."
+echo "Memory Frame service and kiosk autostart removed. (swaybg stays installed: sudo apt-get remove swaybg)"
 sudo rm -f /etc/sudoers.d/memoryframe-poweroff
 sudo rm -f /usr/lib/systemd/system-shutdown/memoryframe-safe-screen
 sudo rm -rf /usr/lib/memoryframe

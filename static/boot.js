@@ -9,10 +9,10 @@
     window.mfBootDone = function(){};
     if(!el){ return; }
     const q = new URLSearchParams(location.search);
-    // Continue the splash page's breath where it was (bp = ms into the 3600 ms cycle); CSSOM, so no inline style.
+    // Continue the splash page's breath where it was (bp = ms into the 2800 ms cycle); CSSOM, so no inline style.
     const bp = Number(q.get("bp"));
     const dot = el.querySelector(".bsDot");
-    if(dot && Number.isInteger(bp) && bp >= 0 && bp <= 3600){
+    if(dot && Number.isInteger(bp) && bp >= 0 && bp <= 2800){
         dot.style.animationDelay = (-bp) + "ms";
     }
     const fs = Number(q.get("bootfs"));                            // test override, 100 ms .. 10 s

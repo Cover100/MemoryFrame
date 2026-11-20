@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # #162 S3: the first thing of the desktop session. Started by the marked block in ~/.config/labwc/autostart
 # (deploy/labwc-autostart.py, added by install.sh): `.../deploy/session-start.sh &`.
-#  1. presses the #155 hide-pointer keybind (Alt+Super+H, wtype) FIRST, so no pointer shows;
-#  2. starts swaybg with Wren's still splash (static/boot/splash-A.png, byte-for-byte) centred on ink #0E1311;
+#  1. starts swaybg with Wren's still splash (static/boot/splash-A.png, byte-for-byte) centred on ink #0E1311, FIRST;
+#  2. presses the #155 hide-pointer keybind (Alt+Super+H, wtype), after the splash so a slow wtype delays nothing visible;
 #  3. for 20 s, every 0.3 s, stops the stock desktop and panel: the lwrespawn wrappers first (so they can't restart
 #     them), then pcmanfm-pi / pcmanfm / wf-panel-pi. Only this user's processes with exactly those names; never
 #     Chromium, kiosk.sh or labwc.
@@ -37,24 +37,25 @@ if [ -z "${WAYLAND_DISPLAY:-}" ] && [ "${XDG_SESSION_TYPE:-}" != wayland ]; then
     exit 0
 fi
 
-# 1. #155 pointer first (labwc draws it from session start).
-if command -v wtype >/dev/null 2>&1; then
-    if command -v timeout >/dev/null 2>&1; then timeout 5 wtype -M alt -M logo h -m alt -m logo; rc=$?
-    else wtype -M alt -M logo h -m alt -m logo; rc=$?; fi
-    if [ "$rc" = 0 ]; then log "hide-cursor: pointer hidden"; else log "hide-cursor: wtype failed with status $rc"; fi
-else
-    log "hide-cursor: skipped (wtype not installed)"
-fi
-
-# 2. The still splash under everything (a plain ink root if swaybg or the image is missing).
+# 1. The still splash FIRST (the very first thing painted once labwc is up; nothing waits for it). A plain ink root if swaybg or the image is
+#    missing: swaybg is an install prerequisite (install.sh); without it the screen stays plain until Chromium paints.
 if ! command -v swaybg >/dev/null 2>&1; then
-    log "swaybg: not installed: plain background until Chromium paints"
+    log "swaybg: not installed: plain background until Chromium paints (sudo apt-get install swaybg)"
 elif [ ! -f "$PNG" ]; then
     log "swaybg: $PNG missing: plain background until Chromium paints"
 else
     swaybg -c '#0E1311' -i "$PNG" -m center >/dev/null 2>&1 &
     printf '%s\n' "$!" > "$SWAYBG_PIDFILE" 2>/dev/null
     log "swaybg: splash shown (pid $!)"
+fi
+
+# 2. #155 pointer (labwc draws it from session start). After the splash, so a slow wtype delays nothing visible.
+if command -v wtype >/dev/null 2>&1; then
+    if command -v timeout >/dev/null 2>&1; then timeout 5 wtype -M alt -M logo h -m alt -m logo; rc=$?
+    else wtype -M alt -M logo h -m alt -m logo; rc=$?; fi
+    if [ "$rc" = 0 ]; then log "hide-cursor: pointer hidden"; else log "hide-cursor: wtype failed with status $rc"; fi
+else
+    log "hide-cursor: skipped (wtype not installed)"
 fi
 
 # 3. Stop the desktop and the panel; the respawn wrappers first. pkill -u: this user only; -x: exact names.

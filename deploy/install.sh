@@ -97,9 +97,10 @@ sudo apt-get install -y ffmpeg || echo "WARNING: ffmpeg could not be installed: 
 # wtype (#155): kiosk.sh presses labwc's hide-pointer keybind with it. Not fatal: without it the pointer shows
 # until the first touch, as before.
 sudo apt-get install -y wtype || echo "WARNING: wtype could not be installed: the mouse pointer stays visible until the first touch (sudo apt-get install wtype)." >&2
-# swaybg (#162): session-start.sh shows the still splash with it from the first frame of the desktop session. Not fatal:
-# without it the background is plain until Chromium paints the splash page.
-sudo apt-get install -y swaybg || echo "WARNING: swaybg could not be installed: no still splash before Chromium paints (sudo apt-get install swaybg)." >&2
+# swaybg (#162): session-start.sh shows the still splash with it from the first frame of the desktop session; it is the bridge between
+# Plymouth and Chromium (about 8 s on the frame). A prerequisite of the boot splash, but not fatal: without it the screen is plain ink
+# until Chromium paints. uninstall.sh leaves the package installed (sudo apt-get remove swaybg).
+sudo apt-get install -y swaybg || echo "WARNING: swaybg could not be installed: no still splash between Plymouth and Chromium, a plain screen instead (sudo apt-get install swaybg)." >&2
 # prlimit/taskset/ionice (util-linux) cap and pin each conversion; they ship with Raspberry Pi OS. Without
 # prlimit a conversion still runs, but without its 1.5 GiB address-space cap.
 command -v prlimit >/dev/null 2>&1 || echo "WARNING: prlimit (util-linux) is missing: video conversions run without their memory cap." >&2
@@ -402,6 +403,13 @@ fi
 if ! sudo env MEMORYFRAME_BOOT_DIR="${MEMORYFRAME_BOOT_DIR:-}" MEMORYFRAME_NO_PLYMOUTH="${MEMORYFRAME_NO_PLYMOUTH:-}" \
         bash "$SRC_DIR/deploy/boot-splash.sh" plymouth on; then
     echo "WARNING: the Memory Frame boot theme was not set up (see above): the previous boot theme stays" >&2
+fi
+# Boot handover (#162, refs #162): lightdm.service.d/memoryframe-handoff.conf (ExecStartPre: settle the Plymouth dot, then `plymouth quit
+# --retain-splash`, so the splash stays up through the login instead of a ~5 s black screen) and the Chromium managed policy file
+# (browser theme colour #0E1311, dark scheme: Chromium's own first frame is ink, not light grey). Idempotent; undo: sudo
+# deploy/boot-splash.sh handover off (boot-splash.sh off and uninstall.sh run it). Takes effect at the next boot.
+if ! sudo env MEMORYFRAME_BOOT_DIR="${MEMORYFRAME_BOOT_DIR:-}" bash "$SRC_DIR/deploy/boot-splash.sh" handover on; then
+    echo "WARNING: the boot handover was not set up (see above): a black screen between Plymouth and the session, and Chromium's light first frame" >&2
 fi
 # The session: ONE marked block at the top of the desktop user's ~/.config/labwc/autostart runs session-start.sh
 # (labwc -m: added to the system autostart, which is never touched). Other lines are kept; first edit keeps

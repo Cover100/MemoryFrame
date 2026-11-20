@@ -143,7 +143,7 @@ def test_flags_profile_and_restart(env):
     assert len(runs) >= 2                          # restarted after exit
     args = runs[0]
     for flag in ["--kiosk", "--password-store=basic", "--no-first-run", "--noerrdialogs",
-                 "--disable-infobars", "--disable-session-crashed-bubble",
+                 "--disable-infobars", "--force-dark-mode", "--disable-session-crashed-bubble",
                  "--autoplay-policy=no-user-gesture-required", "--ozone-platform-hint=auto",
                  f"--user-data-dir={state}/chromium-profile", "--disable-gpu"]:
         assert flag in args, flag

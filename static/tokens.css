@@ -68,6 +68,14 @@
   /* ---- Space, shape, targets ---- */
   --mf-s-1: 4px;  --mf-s-2: 8px;  --mf-s-3: 12px; --mf-s-4: 16px;
   --mf-s-5: 24px; --mf-s-6: 32px; --mf-s-7: 48px;
+  /* #171: named values already used on phone pages, so intro and card stack share them */
+  --mf-s-page-y: 20px;                 /* main / .page padding under the header */
+  --mf-s-page-x: var(--mf-s-4);        /* 16px side padding */
+  --mf-s-page-bottom: var(--mf-s-6);   /* 32px */
+  --mf-s-page-dense-y: var(--mf-s-3);  /* 12px, Settings */
+  --mf-s-copy: 14px;                   /* body / intro paragraph bottom margin */
+  --mf-s-card: var(--mf-s-4);          /* 16px gap between cards */
+  --mf-s-card-dense: 10px;             /* gap between cards on dense pages (Settings) */
   --mf-r-sm: 8px;    /* inputs, chips */
   --mf-r-md: 12px;   /* buttons */
   --mf-r-lg: 16px;   /* cards, dialogs */

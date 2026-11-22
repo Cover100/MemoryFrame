@@ -1,6 +1,6 @@
 /* #102 video (phone/11-VIDEO.md, Wren's video.css). Only on Library and Upload when videos are on.
    Dark phone tokens only; no runtime blur, no animation. */
-.mf-phone .upnote { font-size: var(--mf-p-small); color: var(--mfp-text-2); margin: 8px 2px 0; line-height: 1.35; }
+.mf-phone .upnote { font-size: var(--mf-p-small); color: var(--mfp-text-2); margin: 0 0 var(--mf-s-copy); line-height: 1.35; }
 .mf-phone .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 6px; }
 .mf-phone .chip { all: unset; box-sizing: border-box; min-height: 48px; padding: 0 16px; border-radius: 24px; display: inline-flex;
   align-items: center; gap: 8px; font-size: 16px; font-weight: 700; cursor: pointer; border: 1.5px solid var(--mfp-outline); color: var(--mfp-text); }

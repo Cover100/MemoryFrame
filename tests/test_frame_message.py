@@ -98,6 +98,7 @@ def test_settings_page_field_preview_counter_about(paired):
     put(paired, "Hi there")
     h = paired.get("/admin/settings", environ_base=PHONE).get_data(as_text=True)
     assert 'id="frameMessage" maxlength="280"' in h and ">Hi there</textarea>" in h
+    assert 'placeholder="Type a message"' in h
     assert 'id="messageCount" aria-live="polite">8 / 140<' in h
     assert 'id="messagePreviewText">Hi there<' in h
     assert "Message on the frame" in h and "About this frame" in h

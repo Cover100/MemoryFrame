@@ -47,20 +47,20 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
 .mf-phone .on-dark .track .used { background: var(--mfp-ok); }
 
 /* Page */
-.mf-phone main, .mf-phone .page { padding: 20px 16px 32px; max-width: 34rem; margin: 0 auto; }
-.mf-phone main.dense { padding: 12px 16px; }
+.mf-phone main, .mf-phone .page { padding: var(--mf-s-page-y) var(--mf-s-page-x) var(--mf-s-page-bottom); max-width: 34rem; margin: 0 auto; }
+.mf-phone main.dense { padding: var(--mf-s-page-dense-y) var(--mf-s-page-x); }
 .mf-phone h1 { font-size: var(--mf-p-h1); line-height: 1.2; margin: 0 0 8px; }
 .mf-phone h2 { font-size: var(--mf-p-h2); line-height: 1.25; margin: 0 0 10px; }
 .mf-phone h2.sm { font-size: var(--mf-p-body); }
-.mf-phone p { margin: 0 0 14px; }
+.mf-phone p { margin: 0 0 var(--mf-s-copy); }
 .mf-phone .muted { color: var(--mfp-text-2); }
 .mf-phone .small { font-size: var(--mf-p-small); }
 .mf-phone .strong { color: var(--mfp-text); }
 .mf-phone .center { text-align: center; }
 .mf-phone .flush { margin: 0; }
 .mf-phone .card { background: var(--mfp-surface); border: 1px solid var(--mfp-line); border-radius: var(--mf-r-lg); padding: 16px;
-  margin: 0 0 16px; }
-.mf-phone main.dense .card { margin-bottom: 10px; padding: 14px 16px; }
+  margin: 0 0 var(--mf-s-card); }
+.mf-phone main.dense .card { margin-bottom: var(--mf-s-card-dense); padding: 14px 16px; }
 .mf-phone .card.gap { margin-top: 28px; }
 .mf-phone .card.gap-sm { margin-top: 20px; }
 
@@ -283,7 +283,8 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
 .msgPreview p{margin:0;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:5;overflow:hidden}
 .mf-phone .msgPreview.empty { background: transparent; border: 1.5px dashed var(--mfp-line); color: var(--mfp-text-2);
   font-family: inherit; }
-.mf-phone details.about { padding: 0; margin-top: 0; }
+.mf-phone details.about { padding: 0; margin-top: 0; margin-bottom: var(--mf-s-card); }
+.mf-phone main.dense details.about { margin-bottom: var(--mf-s-card-dense); }
 .mf-phone details.about summary.row-link { line-height: 1.3; }
 .mf-phone details.about summary { list-style: none; cursor: pointer; }
 .mf-phone details.about summary::-webkit-details-marker { display: none; }

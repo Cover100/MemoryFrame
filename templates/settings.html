@@ -7,7 +7,7 @@
   <h2 class="hd">Message on the frame <span class="status" data-for="message" aria-live="polite"></span></h2>
   <label for="frameMessage" class="sr-only">Message on the frame</label>
   <textarea id="frameMessage" maxlength="{{ message_max * 2 }}" rows="4" data-max="{{ message_max }}" data-saved="{{ message }}"
-    aria-describedby="msgHelp messageCount" placeholder="e.g. Happy birthday, Nana! Love from all of us.">{{ message }}</textarea>
+    aria-describedby="msgHelp messageCount" placeholder="Type a message">{{ message }}</textarea>
   <div class="meta"><span id="msgHelp">Shown in the frame's menu</span><span id="messageCount" aria-live="polite">{{ message|length }} / {{ message_max }}</span></div>
   <div class="acts"><button type="button" id="messageSave">Save</button><span class="small muted" id="messageDirty" hidden>Not saved yet</span><button type="button" id="messageRemove" class="msgRemove"{% if not message %} hidden{% endif %}>Remove message</button></div>
   <div id="messageConfirm" class="msgConfirm" role="alertdialog" aria-labelledby="messageConfirmText" hidden>

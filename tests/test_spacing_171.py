@@ -17,6 +17,7 @@ PHONE_CSS = (STATIC / "phone.css").read_text()
 VIDEO_CSS = (STATIC / "video.css").read_text()
 SETTINGS = (ROOT / "templates" / "settings.html").read_text()
 UPLOAD = (ROOT / "templates" / "upload.html").read_text()
+LIBRARY = (ROOT / "templates" / "library.html").read_text()
 
 
 def _flat(css):
@@ -51,16 +52,23 @@ def test_about_uses_the_shared_card_stack_gap():
 
 def test_upload_intro_uses_shared_copy_spacing_not_one_off_pixels():
     """upnote used margin: 8px 2px 0 (no token, no gap before the storage card).
-    It now uses the same --mf-s-copy bottom margin as other page intro paragraphs,
-    and main's --mf-s-page-y for the space under the header divider."""
+    Upload (main > .upnote) now uses the same --mf-s-copy bottom margin as other
+    page intro paragraphs, and main's --mf-s-page-y for the space under the header.
+    Photos/Library scopes a tokenized gap under the Upload button (--mf-s-2)."""
     flat_v = _flat(VIDEO_CSS)
     flat_p = _flat(PHONE_CSS)
     assert ".mf-phone .upnote {" in flat_v
-    assert "margin: 0 0 var(--mf-s-copy)" in flat_v
+    assert "main > .upnote { margin: 0 0 var(--mf-s-copy); }" in flat_v
+    assert ".normal-only > .upnote { margin: var(--mf-s-2) 0 0; }" in flat_v
     assert "8px 2px 0" not in VIDEO_CSS
     assert "padding: var(--mf-s-page-y) var(--mf-s-page-x) var(--mf-s-page-bottom)" in flat_p
     assert "p { margin: 0 0 var(--mf-s-copy); }" in flat_p
     assert '<p class="upnote">' in UPLOAD
+    assert '<p class="upnote">' in LIBRARY
+    # Library intro is inside .normal-only, under the Upload button, not a main child
+    lib = LIBRARY[LIBRARY.index('class="normal-only"'):LIBRARY.index('class="libhead"')]
+    assert '<p class="upnote">' in lib
+    assert 'upload_button(videos, "upBtn")' in lib
 
 
 def test_frame_message_placeholder_is_exactly_type_a_message():
@@ -140,3 +148,36 @@ def test_upload_intro_matches_shared_page_and_copy_spacing(page, server, mf_app,
     assert got["marginBottom"] == "14px", got
     assert got["top"] == pytest.approx(20, abs=0.5), got
     assert got["bottom"] == pytest.approx(14, abs=0.5), got
+
+LIB = """JSON.stringify((()=>{
+  const btn = document.getElementById('upBtn').getBoundingClientRect();
+  const note = document.querySelector('.upnote');
+  const head = document.querySelector('.libhead').getBoundingClientRect();
+  const r = note.getBoundingClientRect();
+  const cs = getComputedStyle(note);
+  return {
+    gapAbove: r.top - btn.bottom,
+    gapBelow: head.top - r.bottom,
+    margin: cs.margin,
+    marginTop: cs.marginTop,
+    marginRight: cs.marginRight,
+    marginLeft: cs.marginLeft,
+    marginBottom: cs.marginBottom,
+  };
+})())"""
+
+
+@pytest.mark.skipif(BROWSER is None, reason="no Chromium/Chrome installed")
+@pytest.mark.parametrize("width", [360, 412])
+def test_library_intro_keeps_a_tokenized_gap_under_the_upload_button(page, server, mf_app, width):
+    """#171 follow-up (Hale): scoping Upload's copy margin must not flush the
+    Photos/Library intro under the Upload button. Gap is --mf-s-2 (8px); the
+    22px down to the Library heading is unchanged."""
+    import json
+    mf_app.config["VIDEOS"] = True
+    _phone(page, server, mf_app, "admin/library", width=width)
+    got = json.loads(evaluate(page, LIB))
+    assert got["marginTop"] == "8px", got
+    assert got["marginBottom"] == "0px", got
+    assert got["gapAbove"] == pytest.approx(8, abs=0.5), got
+    assert got["gapBelow"] == pytest.approx(22, abs=0.5), got

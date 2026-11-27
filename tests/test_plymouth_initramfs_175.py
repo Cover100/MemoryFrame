@@ -178,3 +178,81 @@ for l in data.decode("utf-8", errors="replace").splitlines():
     assert expect in r.stderr, f"{label}: expected {expect!r} in {r.stderr!r}"
     assert "rolling back" in r.stderr
     assert (snapshot(pl.boot), snapshot(pl.themes), snapshot(pl.conf.parent)) == snap
+
+
+# ---------------- /proc/modules intersection (#175 follow-up) ----------------
+
+UNUSED_OPTIONAL_CRITICAL = [
+    "btrfs",
+    "xfs",
+    "squashfs",
+    "panel-raspberrypi-touchscreen",
+]
+
+
+def _write_proc_files(pl, loaded_mods, mounts=None):
+    pm = pl.tmp / "proc_modules"
+    pm.write_text("\n".join(f"{m} 16384 0 - Live 0x0000000000000000" for m in loaded_mods) + "\n")
+    pmounts = pl.tmp / "proc_mounts"
+    if mounts is None:
+        mounts = [
+            "/dev/mmcblk0p2 / ext4 rw,noatime 0 0",
+            "/dev/mmcblk0p1 /boot/firmware vfat rw,relatime 0 0",
+        ]
+    pmounts.write_text("\n".join(mounts) + "\n")
+    return {"MEMORYFRAME_PROC_MODULES": str(pm), "MEMORYFRAME_PROC_MOUNTS": str(pmounts)}
+
+
+def test_unused_optional_critical_modules_dropped_passes_when_not_loaded(pl):
+    """Factory initramfs8 losing unused btrfs/xfs/squashfs/panel-raspberrypi-touchscreen
+    (plus generic modules) when not loaded in /proc/modules must succeed (#175)."""
+    _seed_factory_initrd(pl, BASE_CRITICAL + UNUSED_OPTIONAL_CRITICAL + FACTORY_GENERIC)
+    # Keep only the loaded HDMI/ext4 Pi modules; drop btrfs, xfs, squashfs, DSI panel, and generic
+    kept = [m for m in BASE_CRITICAL if m != "panel-raspberrypi-touchscreen"]
+    _install_fake_ui(pl, _make_fake_ui(kept))
+    proc_env = _write_proc_files(pl, ["vc4", "drm", "drm_kms_helper", "mmc_block", "sdhci_brcmstb", "ext4"])
+
+    r = pl.run("plymouth", "on", **proc_env)
+    assert r.returncode == 0, f"stdout={r.stdout}\nstderr={r.stderr}"
+    assert "lost modules" not in r.stderr
+    assert pl.theme() == "memoryframe"
+
+
+@pytest.mark.parametrize("dropped,loaded_entry", [
+    ("ext4", "ext4"),
+    ("vc4", "vc4"),
+    ("mmc_block", "mmc_block"),
+    ("panel-raspberrypi-touchscreen", "panel_raspberrypi_touchscreen"),
+])
+def test_losing_loaded_critical_module_fails_and_rolls_back(pl, dropped, loaded_entry):
+    """Losing a critical module that IS loaded in /proc/modules and in the prior initramfs
+    must fail verification and roll back cleanly."""
+    _seed_factory_initrd(pl, BASE_CRITICAL + UNUSED_OPTIONAL_CRITICAL + FACTORY_GENERIC)
+    snap = (snapshot(pl.boot), snapshot(pl.themes), snapshot(pl.conf.parent))
+    kept = [m for m in BASE_CRITICAL if m != dropped]
+    _install_fake_ui(pl, _make_fake_ui(kept))
+    proc_env = _write_proc_files(pl, ["vc4", "drm", "mmc_block", "ext4", loaded_entry])
+
+    r = pl.run("plymouth", "on", **proc_env)
+    assert r.returncode == 1, f"dropped={dropped}: {r.stdout}\n{r.stderr}"
+    assert "lost modules:" in r.stderr
+    assert dropped in r.stderr
+    assert "rolling back" in r.stderr
+    assert (snapshot(pl.boot), snapshot(pl.themes), snapshot(pl.conf.parent)) == snap
+
+
+def test_losing_mounted_root_fs_module_fails_even_if_not_in_proc_modules(pl):
+    """A root filesystem module listed in /proc/mounts and in the prior initramfs
+    must still be protected even if omitted from /proc/modules."""
+    _seed_factory_initrd(pl, BASE_CRITICAL + UNUSED_OPTIONAL_CRITICAL)
+    snap = (snapshot(pl.boot), snapshot(pl.themes), snapshot(pl.conf.parent))
+    kept = [m for m in BASE_CRITICAL if m != "ext4"]
+    _install_fake_ui(pl, _make_fake_ui(kept))
+    proc_env = _write_proc_files(pl, ["vc4", "drm"], mounts=["/dev/mmcblk0p2 / ext4 rw 0 0"])
+
+    r = pl.run("plymouth", "on", **proc_env)
+    assert r.returncode == 1, f"{r.stdout}\n{r.stderr}"
+    assert "lost modules:" in r.stderr
+    assert "ext4" in r.stderr
+    assert "rolling back" in r.stderr
+    assert (snapshot(pl.boot), snapshot(pl.themes), snapshot(pl.conf.parent)) == snap

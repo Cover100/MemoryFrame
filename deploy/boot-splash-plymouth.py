@@ -9,7 +9,7 @@ on:  installs deploy/plymouth/memoryframe/ to /usr/share/plymouth/themes/memoryf
      SD write on a normal deploy, #97). Before a rebuild: sha256 of the initramfs, a timestamped copy next to it
      (<name>.memoryframe-bak.<ts>, re-hashed), a copy of /etc/plymouth/plymouthd.conf, the module list. After it:
      the initramfs must have changed, list themes/memoryframe/memoryframe.script and script.so, be within 30 % of
-     the old size and keep every critical boot/storage/filesystem/display module. Any failure puts the old initramfs back (hash checked), the previous theme
+     the old size and keep every loaded critical boot/storage/filesystem/display module. Any failure puts the old initramfs back (hash checked), the previous theme
      and plymouthd.conf back, and exits 1. Refusals (exit 0, nothing written, a plain line): Plymouth not
      installed, an unknown kernel flavour, no initramfs file, no auto_initramfs=1 in config.txt, less than 3x the
      initramfs size free on the boot partition, or a theme someone else chose since our last run.
@@ -68,6 +68,8 @@ CONF = Path(os.environ.get("MEMORYFRAME_PLYMOUTH_CONF") or "/etc/plymouth/plymou
 PLYMOUTH_SET = os.environ.get("PLYMOUTH_SET") or "plymouth-set-default-theme"
 UPDATE_INITRAMFS = os.environ.get("UPDATE_INITRAMFS") or "update-initramfs"
 LSINITRAMFS = os.environ.get("LSINITRAMFS") or "lsinitramfs"
+PROC_MODULES = Path(os.environ.get("MEMORYFRAME_PROC_MODULES") or "/proc/modules")
+PROC_MOUNTS = Path(os.environ.get("MEMORYFRAME_PROC_MOUNTS") or "/proc/mounts")
 STAMP = time.strftime("%Y%m%d%H%M%S")
 MODULE_RE = re.compile(r"/([^/]+)\.ko(?:\.(?:zst|xz|gz))?$")
 # Critical boot/root/storage/filesystem/display/platform modules on Raspberry Pi (#175).
@@ -182,8 +184,32 @@ def norm_module(name):
     return name.replace("-", "_")
 
 
-def required_modules(before_mods):
-    return {norm_module(m): m for m in before_mods if norm_module(m) in CRITICAL_MODULES}
+def active_modules():
+    """Modules currently loaded on this Pi (from /proc/modules), plus mounted root/boot
+    filesystem types (from /proc/mounts). Returns None if /proc/modules is unavailable,
+    so verify() falls back to checking all CRITICAL_MODULES present in the prior initramfs."""
+    try:
+        lines = PROC_MODULES.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return None
+    loaded = {norm_module(parts[0]) for parts in (l.split() for l in lines) if parts}
+    try:
+        for line in PROC_MOUNTS.read_text(encoding="utf-8", errors="replace").splitlines():
+            parts = line.split()
+            if len(parts) >= 3 and (parts[1] == "/" or parts[1] == "/boot" or parts[1].startswith("/boot/")):
+                loaded.add(norm_module(parts[2]))
+    except OSError:
+        pass
+    return loaded
+
+
+def required_modules(before_mods, loaded=None):
+    before_critical = {norm_module(m): m for m in before_mods if norm_module(m) in CRITICAL_MODULES}
+    if loaded is None:
+        loaded = active_modules()
+    if loaded is None:
+        return before_critical
+    return {norm: raw for norm, raw in before_critical.items() if norm in loaded}
 
 
 def has_theme(lines, theme):

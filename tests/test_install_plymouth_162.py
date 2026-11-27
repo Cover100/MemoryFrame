@@ -34,7 +34,9 @@ def plymouth_sandbox(tmp_path, boot):
     extra = {"MEMORYFRAME_PLYMOUTH_DIR": str(themes), "MEMORYFRAME_PLYMOUTH_CONF": str(conf),
              "MEMORYFRAME_KERNEL": KERNEL, "MEMORYFRAME_BOOT_FREE": str(10 ** 9), "FAKE_LOG": str(tmp_path / "f.log"),
              "PLYMOUTH_SET": str(fb / "plymouth-set-default-theme"), "UPDATE_INITRAMFS": str(fb / "update-initramfs"),
-             "LSINITRAMFS": str(fb / "lsinitramfs")}
+             "LSINITRAMFS": str(fb / "lsinitramfs"),
+             "MEMORYFRAME_PROC_MODULES": str(tmp_path / "no-proc-modules"),
+             "MEMORYFRAME_PROC_MOUNTS": str(tmp_path / "no-proc-mounts")}
     e = dict(os.environ, MEMORYFRAME_BOOT_DIR=str(boot), **extra)
     e.pop("FAKE_UI", None)
     subprocess.run([str(fb / "update-initramfs"), "-u", "-k", KERNEL], env=e, check=True)    # the stock pix image

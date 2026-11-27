@@ -184,7 +184,7 @@ What it does:
     default theme and rebuilds the running kernel's initramfs (`initramfs8` on a Pi 4, loaded by `auto_initramfs=1`).
     Before: sha256 of the initramfs, a timestamped copy `initramfs8.memoryframe-bak.<time>` (re-hashed), a copy of
     `/etc/plymouth/plymouthd.conf`. After: the new initramfs must list the theme and `script.so`, stay within 30 % of
-    its size and keep every module, else both are put back and the old theme is set again. A second run with the same
+    its size and keep every loaded critical boot/storage/filesystem/display module, else both are put back and the old theme is set again. A second run with the same
     theme files does not rebuild. It is skipped (with a line saying why) without `auto_initramfs=1`, with an unknown
     kernel, a theme someone else chose, or less than 3x the initramfs size free on the boot partition. `cmdline.txt`
     is not changed (Plymouth uses the `splash` already there). `sudo deploy/boot-splash.sh plymouth off` (also part

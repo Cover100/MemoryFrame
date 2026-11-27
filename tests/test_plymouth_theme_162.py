@@ -118,7 +118,9 @@ def pl(tmp_path):
                  MEMORYFRAME_PLYMOUTH_DIR=str(p.themes), MEMORYFRAME_PLYMOUTH_CONF=str(p.conf),
                  MEMORYFRAME_KERNEL=KERNEL, MEMORYFRAME_BOOT_FREE=str(10 ** 9), FAKE_LOG=str(p.log),
                  PLYMOUTH_SET=str(bin_ / "plymouth-set-default-theme"), UPDATE_INITRAMFS=str(bin_ / "update-initramfs"),
-                 LSINITRAMFS=str(bin_ / "lsinitramfs"))
+                 LSINITRAMFS=str(bin_ / "lsinitramfs"),
+                 MEMORYFRAME_PROC_MODULES=str(tmp_path / "no-proc-modules"),
+                 MEMORYFRAME_PROC_MOUNTS=str(tmp_path / "no-proc-mounts"))
     for k in ("FAKE_UI", "FAKE_LS", "FAKE_SET", "MEMORYFRAME_NO_PLYMOUTH"):
         p.env.pop(k, None)
     # the stock initramfs, as the fake builds it for pix

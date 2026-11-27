@@ -129,9 +129,9 @@ body.mf-phone { font-size: var(--mf-p-body); line-height: 1.4; min-height: 100vh
 /* 01 Pair */
 .mf-phone .hero { display: flex; justify-content: center; margin: 8px 0 22px; }
 .mf-phone .hero span { width: 120px; height: 76px; border-radius: 12px; background: var(--mfp-illo-wood); position: relative; }
-.mf-phone .hero span::before { content: ""; position: absolute; left: 10px; top: 14px; width: 46px; height: 46px;
+.mf-phone .hero span::before { content: ""; box-sizing: border-box; position: absolute; left: 10px; top: 16px; width: 44px; height: 44px;
   border-radius: 50%; background: var(--mfp-illo-screen); border: 3px solid var(--mfp-illo-rim); }
-.mf-phone .hero span::after { content: ""; position: absolute; right: 8px; top: 10px; width: 50px; height: 56px;
+.mf-phone .hero span::after { content: ""; box-sizing: border-box; position: absolute; right: 10px; top: 10px; width: 46px; height: 56px;
   border-radius: 5px; background: var(--mfp-illo-panel); }
 .mf-phone .code { width: 100%; height: 64px; margin: 18px 0 8px; border: 1.5px solid var(--mfp-outline);
   border-radius: var(--mf-r-sm); background: var(--mfp-surface); color: var(--mfp-text); font: inherit; font-size: 30px;

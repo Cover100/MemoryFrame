@@ -9,7 +9,7 @@ on:  installs deploy/plymouth/memoryframe/ to /usr/share/plymouth/themes/memoryf
      SD write on a normal deploy, #97). Before a rebuild: sha256 of the initramfs, a timestamped copy next to it
      (<name>.memoryframe-bak.<ts>, re-hashed), a copy of /etc/plymouth/plymouthd.conf, the module list. After it:
      the initramfs must have changed, list themes/memoryframe/memoryframe.script and script.so, be within 30 % of
-     the old size and keep every module. Any failure puts the old initramfs back (hash checked), the previous theme
+     the old size and keep every critical boot/storage/filesystem/display module. Any failure puts the old initramfs back (hash checked), the previous theme
      and plymouthd.conf back, and exits 1. Refusals (exit 0, nothing written, a plain line): Plymouth not
      installed, an unknown kernel flavour, no initramfs file, no auto_initramfs=1 in config.txt, less than 3x the
      initramfs size free on the boot partition, or a theme someone else chose since our last run.
@@ -70,6 +70,27 @@ UPDATE_INITRAMFS = os.environ.get("UPDATE_INITRAMFS") or "update-initramfs"
 LSINITRAMFS = os.environ.get("LSINITRAMFS") or "lsinitramfs"
 STAMP = time.strftime("%Y%m%d%H%M%S")
 MODULE_RE = re.compile(r"/([^/]+)\.ko(?:\.(?:zst|xz|gz))?$")
+# Critical boot/root/storage/filesystem/display/platform modules on Raspberry Pi (#175).
+# Factory Raspberry Pi OS initramfs images bundle unused generic modules (ahci, aoe, aqc111,
+# arizona*, etc.) that local update-initramfs prunes; checking only this critical set
+# intersected with the prior initramfs avoids false-positive rollbacks on fresh SD cards
+# while still catching genuine boot-breaking module loss.
+CRITICAL_MODULES = frozenset({
+    # Filesystems / root mount
+    "ext4", "jbd2", "mbcache", "crc16", "crc32c_generic", "crc32c", "fscrypto",
+    "overlay", "squashfs", "vfat", "fat", "nls_cp437", "nls_iso8859_1", "nls_ascii",
+    "btrfs", "xfs", "f2fs",
+    # Block / SD / MMC / NVMe / USB storage / device-mapper
+    "mmc_core", "mmc_block", "sdhci", "sdhci_pltfm", "sdhci_iproc", "sdhci_brcmstb",
+    "bcm2835_mmc", "bcm2835_sdhost", "sd_mod", "scsi_mod", "usb_storage", "uas",
+    "nvme", "nvme_core", "dm_mod", "dm_crypt",
+    # Raspberry Pi display / DRM / Plymouth graphics & touchscreen
+    "vc4", "v3d", "drm", "drm_kms_helper", "drm_display_helper", "drm_dma_helper",
+    "panel_raspberrypi_touchscreen", "edt_ft5x06", "rpi_panel_attiny_regulator",
+    # Raspberry Pi platform / bus / USB host
+    "pcie_brcmstb", "reset_raspberrypi", "clk_raspberrypi", "firmware_raspberrypi",
+    "raspberrypi_firmware", "xhci_hcd", "xhci_pci", "xhci_plat_hcd", "dwc2", "dwc_otg",
+})
 
 
 class Fail(Exception):
@@ -157,6 +178,14 @@ def modules(lines):
     return {m.group(1) for m in map(MODULE_RE.search, lines) if m}
 
 
+def norm_module(name):
+    return name.replace("-", "_")
+
+
+def required_modules(before_mods):
+    return {norm_module(m): m for m in before_mods if norm_module(m) in CRITICAL_MODULES}
+
+
 def has_theme(lines, theme):
     return any(l.endswith(f"plymouth/themes/{theme}/{theme}.script") or
                l.endswith(f"plymouth/themes/{theme}/{theme}.plymouth") for l in lines)
@@ -234,16 +263,30 @@ def verify(initrd, before_sha, before_size, mods, theme, absent=None):
     if after == before_sha:
         raise Fail(f"{initrd.name} did not change: the rebuild did nothing")
     size = initrd.stat().st_size
+    if size == 0:
+        raise Fail(f"{initrd.name} is empty (0 bytes)")
+    lines = listing(initrd)
+    if not lines:
+        raise Fail(f"{initrd.name} listing is empty")
     if abs(size - before_size) > SIZE_SLACK * before_size:
         raise Fail(f"{initrd.name} is {size} bytes, was {before_size} (more than 30 % off)")
-    lines = listing(initrd)
     if theme and not has_theme(lines, theme):
         raise Fail(f"{initrd.name} does not list the {theme} theme")
     if absent and has_theme(lines, absent):
         raise Fail(f"{initrd.name} still lists the {absent} theme")
-    if theme == THEME and not any(l.endswith("plymouth/script.so") for l in lines):
-        raise Fail(f"{initrd.name} has no plymouth script.so")
-    lost = sorted(mods - modules(lines))
+    if theme == THEME:
+        missing_assets = [f for f in FILES if not any(l.endswith(f"plymouth/themes/{THEME}/{f}") for l in lines)]
+        if missing_assets:
+            raise Fail(f"{initrd.name} is missing {THEME} theme assets: {', '.join(missing_assets)}")
+        if not any(l.endswith("/plymouthd") or l == "plymouthd" for l in lines):
+            raise Fail(f"{initrd.name} has no plymouthd binary")
+        if not any(l.endswith("plymouth/script.so") for l in lines):
+            raise Fail(f"{initrd.name} has no plymouth script.so")
+    after_mods = modules(lines)
+    if mods and not after_mods:
+        raise Fail(f"{initrd.name} has no kernel modules")
+    after_norm = {norm_module(m) for m in after_mods}
+    lost = sorted(raw for norm, raw in required_modules(mods).items() if norm not in after_norm)
     if lost:
         raise Fail(f"{initrd.name} lost modules: {', '.join(lost[:8])}")
     return after
